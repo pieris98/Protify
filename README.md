@@ -95,15 +95,21 @@ Protify is currently in beta. We're actively working to enhance features and doc
   | ProtT5 | T5-based pLM capable of both encoding and generation tasks. | 3B | pLM |
   | ANKH-Base | Base version of the ANKH pLM focused on protein structure understanding. | 400M | pLM |
   | ANKH-Large | Large version of the ANKH pLM with improved structural predictions. | 1.2B | pLM |
-  | ANKH2-Large | Improved second generation ANKH pLM. | 1.5B | pLM |
+  | ANKH2-Large | Improved second generation ANKH pLM. | 1.2B | pLM |
   | GLM2-150 | Medium-sized general language model adapted for protein sequences. | 150M | pLM |
   | GLM2-650 | Large general language model adapted for protein sequences. | 650M | pLM |
   | GLM2-GAIA | Specialized GLM pLM with GAIA architecture improvements. | 650M | pLM |
-  | DPLM-150 | Diffusion pLM focused on joint sequence and structure. | 150M | pLM |
-  | DPLM-650 | Larger DPLM. | 650M parameters | pLM |
-  | DPLM-3B | Largest DPLM. | 3B | pLM |
-  | DSM-150 | Diffusion language model for proteins. | 150M | pLM |
-  | DSM-650 | Diffusion language model for proteins. | 650M | pLM |
+  | DPLM-150 | Deep protein language model focused on protein structure. | 150M | pLM |
+  | DPLM-650 | Larger deep protein language model. | 650M | pLM |
+  | DPLM-3B | Largest deep protein language model in the DPLM family. | 3B | pLM |
+  | DSM-150 | Deep language model for proteins. | 150M | pLM |
+  | DSM-650 | Deep language model for proteins. | 650M | pLM |
+  | DSM-PPI | DSM model optimized for protein-protein interactions. | Varies | pLM |
+  | ProtCLM-1b | Causal (auto regressive) pLM. | 1B | pLM |
+  | OneHot-Protein | One-hot encoding baseline for protein sequences. | N/A | Baseline |
+  | OneHot-DNA | One-hot encoding baseline for DNA sequences. | N/A | Baseline |
+  | OneHot-RNA | One-hot encoding baseline for RNA sequences. | N/A | Baseline |
+  | OneHot-Codon | One-hot encoding baseline for codon sequences. | N/A | Baseline |
   | Random | Baseline model with randomly initialized weights, serving as a negative control. | Varies | Negative control |
   | Random-Transformer | Randomly initialized transformer model serving as a homology-based control. | Varies | Homology control |
 </details>
@@ -113,13 +119,7 @@ Protify is currently in beta. We're actively working to enhance features and doc
 <details>
   <summary>Click to expand dataset list</summary>
   
-  BC - Binary Classification
-  
-  MCC - Multi-Class Classification
-  
-  MLC - Multi-Label Classification
-  
-  R - Regression
+  BC - Binary Classification | MCC - Multi-Class Classification | MLC - Multi-Label Classification | R - Regression | PPI - Protein-Protein Interaction
 
   | Dataset Name | Description | Type | Task | Tokenwise | Dual inputs |
   |--------------|-------------|------|------|-----------|-------------|
@@ -130,23 +130,42 @@ Protify is currently in beta. We're actively working to enhance features and doc
   | MB | Metal ion binding dataset for predicting protein-metal interactions. | BC | Protein-metal binding prediction | No | No |
   | DeepLoc-2 | Binary classification dataset for predicting protein localization in 2 categories. | BC | Protein localization prediction | No | No |
   | DeepLoc-10 | Multi-class classification dataset for predicting protein localization in 10 categories. | MCC | Protein localization prediction | No | No |
+  | Subcellular | Dataset for predicting subcellular localization of proteins. | MCC | Protein localization prediction | No | No |
   | enzyme-kcat | Dataset for predicting enzyme catalytic rate constants (kcat). | R | Enzyme kinetics prediction | No | No |
   | solubility | Dataset for predicting protein solubility properties. | BC | Protein solubility prediction | No | No |
   | localization | Dataset for predicting subcellular localization of proteins. | MCC | Protein localization prediction | No | No |
   | temperature-stability | Dataset for predicting protein stability at different temperatures. | BC | Protein stability prediction | No | No |
   | optimal-temperature | Dataset for predicting the optimal temperature for protein function. | R | Protein property prediction | No | No |
   | optimal-ph | Dataset for predicting the optimal pH for protein function. | R | Protein property prediction | No | No |
-  | fitness-prediction | Dataset for predicting protein fitness in various environments. | R | Protein fitness prediction | No | No |
-  | SecondaryStructure-3 | Dataset for predicting protein secondary structure in 3+1 classes. | MCC | Protein structure prediction | Yes | No |
-  | SecondaryStructure-8 | Dataset for predicting protein secondary structure in 8+1 classes. | MCC | Protein structure prediction | Yes | No |
-  | human-ppi | Dataset for predicting human protein-protein interactions. | BC | PPI prediction | No | Yes |
-  | human-ppi-pinui | Human protein-protein interaction dataset from PiNUI. | BC | PPI prediction | No | Yes |
-  | yeast-ppi-pinui | Yeast protein-protein interaction dataset from PiNUI. | BC | PPI prediction | No | Yes |
-  | peptide-HLA-MHC-affinity | Dataset for predicting peptide binding affinity to HLA/MHC complexes. | BC | Binding affinity prediction | No | Yes |
-  | gold-ppi | Gold standard dataset for protein-protein interaction prediction. | BC | PPI prediction | No | Yes |
-  | shs27-ppi | SHS27k dataset containing 27,000 protein-protein interactions. | MCC | PPI prediction type | No | Yes |
-  | shs148-ppi | SHS148k dataset containing 148,000 protein-protein interactions. | MCC | PPI prediction type | No | Yes |
-  | PPA-ppi | Protein-Protein Affinity dataset for quantitative binding predictions. | R | Protein-protein affinity prediction | No | Yes |
+  | material-production | Dataset for predicting protein suitability for material production. | BC | Protein application prediction | No | No |
+  | fitness-prediction | Dataset for predicting protein fitness in various environments. | BC | Protein fitness prediction | No | No |
+  | number-of-folds | Dataset for predicting the number of structural folds in proteins. | BC | Protein structure prediction | No | No |
+  | cloning-clf | Dataset for predicting protein suitability for cloning operations. | BC | Protein engineering prediction | No | No |
+  | stability-prediction | Dataset for predicting overall protein stability. | BC | Protein stability prediction | No | No |
+  | SecondaryStructure-3 | Dataset for predicting protein secondary structure in 3 classes. | MCC | Protein structure prediction | Yes | No |
+  | SecondaryStructure-8 | Dataset for predicting protein secondary structure in 8 classes. | MCC | Protein structure prediction | Yes | No |
+  | fluorescence-prediction | Dataset for predicting protein fluorescence properties. | R | Protein property prediction | Yes | No |
+  | plastic | Dataset for predicting protein capability for plastic degradation. | BC | Enzyme function prediction | No | No |
+  | human-ppi | Dataset for predicting human protein-protein interactions. | PPI | PPI prediction | No | Yes |
+  | human-ppi-pinui | Human protein-protein interaction dataset from PiNUI. | PPI | PPI prediction | No | Yes |
+  | yeast-ppi-pinui | Yeast protein-protein interaction dataset from PiNUI. | PPI | PPI prediction | No | Yes |
+  | peptide-HLA-MHC-affinity | Dataset for predicting peptide binding affinity to HLA/MHC complexes. | PPI | Binding affinity prediction | No | Yes |
+  | gold-ppi | Gold standard dataset for protein-protein interaction prediction. | PPI | PPI prediction | No | Yes |
+  | shs27-ppi | SHS27k dataset containing 27,000 protein-protein interactions. | PPI | PPI prediction | No | Yes |
+  | shs148-ppi | SHS148k dataset containing 148,000 protein-protein interactions. | PPI | PPI prediction | No | Yes |
+  | PPA-ppi | Protein-Protein Affinity dataset for quantitative binding predictions. | PPI | PPI affinity prediction | No | Yes |
+  | foldseek-fold | Dataset for protein fold classification using Foldseek. | MCC | Protein structure prediction | No | No |
+  | foldseek-inverse | Inverse protein fold prediction dataset. | MCC | Protein structure prediction | No | No |
+  | ec-active | Dataset for predicting active enzyme classes. | MCC | Enzyme function prediction | No | No |
+  | bernett_processed | Processed Bernett dataset for protein analysis. | Various | Protein analysis | No | No |
+  | taxon_domain | Taxonomic classification at domain level. | MCC | Taxonomic prediction | No | No |
+  | taxon_kingdom | Taxonomic classification at kingdom level. | MCC | Taxonomic prediction | No | No |
+  | taxon_phylum | Taxonomic classification at phylum level. | MCC | Taxonomic prediction | No | No |
+  | taxon_class | Taxonomic classification at class level. | MCC | Taxonomic prediction | No | No |
+  | taxon_order | Taxonomic classification at order level. | MCC | Taxonomic prediction | No | No |
+  | taxon_family | Taxonomic classification at family level. | MCC | Taxonomic prediction | No | No |
+  | taxon_genus | Taxonomic classification at genus level. | MCC | Taxonomic prediction | No | No |
+  | taxon_species | Taxonomic classification at species level. | MCC | Taxonomic prediction | No | No |
 </details>
 
 For more details about supported models and datasets, including programmatic access and command-line utilities, see the [Resource Listing Documentation](docs/resource_listing.md).
@@ -162,7 +181,7 @@ For more details about supported models and datasets, including programmatic acc
   - Coming soon: GPU acceleration
 - **Complete reproducibility**: Every session generates a detailed log that can be used to reproduce your entire workflow
 - **Publication-ready visualizations**: Generate cross-model and dataset comparisons with radar and bar plots, embedding analysis with PCA, t-SNE, and UMAP, and statistically sound confidence interval plots
-- **Extensive dataset support**: Access 25 protein datasets by default, or easily integrate your own local or private datasets
+- **Extensive dataset support**: Access 46+ protein datasets by default, or easily integrate your own local or private datasets
   - Coming soon: Additional protein, SMILES, SELFIES, codon, and nucleotide property datasets
 - **Advanced interaction modeling**: Support for protein-protein interaction datasets
   - Coming soon: Protein-small molecule interaction capabilities
@@ -228,7 +247,7 @@ cd src/protify
   
   <img src="https://github.com/Gleghorn-Lab/Protify/blob/main/images/example_workflow/3.PNG" width="500">
   
-  3.) Select the datasets you are interested in. Here we chose Enzynme Comission numbers (multi-label classification), metal-ion binding (binary classificaiton), solubility (deeploc2, binary classification), and catalytic rate (kcat, regression).
+  3.) Select the datasets you are interested in. Here we chose Enzyme Commission numbers (multi-label classification), metal-ion binding (binary classification), solubility (binary classification), catalytic rate (kcat, regression), and protein localization (DeepLoc-2, binary classification).
   
   <img src="https://github.com/Gleghorn-Lab/Protify/blob/main/images/example_workflow/4.PNG" width="500">
   
@@ -268,7 +287,7 @@ cd src/protify
 
   To run the same session from the command line instead, you would simply execute
   ```
-  python -m main --model_names ESM2-8 ESM2-35 ESMC-300 Random Random-Transformer --data_names EC DeepLoc-2 enzyme-kcat --patience 3
+  python -m main --model_names ESM2-8 ESM2-35 ESMC-300 ProtBert ANKH-Base Random Random-Transformer --data_names EC DeepLoc-2 enzyme-kcat MB solubility --patience 3
   ```
   Or, set up a yaml file with your desired settings (so you don't have to type out everything in the CLI)
   ```

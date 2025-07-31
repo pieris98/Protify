@@ -97,15 +97,16 @@ DATASET_NAMES = {
     'ec_active': 'EC active',
     'bernett_processed': 'bernett processed',
     
-    # Taxonomic datasets
-    'taxon_domain': r'$taxonomy_{domain}$',
-    'taxon_kingdom': r'$taxonomy_{kingdom}$', 
-    'taxon_phylum': r'$taxonomy_{phylum}$',
-    'taxon_class': r'$taxonomy_{class}$',
-    'taxon_order': r'$taxonomy_{order}$',
-    'taxon_family': r'$taxonomy_{family}$',
-    'taxon_genus': r'$taxonomy_{genus}$',
-    'taxon_species': r'$taxonomy_{species}$',
+    
+    # Taxonomic datasets (alternative naming with full prefix)
+    'taxonomy_domain': r'$taxonomy_{domain}$',
+    'taxonomy_kingdom': r'$taxonomy_{kingdom}$', 
+    'taxonomy_phylum': r'$taxonomy_{phylum}$',
+    'taxonomy_class': r'$taxonomy_{class}$',
+    'taxonomy_order': r'$taxonomy_{order}$',
+    'taxonomy_family': r'$taxonomy_{family}$',
+    'taxonomy_genus': r'$taxonomy_{genus}$',
+    'taxonomy_species': r'$taxonomy_{species}$',
     
     # Alternative naming patterns (for backwards compatibility)
     'EC': 'EC',
@@ -269,6 +270,8 @@ def heatmap_plot(datasets: List[str],
     # Clean display names
     clean_model_names = [MODEL_NAMES.get(m, m) for m in models]
     clean_dataset_names = [DATASET_NAMES.get(d, d) for d in datasets_plus_avg]
+    print(clean_dataset_names)
+    print(datasets_plus_avg)
 
     # Normalization (per row/dataset)
     if normalize:

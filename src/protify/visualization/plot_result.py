@@ -21,37 +21,52 @@ MODEL_NAMES = {
     'ESM2-150': r'$ESM2_{150M}$',
     'ESM2-650': r'$ESM2_{650M}$',
     'ESM2-3B': r'$ESM2_{3B}$',
+    'ESM2-diff-150': r'$ESM2_{diff-150M}$',
+    'ESM2-diffAV-150': r'$ESM2_{diffAV-150M}$',
     'ESMC-300': r'$ESMC_{300M}$',
     'ESMC-600': r'$ESMC_{600M}$',
     'ProtBert': r'$ProtBert_{420M}$',
-    'ProtT5': r'ProtT5-enc$_{2.8B}$',
-    'ProtT5-100M': r'$ProtT5_{100M}$',
-    'ANKH-Base': r'ANKH-enc$_{453M}$',
-    'ANKH-Large': r'ANKH-enc$_{1.2B}$',
-    'ANKH2-Large': r'ANKH2-enc$_{1.2B}$',
+    'ProtBert-BFD': r'$ProtBert_{BFD}$',
+    'ProtT5': r'ProtT5-enc$_{3B}$',
+    'ProtT5-XL-UniRef50-full-prec': r'ProtT5-XL$_{UniRef50}$',
+    'ProtT5-XXL-UniRef50': r'ProtT5-XXL$_{UniRef50}$',
+    'ProtT5-XL-BFD': r'ProtT5-XL$_{BFD}$',
+    'ProtT5-XXL-BFD': r'ProtT5-XXL$_{BFD}$',
+    'ANKH-Base': r'ANKH-Base$_{400M}$',
+    'ANKH-Large': r'ANKH-Large$_{1.2B}$',
+    'ANKH2-Large': r'ANKH2-Large$_{1.2B}$',
     'DSM-150': r'$DSM_{150M}$',
     'DSM-650': r'$DSM_{650M}$',
+    'DSM-PPI': r'$DSM_{PPI}$',
     'GLM2-150': r'$GLM2_{150M}$',
     'GLM2-650': r'$GLM2_{650M}$',
+    'GLM2-GAIA': r'$GLM2_{GAIA}$',
     'DPLM-150': r'$DPLM_{150M}$',
     'DPLM-650': r'$DPLM_{650M}$',
     'DPLM-3B': r'$DPLM_{3B}$',
     'ProtCLM-1b': r'$ProtCLM_{1B}$',
+    'OneHot-Protein': 'OneHot Protein',
+    'OneHot-DNA': 'OneHot DNA',
+    'OneHot-RNA': 'OneHot RNA',
+    'OneHot-Codon': 'OneHot Codon',
 }
 
 DATASET_NAMES = {
+    # Gene Ontology and Enzyme Commission
     'EC_reg': 'EC',
     'CC_reg': r'$GO_{CC}$',
     'BP_reg': r'$GO_{BP}$',
     'MF_reg': r'$GO_{MF}$',
+    
+    # Basic protein properties
     'MB_reg': 'MB',
     'DL2_reg': r'$DL_{2}$',
     'DL10_reg': r'$DL_{10}$',
-    'enzyme_kcat': r'kcat',
+    'SL_13': 'Subcellular',
+    'enzyme_kcat': r'$k_{cat}$',
     'solubility_prediction': 'solubility',
     'localization_prediction': 'localization',
     'temperature_stability': 'temperature stability',
-    'peptide_HLA_MHC_affinity_ppi': 'peptide HLA MHC affinity',
     'optimal_temperature': 'optimal temperature',
     'optimal_ph': 'optimal pH',
     'material_production': 'material production',
@@ -59,18 +74,72 @@ DATASET_NAMES = {
     'fold_prediction': 'folds',
     'cloning_clf': 'cloning',
     'stability_prediction': 'stability',
+    
+    # Protein-protein interactions
     'HPPI': 'Human-PPI',
-    'HPPI_PiNUI': r'$Human-PPI_{pinui}$',
-    'YPPI_PiNUI': r'$Yeast-PPI_{pinui}$',
+    'HPPI_PiNUI': r'$Human-PPI_{PiNUI}$',
+    'YPPI_PiNUI': r'$Yeast-PPI_{PiNUI}$',
+    'peptide_HLA_MHC_affinity_ppi': 'peptide HLA MHC affinity',
     'SHS27k': r'$SHS_{27k}$',
     'SHS148k': r'$SHS_{148k}$',
     'ProteinProteinAffinity': r'$PPI affinity_{bindwell}$',
+    'bernett_gold_ppi': r'$Human PPI_{bernett}$',
     'ppi_set_v5': r'$PPI_{synthyra}$',
+    
+    # Secondary structure
     'SS3': r'$SS_{3}$',
     'SS8': r'$SS_{8}$',
     'fluorescence_prediction': 'fluorescence',
+    
+    # Special datasets
     'plastic_degradation_benchmark': r'$plastic degradation_{benchmark}$',
-    'bernett_gold_ppi': r'$Human PPI_{bernett}$',
+    'foldseek_dataset': 'foldseek',
+    'ec_active': 'EC active',
+    'bernett_processed': 'bernett processed',
+    
+    # Taxonomic datasets
+    'taxon_domain': r'$taxonomy_{domain}$',
+    'taxon_kingdom': r'$taxonomy_{kingdom}$', 
+    'taxon_phylum': r'$taxonomy_{phylum}$',
+    'taxon_class': r'$taxonomy_{class}$',
+    'taxon_order': r'$taxonomy_{order}$',
+    'taxon_family': r'$taxonomy_{family}$',
+    'taxon_genus': r'$taxonomy_{genus}$',
+    'taxon_species': r'$taxonomy_{species}$',
+    
+    # Alternative naming patterns (for backwards compatibility)
+    'EC': 'EC',
+    'GO-CC': r'$GO_{CC}$',
+    'GO-BP': r'$GO_{BP}$',
+    'GO-MF': r'$GO_{MF}$',
+    'MB': 'MB',
+    'DeepLoc-2': r'$DL_{2}$',
+    'DeepLoc-10': r'$DL_{10}$',
+    'Subcellular': 'Subcellular',
+    'enzyme-kcat': r'$k_{cat}$',
+    'temperature-stability': 'temperature stability',
+    'peptide-HLA-MHC-affinity': 'peptide HLA MHC affinity',
+    'optimal-temperature': 'optimal temperature',
+    'optimal-ph': 'optimal pH',
+    'material-production': 'material production',
+    'fitness-prediction': 'fitness',
+    'number-of-folds': 'folds',
+    'cloning-clf': 'cloning',
+    'stability-prediction': 'stability',
+    'human-ppi': 'Human-PPI',
+    'human-ppi-pinui': r'$Human-PPI_{PiNUI}$',
+    'yeast-ppi-pinui': r'$Yeast-PPI_{PiNUI}$',
+    'shs27-ppi': r'$SHS_{27k}$',
+    'shs148-ppi': r'$SHS_{148k}$',
+    'PPA-ppi': r'$PPI affinity_{bindwell}$',
+    'gold-ppi': r'$Human PPI_{bernett}$',
+    'SecondaryStructure-3': r'$SS_{3}$',
+    'SecondaryStructure-8': r'$SS_{8}$',
+    'fluorescence-prediction': 'fluorescence',
+    'plastic': r'$plastic degradation_{benchmark}$',
+    'foldseek-fold': 'foldseek fold',
+    'foldseek-inverse': 'foldseek inverse',
+    'ec-active': 'EC active',
 }
 
 
@@ -114,8 +183,6 @@ def get_metric_value(metrics: Dict[str, float], key_suffix: str) -> float:
             return v
     return math.nan
 
-
-# ---------- plotting helpers -------------------------------------------------
 
 def radar_factory(n_axes: int):
     theta = np.linspace(0, 2 * np.pi, n_axes, endpoint=False)
@@ -289,8 +356,6 @@ def heatmap_plot(datasets: List[str],
     plt.savefig(outfile, dpi=450, bbox_inches='tight')
     plt.close()
 
-
-# ---------- main entry -------------------------------------------------------
 
 def load_tsv(tsv: Path) -> pd.DataFrame:
     df = pd.read_csv(tsv, sep="\t")

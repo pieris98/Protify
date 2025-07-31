@@ -15,3 +15,5 @@
 !src/protify/*.png
 src/protify/private_yamls
 *.db
+*.yaml
+!yamls/base.yaml

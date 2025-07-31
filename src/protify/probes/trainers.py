@@ -68,7 +68,7 @@ class TrainerArguments:
         self.num_workers = num_workers
 
     def __call__(self, probe: Optional[bool] = True):
-        if self.train_data_size > 100000:
+        if self.train_data_size > 350000:
             eval_strats = {
                 'eval_strategy': 'steps',
                 'eval_steps': 5000,

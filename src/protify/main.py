@@ -103,6 +103,14 @@ def parse_arguments():
     parser.add_argument("--seed", type=int, default=42, help="Seed for random number generation.")
     parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning (default: False).")
     parser.add_argument("--hybrid_probe", action="store_true", default=False, help="Hybrid probe (default: False).")
+    
+    # ----------------- ProteinGym Arguments ----------------- #
+    parser.add_argument("--proteingym", action="store_true", default=False,
+                        help="Run ProteinGym zero-shot only and exit.")
+    parser.add_argument("--dms_ids", nargs="+", default=[],
+                        help="ProteinGym DMS assay IDs to evaluate (space-separated). Required with --proteingym.")
+    parser.add_argument("--mode", type=str, default=None,
+                        help="ProteinGym filtering mode: 'benchmark', 'indels', 'multiple', or None.")
 
     args = parser.parse_args()
 
@@ -123,6 +131,13 @@ def parse_arguments():
         yaml_args.synthyra_api_key = args.synthyra_api_key
         yaml_args.wandb_api_key = args.wandb_api_key
         yaml_args.yaml_path = args.yaml_path
+        # Ensure ProteinGym defaults exist when using YAML configs
+        if not hasattr(yaml_args, 'proteingym'):
+            yaml_args.proteingym = False
+        if not hasattr(yaml_args, 'dms_ids'):
+            yaml_args.dms_ids = []
+        if not hasattr(yaml_args, 'mode'):
+            yaml_args.mode = None
         return yaml_args
     else:
         return args
@@ -162,6 +177,7 @@ from embedder import EmbeddingArguments, Embedder
 from logger import MetricsLogger, log_method_calls
 from utils import torch_load, print_message
 from visualization.plot_result import create_plots
+from benchmarks.proteingym.zero_shot import run_zero_shot_masked
 
 
 class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
@@ -470,6 +486,31 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         print_message("Plots generated successfully!")
         
 
+def run_proteingym(args: SimpleNamespace):
+    """Run ProteinGym zero-shot for all specified models and DMS ids, then exit."""
+    dms_ids = getattr(args, 'dms_ids', []) or []
+    if len(dms_ids) == 0:
+        raise ValueError("--dms_ids is required when --proteingym is specified")
+    model_names = getattr(args, 'model_names', []) or []
+    if len(model_names) == 0:
+        raise ValueError("--model_names must specify at least one model when running --proteingym")
+    # Where to write results
+    results_root = getattr(args, 'results_dir', 'results')
+    results_dir = os.path.join(results_root, 'proteingym')
+    mode = getattr(args, 'mode', None)
+    print_message(f"Running ProteinGym zero-shot on {len(dms_ids)} DMS ids with models: {', '.join(model_names)}")
+    for model_name in model_names:
+        _ = run_zero_shot_masked(
+            dms_ids=dms_ids,
+            model_name=model_name,
+            mode=mode,
+            repo_id="nikraf/ProteinGym_DMS",
+            results_dir=results_dir,
+            device=None,
+        )
+    print_message(f"ProteinGym zero-shot complete. Results in {results_dir}")
+
+
 def main(args: SimpleNamespace):
     if args.replay_path is not None:
         from logger import LogReplayer
@@ -482,6 +523,11 @@ def main(args: SimpleNamespace):
         replayer.run_replay(main)
     
     else:
+        # If ProteinGym is requested, run it exclusively and exit
+        if getattr(args, 'proteingym', False):
+            run_proteingym(args)
+            return
+
         main = MainProcess(args, GUI=False)
         for k, v in main.full_args.__dict__.items():
             print(f"{k}:\t{v}")

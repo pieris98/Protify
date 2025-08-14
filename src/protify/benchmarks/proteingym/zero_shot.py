@@ -4,7 +4,6 @@ import pandas as pd
 import torch
 from typing import List, Dict, Optional, Tuple
 from scipy.stats import spearmanr, pearsonr
-from transformers import AutoModelForMaskedLM, AutoTokenizer
 from base_models.get_base_models import get_base_model
 from .data_loader import load_proteingym_dms
 from .scoring_utils import (
@@ -19,13 +18,16 @@ from .scoring_utils import (
 def zero_shot_masked_scores_for_df(df: pd.DataFrame, model_name: str, device: Optional[str] = None) -> Tuple[pd.DataFrame, Dict[str, float]]:
     if df is None or len(df) == 0:
         raise ValueError("Input DataFrame is empty")
-    model_path = get_base_model(model_name)
+    model, tokenizer = get_base_model(model_name)
     device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
-    model = AutoModelForMaskedLM.from_pretrained(model_path).to(device).eval()
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    model = model.to(device).eval()
+    tokenizer = getattr(tokenizer, "tokenizer", tokenizer)
 
     # Determine usable model window (exclude specials)
-    max_pos = int(getattr(model.config, 'max_position_embeddings', 1024))
+    model_config = getattr(model, 'config', None)
+    if model_config is None and hasattr(model, 'esm') and hasattr(model.esm, 'config'):
+        model_config = model.esm.config
+    max_pos = int(getattr(model_config, 'max_position_embeddings', 1024))
     model_window = max(1, max_pos - 2)
 
     # Cache masked-position log-probs by (window_seq, idx_rel_0)

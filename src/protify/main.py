@@ -488,6 +488,8 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
 
 def run_proteingym(args: SimpleNamespace):
     """Run ProteinGym zero-shot for all specified models and DMS ids, then exit."""
+    # Signal base model loader to use MaskedLM-capable variants
+    os.environ['PROTIFY_PROTEINGYM'] = '1'
     dms_ids = getattr(args, 'dms_ids', []) or []
     # Expand 'all' sentinel into the full list from benchmarks.proteingym.dms_ids
     if any(str(x).lower() == 'all' for x in dms_ids):

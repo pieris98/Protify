@@ -9,6 +9,7 @@ from .FastPLMs.modeling_esm_plusplus import (
     ESMplusplusModel,
     ESMplusplusForSequenceClassification,
     ESMplusplusForTokenClassification,
+    ESMplusplusForMaskedLM,
     EsmSequenceTokenizer
 )
 from .base_tokenizer import BaseSequenceTokenizer
@@ -57,8 +58,11 @@ def get_esmc_tokenizer(preset: str):
     return ESMTokenizerWrapper(tokenizer)
 
 
-def build_esmc_model(preset: str):
-    model = ESMplusplusForEmbedding(presets[preset]).eval()
+def build_esmc_model(preset: str, masked_lm: bool = False):
+    if masked_lm:
+        model = ESMplusplusForMaskedLM.from_pretrained(presets[preset]).eval()
+    else:
+        model = ESMplusplusForEmbedding(presets[preset]).eval()
     tokenizer = get_esmc_tokenizer(preset)
     return model, tokenizer
 

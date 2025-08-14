@@ -86,10 +86,14 @@ def get_base_model(model_name: str):
         return build_random_model(model_name)
     elif 'esm2' in model_name.lower() or 'dsm' in model_name.lower():
         from .esm2 import build_esm2_model
-        return build_esm2_model(model_name)
+        import os
+        masked_lm = os.environ.get('PROTIFY_PROTEINGYM', '0') == '1'
+        return build_esm2_model(model_name, masked_lm=masked_lm)
     elif 'esmc' in model_name.lower():
         from .esmc import build_esmc_model
-        return build_esmc_model(model_name)
+        import os
+        masked_lm = os.environ.get('PROTIFY_PROTEINGYM', '0') == '1'
+        return build_esmc_model(model_name, masked_lm=masked_lm)
     elif 'protbert' in model_name.lower():
         from .protbert import build_protbert_model
         return build_protbert_model(model_name)

@@ -1,4 +1,3 @@
-from .proteingym import ProteinGymBenchmark, ProteinGymArgs
 from .data_loader import ProteinGymCVSplitter, load_proteingym_dms
 from .tokenize_and_embed import (
     tokenize_df_sequences,

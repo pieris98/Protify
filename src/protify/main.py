@@ -107,8 +107,8 @@ def parse_arguments():
     # ----------------- ProteinGym Arguments ----------------- #
     parser.add_argument("--proteingym", action="store_true", default=False,
                         help="Run ProteinGym zero-shot only and exit.")
-    parser.add_argument("--dms_ids", nargs="+", default=[],
-                        help="ProteinGym DMS assay IDs to evaluate (space-separated). Required with --proteingym.")
+    parser.add_argument("--dms_ids", nargs="+", default=["all"],
+                        help="ProteinGym DMS assay IDs to evaluate (space-separated), or 'all' to run all assays.")
     parser.add_argument("--mode", type=str, default=None,
                         help="ProteinGym filtering mode: 'benchmark', 'indels', 'multiple', or None.")
 
@@ -135,7 +135,7 @@ def parse_arguments():
         if not hasattr(yaml_args, 'proteingym'):
             yaml_args.proteingym = False
         if not hasattr(yaml_args, 'dms_ids'):
-            yaml_args.dms_ids = []
+            yaml_args.dms_ids = ["all"]
         if not hasattr(yaml_args, 'mode'):
             yaml_args.mode = None
         return yaml_args
@@ -489,6 +489,13 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
 def run_proteingym(args: SimpleNamespace):
     """Run ProteinGym zero-shot for all specified models and DMS ids, then exit."""
     dms_ids = getattr(args, 'dms_ids', []) or []
+    # Expand 'all' sentinel into the full list from benchmarks.proteingym.dms_ids
+    if any(str(x).lower() == 'all' for x in dms_ids):
+        try:
+            from benchmarks.proteingym.dms_ids import ALL_DMS_IDS
+        except Exception:
+            from .benchmarks.proteingym.dms_ids import ALL_DMS_IDS  # type: ignore
+        dms_ids = list(ALL_DMS_IDS)
     if len(dms_ids) == 0:
         raise ValueError("--dms_ids is required when --proteingym is specified")
     model_names = getattr(args, 'model_names', []) or []

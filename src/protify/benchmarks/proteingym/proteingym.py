@@ -1,5 +1,5 @@
+'''
 from .data_loader import ProteinGymCVSplitter, load_proteingym_dms
-from .zero_shot import ProteinGymZeroShot
 from typing import List, Dict
 import pandas as pd
 from dataclasses import dataclass
@@ -9,7 +9,6 @@ import numpy as np
 from sklearn.linear_model import Ridge
 from scipy.stats import spearmanr, pearsonr
 import torch
-
 
 
 
@@ -138,3 +137,5 @@ class ProteinGymBenchmark:
                         })
 
         return pd.DataFrame.from_records(records)
+
+'''

@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 import torch
 
-from ...base_models.get_base_models import get_tokenizer
+from base_models.get_base_models import get_tokenizer
 from ...embedder import Embedder, EmbeddingArguments
 from .data_loader import load_proteingym_dms
 

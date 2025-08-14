@@ -498,6 +498,7 @@ def run_proteingym(args: SimpleNamespace):
     results_root = getattr(args, 'results_dir', 'results')
     results_dir = os.path.join(results_root, 'proteingym')
     mode = getattr(args, 'mode', None)
+    hf_token = getattr(args, 'hf_token', None)
     print_message(f"Running ProteinGym zero-shot on {len(dms_ids)} DMS ids with models: {', '.join(model_names)}")
     for model_name in model_names:
         _ = run_zero_shot_masked(
@@ -507,6 +508,7 @@ def run_proteingym(args: SimpleNamespace):
             repo_id="nikraf/ProteinGym_DMS",
             results_dir=results_dir,
             device=None,
+            hf_token=hf_token,
         )
     print_message(f"ProteinGym zero-shot complete. Results in {results_dir}")
 

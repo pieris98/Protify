@@ -19,22 +19,6 @@ def _sanitize_for_filename(name: str) -> str:
     return ''.join(safe)
 
 
-def _hf_hub_download_with_token(repo_id: str, filename: str, repo_type: str, token: Optional[str] = None) -> str:
-    """Wrapper to support both new (token=) and older (use_auth_token=) signatures."""
-    try:
-        return hf_hub_download(repo_id=repo_id, filename=filename, repo_type=repo_type, token=token)
-    except TypeError:
-        return hf_hub_download(repo_id=repo_id, filename=filename, repo_type=repo_type, use_auth_token=token)
-
-
-def _load_dataset_with_token(repo_id: str, split: str, streaming: bool = False, token: Optional[str] = None):
-    """Wrapper to support both new (token=) and older (use_auth_token=) signatures for datasets.load_dataset."""
-    try:
-        return load_dataset(repo_id, split=split, streaming=streaming, token=token)
-    except TypeError:
-        return load_dataset(repo_id, split=split, streaming=streaming, use_auth_token=token)
-
-
 def _load_parquet_by_dms(repo_id: str, dms_id: str, hf_token: Optional[str] = None) -> Optional[pd.DataFrame]:
     """
     Try to load a single-assay parquet shard from the Hub at by_dms_id/{sanitized}.parquet.
@@ -49,7 +33,7 @@ def _load_parquet_by_dms(repo_id: str, dms_id: str, hf_token: Optional[str] = No
     candidates.append(f"by_dms_id/{sanitized}__{short_hash}.parquet")
     for filename in candidates:
         try:
-            local_path = _hf_hub_download_with_token(repo_id=repo_id, filename=filename, repo_type="dataset", token=hf_token)
+            local_path = hf_hub_download(repo_id=repo_id, filename=filename, repo_type="dataset", token=hf_token)
         except Exception:
             continue
         try:
@@ -68,7 +52,7 @@ def _load_via_index_select(repo_id: str, dms_id: str, hf_token: Optional[str] = 
     Returns DataFrame if the index exists and is usable; otherwise None.
     """
     try:
-        index_path = _hf_hub_download_with_token(repo_id=repo_id, filename="index.json", repo_type="dataset", token=hf_token)
+        index_path = hf_hub_download(repo_id=repo_id, filename="index.json", repo_type="dataset", token=hf_token)
     except Exception:
         return None
     try:
@@ -79,7 +63,7 @@ def _load_via_index_select(repo_id: str, dms_id: str, hf_token: Optional[str] = 
     indices = index.get(str(dms_id))
     if not indices:
         return None
-    base = _load_dataset_with_token(repo_id, split="train", streaming=False, token=hf_token)
+    base = load_dataset(repo_id, split="train", streaming=False, token=hf_token)
     try:
         subset = base.select(indices)
         df = subset.to_pandas().reset_index(drop=True)
@@ -101,7 +85,7 @@ def load_proteingym_dms(dms_id: str, mode: Optional[str] = None, repo_id: str = 
     if df is None:
         # try streaming filter to avoid materializing full dataset
         try:
-            hf_stream = _load_dataset_with_token(repo_id, split="train", streaming=True, token=hf_token)
+            hf_stream = load_dataset(repo_id, split="train", streaming=True, token=hf_token)
             rows = [row for row in hf_stream if row.get("DMS_id", None) == dms_id]
             df = pd.DataFrame.from_records(rows)
             df = df[["DMS_id","mutated_seq","target_seq","DMS_score", "mutant"]] 
@@ -109,7 +93,7 @@ def load_proteingym_dms(dms_id: str, mode: Optional[str] = None, repo_id: str = 
             df = None
     if df is None or len(df) == 0:
         # Last resort: full load + filter
-        hf = _load_dataset_with_token(repo_id, split="train", streaming=False, token=hf_token)
+        hf = load_dataset(repo_id, split="train", streaming=False, token=hf_token)
         hf = hf.filter(lambda x: x.get("DMS_id", None) == dms_id)
         df = hf.to_pandas().reset_index(drop=True)
         df = df[["DMS_id","mutated_seq","target_seq","DMS_score", "mutant"]] 

@@ -8,4 +8,5 @@ from .zero_shot import (
     run_zero_shot_masked,
     zero_shot_masked_scores_for_df,
 )
+from .DMS_benchmark_performance import main
 

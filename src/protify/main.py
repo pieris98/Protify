@@ -1,4 +1,6 @@
 import os
+import sys
+import subprocess
 import argparse
 import yaml
 from types import SimpleNamespace
@@ -520,6 +522,28 @@ def run_proteingym(args: SimpleNamespace):
             hf_token=hf_token,
         )
     print_message(f"ProteinGym zero-shot complete. Results in {results_dir}")
+
+    # After all models are scored, run standardized performance benchmarking
+    try:
+        pg_dir = os.path.join(os.path.dirname(__file__), 'benchmarks', 'proteingym')
+        reference_mapping = os.path.join(pg_dir, 'DMS_substitutions.csv')
+        config_path = os.path.join(pg_dir, 'config.json')
+        perf_out_dir = os.path.join(results_dir, 'benchmark_performance')
+        os.makedirs(perf_out_dir, exist_ok=True)
+
+        cmd = [
+            sys.executable, '-m', 'src.protify.benchmarks.proteingym.DMS_benchmark_performance',
+            '--input_scoring_files_folder', results_dir,
+            '--output_performance_file_folder', perf_out_dir,
+            '--DMS_reference_file_path', reference_mapping,
+            '--config_file', config_path,
+        ]
+        if isinstance(mode, str) and mode.lower() == 'indels':
+            cmd.append('--indel_mode')
+        subprocess.run(cmd, check=True)
+        print_message(f"Benchmark performance computed. Outputs in {perf_out_dir}")
+    except Exception as e:
+        print_message(f"Failed to compute benchmark performance: {e}")
 
 
 def main(args: SimpleNamespace):

@@ -56,7 +56,7 @@ def _parse_mutant_string(mutant: str) -> List[Tuple[str, int, str]]:
         if not m:
             continue
         wt, pos, mt = m.groups()
-        # convert to internal position
+        # -1 for 0-based indexing
         parsed.append((wt, int(pos) - 1, mt))
     return parsed
 
@@ -65,13 +65,13 @@ def _parse_mutant_string(mutant: str) -> List[Tuple[str, int, str]]:
 def _masked_position_log_probs(model, tokenizer, sequence: str, pos: int, device: torch.device) -> torch.Tensor:
     """
     Return log-probs at the masked position `pos` in `sequence`.
-    Handles tokenizer special tokens internally.
+    Handles tokenizer special tokens.
     """
     tokens = tokenizer(sequence, return_tensors='pt', add_special_tokens=True)
     input_ids = tokens['input_ids'][0].to(device)
     attention_mask = tokens['attention_mask'][0].to(device)
 
-    # account for BOS at index 0 when special tokens are added
+    # account for BOS at index 0
     mask_pos = pos + 1
     if mask_pos <= 0 or mask_pos >= input_ids.shape[0] - 1:
         raise IndexError(f"Mask position {mask_pos} out of bounds for tokenized length {input_ids.shape[0]}")

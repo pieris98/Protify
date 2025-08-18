@@ -10,7 +10,7 @@ from .data_loader import load_proteingym_dms
 
 def tokenize_df_sequences(df: pd.DataFrame, model_name: str) -> Dict[str, Dict[str, torch.Tensor]]:
     """
-    Tokenize unique sequences present in a ProteinGym assay DataFrame using the
+    Tokenize sequences present in a ProteinGym assay DataFrame using the
     selected model's tokenizer.
 
     Expects DataFrame columns: "mutated_seq", "target_seq".

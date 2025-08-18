@@ -8,29 +8,18 @@ from datasets import load_dataset
 from huggingface_hub import hf_hub_download
 
 
-def _sanitize_for_filename(name: str) -> str:
-    """Make a safe filename from a DMS id (letters, numbers, dash, underscore)."""
-    safe = []
-    for ch in str(name):
-        if ch.isalnum() or ch in ['-', '_']:
-            safe.append(ch)
-        else:
-            safe.append('_')
-    return ''.join(safe)
-
-
 def _load_parquet_by_dms(repo_id: str, dms_id: str, hf_token: Optional[str] = None) -> Optional[pd.DataFrame]:
     """
     Try to load a single-assay parquet shard from the Hub at by_dms_id/{sanitized}.parquet.
     Returns a DataFrame if found; otherwise None.
     """
     candidates = []
-    sanitized = _sanitize_for_filename(dms_id)
-    # Plain sanitized filename
-    candidates.append(f"by_dms_id/{sanitized}.parquet")
+    id_str = str(dms_id)
+    # Plain filename using the provided id
+    candidates.append(f"by_dms_id/{id_str}.parquet")
     # Hashed variant used by repack script
     short_hash = hashlib.sha1(str(dms_id).encode("utf-8")).hexdigest()[:8]
-    candidates.append(f"by_dms_id/{sanitized}__{short_hash}.parquet")
+    candidates.append(f"by_dms_id/{id_str}__{short_hash}.parquet")
     for filename in candidates:
         try:
             local_path = hf_hub_download(repo_id=repo_id, filename=filename, repo_type="dataset", token=hf_token)
@@ -38,7 +27,7 @@ def _load_parquet_by_dms(repo_id: str, dms_id: str, hf_token: Optional[str] = No
             continue
         try:
             df = pd.read_parquet(local_path)
-            df = df[["DMS_id","mutated_seq","target_seq","DMS_score", "mutant"]] 
+            df = df[["DMS_id","mutated_seq","target_seq","DMS_score","DMS_score_bin","mutant"]] 
             return df
         except Exception:
             continue
@@ -47,7 +36,7 @@ def _load_parquet_by_dms(repo_id: str, dms_id: str, hf_token: Optional[str] = No
 
 def _load_via_index_select(repo_id: str, dms_id: str, hf_token: Optional[str] = None) -> Optional[pd.DataFrame]:
     """
-    Use an uploaded index (index.json) mapping DMS_id -> row indices to select rows efficiently
+    Use an index.json mapping DMS_id -> row indices to select rows efficiently
     from the cached Arrow dataset without a full scan.
     Returns DataFrame if the index exists and is usable; otherwise None.
     """
@@ -80,7 +69,7 @@ def load_proteingym_dms(dms_id: str, mode: Optional[str] = None, repo_id: str = 
     # per-assay parquet shard
     df = _load_parquet_by_dms(repo_id=repo_id, dms_id=dms_id, hf_token=hf_token)
     if df is None:
-        # use precomputed index to select without full scan
+        # use precomputed index to select
         df = _load_via_index_select(repo_id=repo_id, dms_id=dms_id, hf_token=hf_token)
     if df is None:
         # try streaming filter to avoid materializing full dataset
@@ -92,12 +81,8 @@ def load_proteingym_dms(dms_id: str, mode: Optional[str] = None, repo_id: str = 
         except Exception:
             df = None
     if df is None or len(df) == 0:
-        # Last resort: full load + filter
-        hf = load_dataset(repo_id, split="train", streaming=False, token=hf_token)
-        hf = hf.filter(lambda x: x.get("DMS_id", None) == dms_id)
-        df = hf.to_pandas().reset_index(drop=True)
-        df = df[["DMS_id","mutated_seq","target_seq","DMS_score", "mutant"]] 
-
+        raise ValueError(f"No data loaded for DMS_id={dms_id}")
+    
     if mode == 'benchmark':
         if 'is_indel' in df.columns:
             df = df[df['is_indel'] == False]

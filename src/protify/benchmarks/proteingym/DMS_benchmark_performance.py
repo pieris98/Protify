@@ -1,3 +1,6 @@
+'''
+Taken from https://github.com/OATML-Markslab/ProteinGym/blob/main/proteingym/performance_DMS_benchmarks.py
+'''
 import pandas as pd
 import numpy as np
 import os

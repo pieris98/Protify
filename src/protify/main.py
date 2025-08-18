@@ -532,7 +532,7 @@ def run_proteingym(args: SimpleNamespace):
         os.makedirs(perf_out_dir, exist_ok=True)
 
         cmd = [
-            sys.executable, '-m', 'src.protify.benchmarks.proteingym.DMS_benchmark_performance',
+            sys.executable, '-m', 'protify.benchmarks.proteingym.DMS_benchmark_performance',
             '--input_scoring_files_folder', results_dir,
             '--output_performance_file_folder', perf_out_dir,
             '--DMS_reference_file_path', reference_mapping,

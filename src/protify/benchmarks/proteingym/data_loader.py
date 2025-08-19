@@ -62,7 +62,7 @@ def _load_via_index_select(repo_id: str, dms_id: str, hf_token: Optional[str] = 
         return None
 
 
-def load_proteingym_dms(dms_id: str, mode: Optional[str] = None, repo_id: str = "nikraf/ProteinGym_DMS", hf_token: Optional[str] = None) -> pd.DataFrame:
+def load_proteingym_dms(dms_id: str, mode: Optional[str] = None, repo_id: str = "GleghornLab/ProteinGym_DMS", hf_token: Optional[str] = None) -> pd.DataFrame:
     """
     Loads a single ProteinGym DMS assay from Hugging Face.
     """

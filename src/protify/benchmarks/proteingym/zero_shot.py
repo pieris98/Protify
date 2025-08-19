@@ -117,7 +117,7 @@ def run_zero_shot(
     dms_ids: List[str],
     model_name: str,
     mode: Optional[str] = None,
-    repo_id: str = "nikraf/ProteinGym_DMS",
+    repo_id: str = "GleghornLab/ProteinGym_DMS",
     results_dir: str = os.path.join('src', 'protify', 'results'),
     device: Optional[str] = None,
     hf_token: Optional[str] = None,

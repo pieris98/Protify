@@ -539,41 +539,23 @@ def run_proteingym(args: SimpleNamespace):
         perf_out_dir = os.path.join(results_dir, 'benchmark_performance')
         os.makedirs(perf_out_dir, exist_ok=True)
 
-        module_cmd = [
-            sys.executable, '-m', 'protify.benchmarks.proteingym.DMS_benchmark_performance',
+        script_path = os.path.join(pg_dir, 'DMS_benchmark_performance.py')
+        script_cmd = [
+            sys.executable, script_path,
             '--input_scoring_files_folder', results_dir,
             '--output_performance_file_folder', perf_out_dir,
             '--DMS_reference_file_path', reference_mapping,
             '--config_file', config_path,
         ]
-        module_cmd += ['--scoring_method', scoring_method]
-        # Pass through the selected model names, so the benchmark filters columns to exactly these
+        script_cmd += ['--scoring_method', scoring_method]
         if isinstance(model_names, (list, tuple)) and len(model_names) > 0:
-            module_cmd += ['--selected_model_names', *model_names]
-        # Pass through the evaluated DMS ids so the benchmark summarizes only those
+            script_cmd += ['--selected_model_names', *model_names]
         if isinstance(dms_ids, (list, tuple)) and len(dms_ids) > 0:
-            module_cmd += ['--dms_ids', *[str(x) for x in dms_ids]]
+            script_cmd += ['--dms_ids', *[str(x) for x in dms_ids]]
         if isinstance(mode, str) and mode.lower() == 'indels':
-            module_cmd.append('--indel_mode')
-        try:
-            subprocess.run(module_cmd, check=True)
-        except Exception:
-            script_path = os.path.join(pg_dir, 'DMS_benchmark_performance.py')
-            script_cmd = [
-                sys.executable, script_path,
-                '--input_scoring_files_folder', results_dir,
-                '--output_performance_file_folder', perf_out_dir,
-                '--DMS_reference_file_path', reference_mapping,
-                '--config_file', config_path,
-            ]
-            script_cmd += ['--scoring_method', scoring_method]
-            if isinstance(model_names, (list, tuple)) and len(model_names) > 0:
-                script_cmd += ['--selected_model_names', *model_names]
-            if isinstance(dms_ids, (list, tuple)) and len(dms_ids) > 0:
-                script_cmd += ['--dms_ids', *[str(x) for x in dms_ids]]
-            if isinstance(mode, str) and mode.lower() == 'indels':
-                script_cmd.append('--indel_mode')
-            subprocess.run(script_cmd, check=True)
+            script_cmd.append('--indel_mode')
+        subprocess.run(script_cmd, check=True)
+        
         print_message(f"Benchmark performance computed. Outputs in {perf_out_dir}")
     except Exception as e:
         print_message(f"Failed to compute benchmark performance: {e}")

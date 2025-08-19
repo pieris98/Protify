@@ -71,6 +71,7 @@ def calc_ndcg(y_true, y_score, **kwargs):
     ndcg = dcg/idcg
     
     return (ndcg)
+
 def calc_toprecall(true_scores, model_scores, top_true=10, top_model=10):  
     top_true = (true_scores >= np.percentile(true_scores, 100-top_true))
     top_model = (model_scores >= np.percentile(model_scores, 100-top_model))
@@ -144,41 +145,39 @@ def main():
     if args.indel_mode:
         args.performance_by_depth = False
 
-    score_variables = list(config["model_list_zero_shot_substitutions_DMS"].keys()) if not args.indel_mode else list(config["model_list_zero_shot_indels_DMS"].keys())
+    if not args.indel_mode:
+        score_variables = list(config.get("model_list_zero_shot_substitutions_DMS", {}).keys())
+    else:
+        score_variables = list(config.get("model_list_zero_shot_indels_DMS", {}).keys())
     if not os.path.isdir(args.output_performance_file_folder):
         os.mkdir(args.output_performance_file_folder)
     for metric in ['Spearman','AUC','MCC',"NDCG","Top_recall"]:
         if not os.path.isdir(args.output_performance_file_folder+os.sep+metric):
             os.mkdir(args.output_performance_file_folder+os.sep+metric)
     
-    model_types={}
-    for model in score_variables:
-        model_types[model]=config["model_list_zero_shot_substitutions_DMS"][model]["model_type"] if not args.indel_mode else config["model_list_zero_shot_indels_DMS"][model]["model_type"]
-    model_types=pd.DataFrame.from_dict(model_types,columns=['Model type'],orient='index')
-    model_details=pd.DataFrame.from_dict(constants["model_details"],columns=['Model details'],orient='index')
-    model_references=pd.DataFrame.from_dict(constants["model_references"],columns=['References'],orient='index')
-    clean_names = constants["clean_names"]
+    # Will populate model_types dynamically after scanning available model columns
+    model_types = pd.DataFrame(columns=['Model type'])
+    model_details = pd.DataFrame.from_dict(constants.get("model_details", {}), columns=['Model details'], orient='index')
+    model_references = pd.DataFrame.from_dict(constants.get("model_references", {}), columns=['References'], orient='index')
+    clean_names = constants.get("clean_names", {})
     performance_all_DMS={}
     output_filename={}
     for metric in ['Spearman','AUC','MCC', "NDCG", "Top_recall"]:
-        performance_all_DMS[metric]={}
+        performance_all_DMS[metric] = {}
         mutation_type = "substitutions" if not args.indel_mode else "indels"
-        output_filename[metric]="DMS_" + mutation_type + "_" + metric
-        for i, score in enumerate(score_variables):
-            performance_all_DMS[metric][score]=i
-            if not args.indel_mode and args.performance_by_depth:
-                for depth in ['1','2','3','4','5+']:
-                    performance_all_DMS[metric][score+'_'+depth] = i
-        performance_all_DMS[metric]['number_mutants']=-1
-        performance_all_DMS[metric]["Selection Type"] = -1 
-        performance_all_DMS[metric]["UniProt_ID"] = -1 
-        performance_all_DMS[metric]['MSA_Neff_L_category']=-1
-        performance_all_DMS[metric]['Taxon']=-1
-        performance_all_DMS[metric]=pd.DataFrame.from_dict(performance_all_DMS[metric],orient='index').reset_index()
-        performance_all_DMS[metric].columns=['score','score_index']
+        output_filename[metric] = "DMS_" + mutation_type + "_" + metric
+        # Start with only metadata rows; model rows will be added dynamically via outer merges
+        performance_all_DMS[metric]['number_mutants'] = -1
+        performance_all_DMS[metric]["Selection Type"] = -1
+        performance_all_DMS[metric]["UniProt_ID"] = -1
+        performance_all_DMS[metric]['MSA_Neff_L_category'] = -1
+        performance_all_DMS[metric]['Taxon'] = -1
+        performance_all_DMS[metric] = pd.DataFrame.from_dict(performance_all_DMS[metric], orient='index').reset_index()
+        performance_all_DMS[metric].columns = ['score', 'score_index']
 
     list_DMS = mapping_protein_seq_DMS["DMS_id"]
     i = 0
+    all_models_found = set()
     for DMS_id in list_DMS:
         try:
             print(DMS_id)    
@@ -186,29 +185,37 @@ def main():
             selection_type = mapping_protein_seq_DMS["coarse_selection_type"][mapping_protein_seq_DMS["DMS_id"]==DMS_id].values[0]
             MSA_Neff_L_category = mapping_protein_seq_DMS["MSA_Neff_L_category"][mapping_protein_seq_DMS["DMS_id"]==DMS_id].values[0]
             Taxon = mapping_protein_seq_DMS["taxon"][mapping_protein_seq_DMS["DMS_id"]==DMS_id].values[0]
-            # Prefer new aggregated naming; fallback to legacy
-            new_style_path = os.path.join(args.input_scoring_files_folder, f"{DMS_id}__zs_masked.csv")
-            legacy_path = os.path.join(args.input_scoring_files_folder, f"{DMS_id}.csv")
-            if os.path.exists(new_style_path):
-                merged_scores = pd.read_csv(new_style_path)
-            else:
-                merged_scores = pd.read_csv(legacy_path)
+            score_path = os.path.join(args.input_scoring_files_folder, f"{DMS_id}__zs_masked.csv")
+            if os.path.exists(score_path):
+                merged_scores = pd.read_csv(score_path)
             if 'mutant' not in merged_scores: merged_scores['mutant'] = merged_scores['mutated_sequence'] #if mutant not in DMS file we default to mutated_sequence (eg., for indels)
             # Ensure binary labels exist for AUC/MCC if not provided
             if 'DMS_score_bin' not in merged_scores and 'DMS_score' in merged_scores:
                 median_cutoff = merged_scores['DMS_score'].median()
                 merged_scores['DMS_score_bin'] = (merged_scores['DMS_score'] >= median_cutoff).astype(int)
+            if 'DMS_score' not in merged_scores:
+                print(f"DMS_score column missing for {DMS_id}; skipping this DMS")
+                continue
         except:
             print(f"Scoring file for {DMS_id} missing")
             continue
 
         if not args.indel_mode and args.performance_by_depth:
-            merged_scores['mutation_depth']=merged_scores['mutant'].apply(lambda x: len(x.split(":")))
-            merged_scores['mutation_depth_grouped']=merged_scores['mutation_depth'].apply(lambda x: '5+' if x >=5 else str(x))
+            if 'mutant' in merged_scores:
+                merged_scores['mutation_depth'] = merged_scores['mutant'].apply(lambda x: len(x.split(":")))
+                merged_scores['mutation_depth_grouped'] = merged_scores['mutation_depth'].apply(lambda x: '5+' if x >= 5 else str(x))
+            else:
+                print("No 'mutant' or 'mutated_sequence' column to compute mutation depth for DMS {}; setting to nan".format(DMS_id))
+                merged_scores['mutation_depth_grouped'] = np.nan
         performance_DMS = {}
         for metric in ['Spearman','AUC','MCC','NDCG','Top_recall']:
             performance_DMS[metric]={}
-        for score in score_variables:
+        # Determine available model score columns
+        known_non_model_cols = set(['DMS_score','DMS_score_bin','mutant','mutated_seq','target_seq','mutation_depth','mutation_depth_grouped'])
+        score_columns_present = [col for col in merged_scores.columns if col not in known_non_model_cols]
+        score_columns_present = list(dict.fromkeys(score_columns_present))
+        all_models_found.update(score_columns_present)
+        for score in score_columns_present:
             if score not in merged_scores:
                 print("Model scores for {} not in merged scores for DMS {}".format(score,DMS_id))
                 performance_DMS["Spearman"][score] = np.nan
@@ -234,7 +241,7 @@ def main():
                 performance_DMS['MCC'][score] = np.nan
 
         if not args.indel_mode and args.performance_by_depth:
-            for score in score_variables:
+            for score in score_columns_present:
                 if score not in merged_scores:
                     print("Model scores for {} not in merged scores for DMS {}".format(score,DMS_id))
                     for depth in ['1','2','3','4','5+']:
@@ -273,7 +280,19 @@ def main():
             performance_DMS[metric]['Taxon'] = Taxon
             performance_DMS[metric] = pd.DataFrame.from_dict(performance_DMS[metric],orient='index').reset_index()
             performance_DMS[metric].columns=['score',DMS_id]
-            performance_all_DMS[metric]=pd.merge(performance_all_DMS[metric],performance_DMS[metric],on='score',how='left')
+            performance_all_DMS[metric]=pd.merge(performance_all_DMS[metric],performance_DMS[metric],on='score',how='outer')
+    # Build model types dynamically
+    try:
+        if not args.indel_mode:
+            cfg_models = config.get("model_list_zero_shot_substitutions_DMS", {})
+        else:
+            cfg_models = config.get("model_list_zero_shot_indels_DMS", {})
+        model_types_dict = {}
+        for model in sorted(all_models_found):
+            model_types_dict[model] = cfg_models.get(model, {}).get("model_type", "Unknown")
+        model_types = pd.DataFrame.from_dict(model_types_dict, columns=['Model type'], orient='index')
+    except Exception:
+        model_types = pd.DataFrame(columns=['Model type'])
     for metric in ['Spearman','AUC','MCC','NDCG','Top_recall']:
         performance_all_DMS[metric]=performance_all_DMS[metric].set_index('score')
         del performance_all_DMS[metric]['score_index']

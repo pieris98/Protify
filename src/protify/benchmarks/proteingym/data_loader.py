@@ -56,7 +56,7 @@ def _load_via_index_select(repo_id: str, dms_id: str, hf_token: Optional[str] = 
     try:
         subset = base.select(indices)
         df = subset.to_pandas().reset_index(drop=True)
-        df = df[["DMS_id","mutated_seq","target_seq","DMS_score", "mutant"]]
+        df = df[["DMS_id","mutated_seq","target_seq","DMS_score","DMS_score_bin","mutant"]]
         return df
     except Exception:
         return None
@@ -77,7 +77,7 @@ def load_proteingym_dms(dms_id: str, mode: Optional[str] = None, repo_id: str = 
             hf_stream = load_dataset(repo_id, split="train", streaming=True, token=hf_token)
             rows = [row for row in hf_stream if row.get("DMS_id", None) == dms_id]
             df = pd.DataFrame.from_records(rows)
-            df = df[["DMS_id","mutated_seq","target_seq","DMS_score", "mutant"]] 
+            df = df[["DMS_id","mutated_seq","target_seq","DMS_score","DMS_score_bin","mutant"]] 
         except Exception:
             df = None
     if df is None or len(df) == 0:

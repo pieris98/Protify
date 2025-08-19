@@ -371,13 +371,13 @@ def main():
                 performance_by_MSA_depth = performance_all_DMS[metric].groupby(["UniProt_ID","MSA_Neff_L_category"]).mean(numeric_only=True).groupby(["MSA_Neff_L_category"]).mean(numeric_only=True)[[col for col in all_not_depth_columns if col != "Selection Type"]].transpose()
             else:
                 performance_by_MSA_depth = performance_all_DMS[metric].groupby(["UniProt_ID","MSA_Neff_L_category"]).mean(numeric_only=True).groupby(["MSA_Neff_L_category"]).mean(numeric_only=True).transpose()
-            performance_by_MSA_depth = performance_by_MSA_depth[['Low','Medium','High']]
+            performance_by_MSA_depth = performance_by_MSA_depth.reindex(columns=['Low','Medium','High'])
             performance_by_MSA_depth.columns = ['Low_MSA_depth','Medium_MSA_depth','High_MSA_depth']
             if args.performance_by_depth:
                 performance_by_taxon = performance_all_DMS[metric].groupby(["UniProt_ID","Taxon"]).mean(numeric_only=True).groupby(["Taxon"]).mean(numeric_only=True)[[col for col in all_not_depth_columns if col != "Selection Type"]].transpose()
             else:
                 performance_by_taxon = performance_all_DMS[metric].groupby(["UniProt_ID","Taxon"]).mean(numeric_only=True).groupby(["Taxon"]).mean(numeric_only=True).transpose()
-            performance_by_taxon = performance_by_taxon[['Human','Eukaryote','Prokaryote','Virus']]
+            performance_by_taxon = performance_by_taxon.reindex(columns=['Human','Eukaryote','Prokaryote','Virus'])
             performance_by_taxon.columns = ['Taxa_Human','Taxa_Other_Eukaryote','Taxa_Prokaryote','Taxa_Virus']
             performance_by_function = uniprot_function_level_average.drop(labels="Average",axis=0).set_index("Selection Type").transpose()
             performance_by_function.columns = ["Function_"+x for x in performance_by_function.columns]
@@ -410,10 +410,10 @@ def main():
             uniprot_function_level_average=uniprot_function_level_average.round(3)
             
             performance_by_MSA_depth = performance_all_DMS[metric].groupby(["UniProt_ID","MSA_Neff_L_category"]).mean(numeric_only=True).groupby(["MSA_Neff_L_category"]).mean(numeric_only=True).transpose()
-            performance_by_MSA_depth = performance_by_MSA_depth[['Low','Medium','High']]
+            performance_by_MSA_depth = performance_by_MSA_depth.reindex(columns=['Low','Medium','High'])
             performance_by_MSA_depth.columns = ['Low_MSA_depth','Medium_MSA_depth','High_MSA_depth']
             performance_by_taxon = performance_all_DMS[metric].groupby(["UniProt_ID","Taxon"]).mean(numeric_only=True).groupby(["Taxon"]).mean(numeric_only=True).transpose()
-            performance_by_taxon = performance_by_taxon[['Human','Eukaryote','Prokaryote','Virus']]
+            performance_by_taxon = performance_by_taxon.reindex(columns=['Human','Eukaryote','Prokaryote','Virus'])
             performance_by_taxon.columns = ['Taxa_Human','Taxa_Other_Eukaryote','Taxa_Prokaryote','Taxa_Virus']
             performance_by_function = uniprot_function_level_average.drop(labels="Average",axis=0).set_index("Selection Type").transpose()
             performance_by_function.columns = ["Function_"+x for x in performance_by_function.columns]

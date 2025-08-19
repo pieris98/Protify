@@ -12,12 +12,7 @@ import json
 warnings.simplefilter(action='ignore', category=FutureWarning)
             
 def minmax(x):
-    x = np.asarray(x, dtype=float)
-    x_min = np.min(x)
-    x_max = np.max(x)
-    if not np.isfinite(x_min) or not np.isfinite(x_max) or x_max == x_min:
-        return np.zeros_like(x, dtype=float)
-    return ( (x - x_min) / (x_max - x_min) ) 
+    return ( (x - np.min(x)) / (np.max(x) - np.min(x)) ) 
 
 def calc_ndcg(y_true, y_score, **kwargs):
     '''
@@ -41,20 +36,10 @@ def calc_ndcg(y_true, y_score, **kwargs):
         k = np.floor(y_true.shape[0]*(kwargs['top']/100)).astype(int)
     else:
         k = kwargs['top']
-    # Ensure numeric numpy arrays and drop non-finite pairs
     if isinstance(y_true, pd.Series):
-        y_true = pd.to_numeric(y_true, errors='coerce').values
-    else:
-        y_true = pd.to_numeric(pd.Series(y_true), errors='coerce').values
+        y_true = y_true.values
     if isinstance(y_score, pd.Series):
-        y_score = pd.to_numeric(y_score, errors='coerce').values
-    else:
-        y_score = pd.to_numeric(pd.Series(y_score), errors='coerce').values
-    finite_mask = np.isfinite(y_true) & np.isfinite(y_score)
-    y_true = y_true[finite_mask]
-    y_score = y_score[finite_mask]
-    if y_true.size == 0 or y_score.size == 0:
-        return 0
+        y_score = y_score.values
     gains = minmax(y_true)
     ranks = np.argsort(np.argsort(-y_score)) + 1
     
@@ -140,6 +125,7 @@ def main():
     parser.add_argument('--indel_mode', action='store_true', help='Whether to score sequences with insertions and deletions')
     parser.add_argument('--performance_by_depth', action='store_true', help='Whether to compute performance by mutation depth')
     parser.add_argument('--config_file', default=f'{os.path.dirname(proteingym_folder_path)}/config.json', type=str, help='Path to config file containing model information')
+    parser.add_argument('--selected_model_names', nargs='+', default=None, help='Required to obtain column names from config file')
     args = parser.parse_args()
     
     mapping_protein_seq_DMS = pd.read_csv(args.DMS_reference_file_path)
@@ -226,8 +212,7 @@ def main():
         for metric in ['Spearman','AUC','MCC','NDCG','Top_recall']:
             performance_DMS[metric]={}
         # Determine available model score columns
-        known_non_model_cols = set(['DMS_score','DMS_score_bin','mutant','mutated_seq','mutated_sequence','target_seq','target_sequence','mutation_depth','mutation_depth_grouped'])
-        score_columns_present = [col for col in merged_scores.columns if col not in known_non_model_cols]
+        score_columns_present = [name for name in args.selected_model_names if name in merged_scores.columns]
         score_columns_present = list(dict.fromkeys(score_columns_present))
         all_models_found.update(score_columns_present)
         for score in score_columns_present:

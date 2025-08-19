@@ -538,6 +538,9 @@ def run_proteingym(args: SimpleNamespace):
             '--DMS_reference_file_path', reference_mapping,
             '--config_file', config_path,
         ]
+        # Pass through the selected model names, so the benchmark filters columns to exactly these
+        if isinstance(model_names, (list, tuple)) and len(model_names) > 0:
+            module_cmd += ['--selected_model_names', *model_names]
         if isinstance(mode, str) and mode.lower() == 'indels':
             module_cmd.append('--indel_mode')
         try:
@@ -551,6 +554,8 @@ def run_proteingym(args: SimpleNamespace):
                 '--DMS_reference_file_path', reference_mapping,
                 '--config_file', config_path,
             ]
+            if isinstance(model_names, (list, tuple)) and len(model_names) > 0:
+                script_cmd += ['--selected_model_names', *model_names]
             if isinstance(mode, str) and mode.lower() == 'indels':
                 script_cmd.append('--indel_mode')
             subprocess.run(script_cmd, check=True)

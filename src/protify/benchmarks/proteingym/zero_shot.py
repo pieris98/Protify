@@ -15,7 +15,7 @@ from .scoring_utils import (
 
 
 
-def zero_shot_masked_scores_for_df(
+def zero_shot_masked_scores_for_assay(
     df: pd.DataFrame,
     model_name: str,
     device: Optional[str] = None,
@@ -112,7 +112,7 @@ def run_zero_shot_masked(
             continue
         if show_progress and hasattr(assay_iterator, 'set_description_str'):
             assay_iterator.set_description_str(f"Assay {dms_id}")
-        results_df = zero_shot_masked_scores_for_df(
+        results_df = zero_shot_masked_scores_for_assay(
             df,
             model_name,
             device=device,
@@ -127,8 +127,12 @@ def run_zero_shot_masked(
         if 'delta_log_prob' in results_to_save.columns:
             results_to_save = results_to_save.rename(columns={'delta_log_prob': model_name})
         # Only keep one row of 'target_seq' (present in first row), blank elsewhere
-        if 'target_seq' in results_to_save.columns and len(results_to_save) > 1:
-            results_to_save.loc[1:, 'target_seq'] = ''
+        first_target_seq = None
+        if 'target_seq' in results_to_save.columns and len(results_to_save) > 0:
+            first_target_seq = str(results_to_save['target_seq'].iloc[0])
+            # Ensure exactly first row has the sequence; others blank
+            results_to_save['target_seq'] = ''
+            results_to_save.iloc[0, results_to_save.columns.get_loc('target_seq')] = first_target_seq
 
         # If an aggregated file exists for this DMS, append/merge the new model column
         if os.path.exists(per_dms_path):
@@ -141,9 +145,15 @@ def run_zero_shot_masked(
                         on='mutant',
                         how='outer',
                     )
-                # Ensure target_seq formatting
-                if 'target_seq' in merged.columns and len(merged) > 1:
-                    merged.loc[1:, 'target_seq'] = ''
+                # Ensure target_seq formatting: keep only in first row
+                if 'target_seq' not in merged.columns:
+                    # Create the column if missing
+                    insert_at = merged.columns.get_loc('mutant') if 'mutant' in merged.columns else 0
+                    merged.insert(insert_at, 'target_seq', '')
+                if len(merged) > 0 and first_target_seq is not None:
+                    merged.iloc[0, merged.columns.get_loc('target_seq')] = first_target_seq
+                if len(merged) > 1:
+                    merged.iloc[1:, merged.columns.get_loc('target_seq')] = ''
                 merged.to_csv(per_dms_path, index=False)
             except Exception:
                 # If anything goes wrong while merging, fall back to writing the current results

@@ -1,5 +1,8 @@
 '''
-Taken from https://github.com/OATML-Markslab/ProteinGym/blob/main/proteingym/performance_DMS_benchmarks.py
+Adapted from https://github.com/OATML-Markslab/ProteinGym/blob/main/proteingym/performance_DMS_benchmarks.py
+Changes:
+- Added ability to restrict analysis to a subset of DMS IDs, when they are specified in main.py
+- Evaluates only models that are specified in main.py
 '''
 import pandas as pd
 import numpy as np

@@ -64,7 +64,7 @@ def _load_via_index_select(repo_id: str, dms_id: str, hf_token: Optional[str] = 
 
 def load_proteingym_dms(dms_id: str, mode: Optional[str] = None, repo_id: str = "nikraf/ProteinGym_DMS", hf_token: Optional[str] = None) -> pd.DataFrame:
     """
-    Load ProteinGym from Hugging Face Datasets and filter by a specific DMS assay id.
+    Loads a single ProteinGym DMS assay from Hugging Face.
     """
     # per-assay parquet shard
     df = _load_parquet_by_dms(repo_id=repo_id, dms_id=dms_id, hf_token=hf_token)

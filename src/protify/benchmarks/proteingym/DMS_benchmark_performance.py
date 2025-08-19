@@ -126,9 +126,17 @@ def main():
     parser.add_argument('--performance_by_depth', action='store_true', help='Whether to compute performance by mutation depth')
     parser.add_argument('--config_file', default=f'{os.path.dirname(proteingym_folder_path)}/config.json', type=str, help='Path to config file containing model information')
     parser.add_argument('--selected_model_names', nargs='+', default=None, help='Required to obtain column names from config file')
+    parser.add_argument('--dms_ids', nargs='+', default=None, help='Subset of DMS ids to include; if omitted, all DMS in the reference are used')
     args = parser.parse_args()
     
     mapping_protein_seq_DMS = pd.read_csv(args.DMS_reference_file_path)
+    # Optionally restrict analysis to a subset of DMS IDs
+    if args.dms_ids is not None and len(args.dms_ids) > 0:
+        requested_dms_ids = set(str(x) for x in args.dms_ids)
+        mapping_protein_seq_DMS = mapping_protein_seq_DMS[mapping_protein_seq_DMS['DMS_id'].astype(str).isin(requested_dms_ids)]
+        if mapping_protein_seq_DMS.empty:
+            print("No matching DMS ids after filtering; nothing to compute.")
+            return
     mapping_protein_seq_DMS["MSA_Neff_L_category"] = mapping_protein_seq_DMS["MSA_Neff_L_category"].apply(lambda x: x[0].upper() + x[1:] if type(x) == str else x)
     num_DMS=len(mapping_protein_seq_DMS)
     print("There are {} DMSs in mapping file".format(num_DMS))

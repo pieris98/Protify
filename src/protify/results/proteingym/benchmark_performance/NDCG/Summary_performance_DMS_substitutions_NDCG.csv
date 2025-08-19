@@ -1,2 +1,0 @@
-Model_rank,Model_name,Model type,Average_NDCG,Bootstrap_standard_error_NDCG,Function_Activity,Function_Binding,Function_Expression,Function_OrganismalFitness,Function_Stability,Low_MSA_depth,Medium_MSA_depth,High_MSA_depth,Taxa_Human,Taxa_Other_Eukaryote,Taxa_Prokaryote,Taxa_Virus,Depth_1,Depth_2,Depth_3,Depth_4,Depth_5+,Model details,References
-1,ESM2-8,Unknown,0.12,0.0,,,,0.12,,,0.12,,,,,0.12,,,,,,,

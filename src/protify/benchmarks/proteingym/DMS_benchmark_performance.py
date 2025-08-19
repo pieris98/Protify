@@ -12,7 +12,12 @@ import json
 warnings.simplefilter(action='ignore', category=FutureWarning)
             
 def minmax(x):
-    return ( (x - np.min(x)) / (np.max(x) - np.min(x)) ) 
+    x = np.asarray(x, dtype=float)
+    x_min = np.min(x)
+    x_max = np.max(x)
+    if not np.isfinite(x_min) or not np.isfinite(x_max) or x_max == x_min:
+        return np.zeros_like(x, dtype=float)
+    return ( (x - x_min) / (x_max - x_min) ) 
 
 def calc_ndcg(y_true, y_score, **kwargs):
     '''
@@ -36,10 +41,20 @@ def calc_ndcg(y_true, y_score, **kwargs):
         k = np.floor(y_true.shape[0]*(kwargs['top']/100)).astype(int)
     else:
         k = kwargs['top']
+    # Ensure numeric numpy arrays and drop non-finite pairs
     if isinstance(y_true, pd.Series):
-        y_true = y_true.values
+        y_true = pd.to_numeric(y_true, errors='coerce').values
+    else:
+        y_true = pd.to_numeric(pd.Series(y_true), errors='coerce').values
     if isinstance(y_score, pd.Series):
-        y_score = y_score.values
+        y_score = pd.to_numeric(y_score, errors='coerce').values
+    else:
+        y_score = pd.to_numeric(pd.Series(y_score), errors='coerce').values
+    finite_mask = np.isfinite(y_true) & np.isfinite(y_score)
+    y_true = y_true[finite_mask]
+    y_score = y_score[finite_mask]
+    if y_true.size == 0 or y_score.size == 0:
+        return 0
     gains = minmax(y_true)
     ranks = np.argsort(np.argsort(-y_score)) + 1
     
@@ -211,7 +226,7 @@ def main():
         for metric in ['Spearman','AUC','MCC','NDCG','Top_recall']:
             performance_DMS[metric]={}
         # Determine available model score columns
-        known_non_model_cols = set(['DMS_score','DMS_score_bin','mutant','mutated_seq','target_seq','mutation_depth','mutation_depth_grouped'])
+        known_non_model_cols = set(['DMS_score','DMS_score_bin','mutant','mutated_seq','mutated_sequence','target_seq','target_sequence','mutation_depth','mutation_depth_grouped'])
         score_columns_present = [col for col in merged_scores.columns if col not in known_non_model_cols]
         score_columns_present = list(dict.fromkeys(score_columns_present))
         all_models_found.update(score_columns_present)

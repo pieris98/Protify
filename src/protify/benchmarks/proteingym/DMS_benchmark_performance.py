@@ -130,6 +130,7 @@ def main():
     parser.add_argument('--config_file', default=f'{os.path.dirname(proteingym_folder_path)}/config.json', type=str, help='Path to config file containing model information')
     parser.add_argument('--selected_model_names', nargs='+', default=None, help='Required to obtain column names from config file')
     parser.add_argument('--dms_ids', nargs='+', default=None, help='Subset of DMS ids to include; if omitted, all DMS in the reference are used')
+    parser.add_argument('--scoring_method', choices=['masked','unmasked'], default='masked', help='Which zero-shot scoring file suffix to read')
     args = parser.parse_args()
     
     mapping_protein_seq_DMS = pd.read_csv(args.DMS_reference_file_path)
@@ -197,7 +198,8 @@ def main():
             selection_type = mapping_protein_seq_DMS["coarse_selection_type"][mapping_protein_seq_DMS["DMS_id"]==DMS_id].values[0]
             MSA_Neff_L_category = mapping_protein_seq_DMS["MSA_Neff_L_category"][mapping_protein_seq_DMS["DMS_id"]==DMS_id].values[0]
             Taxon = mapping_protein_seq_DMS["taxon"][mapping_protein_seq_DMS["DMS_id"]==DMS_id].values[0]
-            score_path = os.path.join(args.input_scoring_files_folder, f"{DMS_id}__zs_masked.csv")
+            suffix = 'masked' if args.scoring_method == 'masked' else 'unmasked'
+            score_path = os.path.join(args.input_scoring_files_folder, f"{DMS_id}__zs_{suffix}.csv")
             if os.path.exists(score_path):
                 merged_scores = pd.read_csv(score_path)
             if 'mutant' not in merged_scores: merged_scores['mutant'] = merged_scores['mutated_sequence'] #if mutant not in DMS file we default to mutated_sequence (eg., for indels)

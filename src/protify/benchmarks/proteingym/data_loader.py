@@ -86,6 +86,7 @@ def load_proteingym_dms(dms_id: str, mode: Optional[str] = None, repo_id: str = 
     if mode == 'benchmark':
         if 'is_indel' in df.columns:
             df = df[df['is_indel'] == False]
+    elif mode == 'singles':
         if 'num_mutations' in df.columns:
             df = df[df['num_mutations'] == 1]
     elif mode == 'indels':

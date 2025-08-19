@@ -1,5 +1,8 @@
 import re
+import os
 import numpy as np
+import pandas as pd
+from types import SimpleNamespace
 from typing import List, Tuple
 import torch
 
@@ -44,9 +47,13 @@ def get_optimal_window(mutation_position_relative: int, seq_len_wo_special: int,
 
 
 def _parse_mutant_string(mutant: str) -> List[Tuple[str, int, str]]:
+    """
+    Parse a ProteinGym mutant string where each mutation is separated by ':'.
+    Example: "I66N:H67T:S73C" -> [("I", 65, "N"), ("H", 66, "T"), ("S", 72, "C")]
+    """
     if mutant is None or (isinstance(mutant, float) and np.isnan(mutant)):
         return []
-    parts = re.split(r"[:;,]", str(mutant))
+    parts = str(mutant).split(':')
     parsed: List[Tuple[str, int, str]] = []
     for p in parts:
         p = p.strip()
@@ -59,6 +66,7 @@ def _parse_mutant_string(mutant: str) -> List[Tuple[str, int, str]]:
         # -1 for 0-based indexing
         parsed.append((wt, int(pos) - 1, mt))
     return parsed
+
 
 
 @torch.no_grad()
@@ -85,3 +93,66 @@ def _masked_position_log_probs(model, tokenizer, sequence: str, pos: int, device
     outputs = model(masked.unsqueeze(0), attention_mask=attention_mask.unsqueeze(0))
     logits = outputs.logits[0, mask_pos]
     return torch.log_softmax(logits, dim=-1).detach()
+
+
+@torch.no_grad()
+def get_sequence_log_probability(sequence, tokenizer, model):
+    """Compute the log probability of the unmasked sequence."""
+    input_tokens = tokenizer.encode(sequence, return_tensors="pt").to("cuda")
+
+    with torch.no_grad():
+        output = model(input_tokens)
+        logits = output["logits"]
+        probabilities = torch.nn.functional.softmax(logits, dim=-1)
+
+    input_ids = input_tokens[0]  # Token IDs of amino acids
+    token_probs = probabilities[0, torch.arange(len(input_ids)), input_ids]
+
+    seq_log_prob = token_probs.log().sum().item()  # Sum log probabilities
+
+    return seq_log_prob
+
+
+def collect_proteingym_spearman(args: SimpleNamespace, model_names):
+    """Parse ProteinGym benchmark CSV and return {model_name: spearman}.
+
+    Looks for Summary_performance_DMS_[substitutions|indels]_Spearman.csv and
+    creates a dictionary of {model_name: spearman} for the given model names.
+    
+    Used in main.py to incorporate ProteinGym Spearman metrics into the main workflow.
+    """
+    try:
+        results_root = getattr(args, 'results_dir', 'results')
+        perf_out_dir = os.path.join(results_root, 'proteingym', 'benchmark_performance')
+        spearman_dir = os.path.join(perf_out_dir, 'Spearman')
+        sub_csv = os.path.join(spearman_dir, 'Summary_performance_DMS_substitutions_Spearman.csv')
+        ind_csv = os.path.join(spearman_dir, 'Summary_performance_DMS_indels_Spearman.csv')
+        csv_path = sub_csv if os.path.exists(sub_csv) else ind_csv if os.path.exists(ind_csv) else None
+        if csv_path is None:
+            print(f"ProteinGym Spearman summary not found in {spearman_dir}")
+            return {}
+
+        df = pd.read_csv(csv_path)
+        if 'Model_name' not in df.columns or 'Average_Spearman' not in df.columns:
+            print("ProteinGym summary CSV missing required columns: 'Model_name' and 'Average_Spearman'")
+            return {}
+
+        # Build lookup from Model_name -> Average_Spearman
+        model_scores = {}
+        for _, row in df.iterrows():
+            try:
+                name = str(row['Model_name'])
+                score = float(row['Average_Spearman'])
+            except Exception:
+                continue
+            model_scores[name] = score
+
+        # Return scores for the requested model names
+        out = {}
+        for model_name in (model_names or []):
+            if model_name in model_scores:
+                out[model_name] = float(model_scores[model_name])
+        return out
+    except Exception as e:
+        print(f"Error collecting ProteinGym Spearman metrics: {e}")
+        return {}

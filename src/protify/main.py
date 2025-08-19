@@ -3,6 +3,7 @@ import sys
 import subprocess
 import argparse
 import yaml
+import pandas as pd
 from types import SimpleNamespace
 
 
@@ -113,6 +114,8 @@ def parse_arguments():
                         help="ProteinGym DMS assay IDs to evaluate (space-separated), or 'all' to run all assays.")
     parser.add_argument("--mode", type=str, default=None,
                         help="ProteinGym filtering mode: 'benchmark', 'indels', 'multiple', or None.")
+    parser.add_argument("--scoring_method", choices=["masked", "unmasked", "pll"], default="masked",
+                        help="Zero-shot scoring method: 'masked' (default), 'unmasked' (full sequence), 'pll' (per-position log-probabilities).")
 
     args = parser.parse_args()
 
@@ -140,6 +143,8 @@ def parse_arguments():
             yaml_args.dms_ids = ["all"]
         if not hasattr(yaml_args, 'mode'):
             yaml_args.mode = None
+        if not hasattr(yaml_args, 'scoring_method'):
+            yaml_args.scoring_method = "masked"
         return yaml_args
     else:
         return args
@@ -179,7 +184,8 @@ from embedder import EmbeddingArguments, Embedder
 from logger import MetricsLogger, log_method_calls
 from utils import torch_load, print_message
 from visualization.plot_result import create_plots
-from benchmarks.proteingym.zero_shot import run_zero_shot_masked
+from benchmarks.proteingym.zero_shot import run_zero_shot
+from benchmarks.proteingym.scoring_utils import collect_proteingym_spearman
 
 
 class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
@@ -489,11 +495,11 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         
 
 def run_proteingym(args: SimpleNamespace):
-    """Run ProteinGym zero-shot for all specified models and DMS ids, then exit."""
-    # Signal base model loader to use MaskedLM-capable variants
+    """Run ProteinGym zero-shot for all specified models and DMS ids."""
+    # Signal base model loader to use MaskedLM variants
     os.environ['PROTIFY_PROTEINGYM'] = '1'
     dms_ids = getattr(args, 'dms_ids', []) or []
-    # Expand 'all' sentinel into the full list from benchmarks.proteingym.dms_ids
+    # Expand 'all' flag into the full list from benchmarks.proteingym.dms_ids
     if any(str(x).lower() == 'all' for x in dms_ids):
         try:
             from benchmarks.proteingym.dms_ids import ALL_DMS_IDS
@@ -504,15 +510,16 @@ def run_proteingym(args: SimpleNamespace):
         raise ValueError("--dms_ids is required when --proteingym is specified")
     model_names = getattr(args, 'model_names', []) or []
     if len(model_names) == 0:
-        raise ValueError("--model_names must specify at least one model when running --proteingym")
+        raise ValueError("--model_names must specify at least one model")
     # Where to write results
     results_root = getattr(args, 'results_dir', 'results')
     results_dir = os.path.join(results_root, 'proteingym')
     mode = getattr(args, 'mode', None)
     hf_token = getattr(args, 'hf_token', None)
-    print_message(f"Running ProteinGym zero-shot on {len(dms_ids)} DMS ids with models: {', '.join(model_names)}")
+    scoring_method = getattr(args, 'scoring_method', 'masked')
+    print_message(f"Running ProteinGym zero-shot with [{scoring_method}] scoring on {len(dms_ids)} DMS ids with models: {', '.join(model_names)}")
     for model_name in model_names:
-        _ = run_zero_shot_masked(
+        _ = run_zero_shot(
             dms_ids=dms_ids,
             model_name=model_name,
             mode=mode,
@@ -520,6 +527,7 @@ def run_proteingym(args: SimpleNamespace):
             results_dir=results_dir,
             device=None,
             hf_token=hf_token,
+            scoring_method=scoring_method,
         )
     print_message(f"ProteinGym zero-shot complete. Results in {results_dir}")
 
@@ -538,6 +546,7 @@ def run_proteingym(args: SimpleNamespace):
             '--DMS_reference_file_path', reference_mapping,
             '--config_file', config_path,
         ]
+        module_cmd += ['--scoring_method', scoring_method]
         # Pass through the selected model names, so the benchmark filters columns to exactly these
         if isinstance(model_names, (list, tuple)) and len(model_names) > 0:
             module_cmd += ['--selected_model_names', *model_names]
@@ -557,6 +566,7 @@ def run_proteingym(args: SimpleNamespace):
                 '--DMS_reference_file_path', reference_mapping,
                 '--config_file', config_path,
             ]
+            script_cmd += ['--scoring_method', scoring_method]
             if isinstance(model_names, (list, tuple)) and len(model_names) > 0:
                 script_cmd += ['--selected_model_names', *model_names]
             if isinstance(dms_ids, (list, tuple)) and len(dms_ids) > 0:
@@ -567,6 +577,9 @@ def run_proteingym(args: SimpleNamespace):
         print_message(f"Benchmark performance computed. Outputs in {perf_out_dir}")
     except Exception as e:
         print_message(f"Failed to compute benchmark performance: {e}")
+
+
+
 
 
 def main(args: SimpleNamespace):
@@ -581,17 +594,27 @@ def main(args: SimpleNamespace):
         replayer.run_replay(main)
     
     else:
-        # If ProteinGym is requested, run it exclusively and exit
-        if getattr(args, 'proteingym', False):
-            run_proteingym(args)
-            return
-
         main = MainProcess(args, GUI=False)
         for k, v in main.full_args.__dict__.items():
             print(f"{k}:\t{v}")
+
+        # If proteingym is requested, run it and log its aggregated Spearman metrics
+        if getattr(args, 'proteingym', False):
+            run_proteingym(args)
+            try:
+                pg_scores = collect_proteingym_spearman(args, getattr(args, 'model_names', []))
+                for model_name, score in pg_scores.items():
+                    if isinstance(score, (int, float)):
+                        main.log_metrics('protein_gym', model_name, {'spearman': float(score)})
+            except Exception as e:
+                print_message(f"Failed to log ProteinGym metrics: {e}")
+
+        # Proceed with the standard workflow
         main.apply_current_settings()
         main.get_datasets()
-        print_message(f"Number of sequences: {len(main.all_seqs)}")
+        num_seqs = len(main.all_seqs) if hasattr(main, 'all_seqs') else 0
+        print_message(f"Number of sequences: {num_seqs}")
+
         if main.full_args.full_finetuning:
             main.run_full_finetuning()
 

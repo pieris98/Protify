@@ -43,6 +43,7 @@ supported_datasets = {
     'taxon_family': 'GleghornLab/taxonomy_family',
     'taxon_genus': 'GleghornLab/taxonomy_genus',
     'taxon_species': 'GleghornLab/taxonomy_species',
+    'protein_gym': 'protein_gym', # not a path, data loading for this is currently handled in benchmarks/proteingym/data_loader.py
 }
 
 internal_datasets = {

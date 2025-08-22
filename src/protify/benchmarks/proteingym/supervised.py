@@ -12,6 +12,7 @@ from .scoring_utils import get_sequence_slices, _infer_model_context_len
 def prepare_supervised_dms_for_probe(
     dms_id: str,
     model_name: str,
+    tokenizer,
     *,
     mode: str = 'supervised',
     repo_id: str = 'GleghornLab/ProteinGym_DMS',

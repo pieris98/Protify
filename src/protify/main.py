@@ -309,6 +309,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     df_mut, emb_dict, _ = prepare_supervised_dms_for_probe(
                         dms_id=dms_id,
                         model_name=model_name,
+                        tokenizer=get_tokenizer(model_name),
                         mode=mode,
                         repo_id=repo_id,
                         hf_token=hf_token,

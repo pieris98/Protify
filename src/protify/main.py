@@ -39,7 +39,7 @@ def parse_arguments():
     parser.add_argument("--trim", action="store_true", default=False,
                         help="Whether to trim sequences (default: False). If False, sequences are removed from the dataset if they are longer than max length. If True, they are truncated to max length."
                         )
-    parser.add_argument("--data_names", nargs="+", default=["DeepLoc-2"], help="List of HF dataset names.") # TODO rename to data_names
+    parser.add_argument("--data_names", nargs="+", default=[], help="List of HF dataset names.") # TODO rename to data_names
     parser.add_argument("--data_dirs", nargs="+", default=[], help="List of local data directories.")
 
     # ----------------- BaseModelArguments ----------------- #
@@ -157,6 +157,12 @@ def parse_arguments():
 
 if __name__ == "__main__":
     args = parse_arguments()
+
+    # Require that either datasets are specified or a ProteinGym experiment is chosen
+    has_datasets = bool(getattr(args, 'data_names', []) or getattr(args, 'data_dirs', []))
+    has_proteingym = bool(getattr(args, 'proteingym_zs', False) or getattr(args, 'proteingym_supervised', False))
+    if not has_datasets and not has_proteingym:
+        raise AssertionError("No datasets specified. Provide --data_names or --data_dirs, or specify an experiment with --proteingym_zs or --proteingym_supervised.")
 
     if args.hf_home is not None:
         # Needs to happen before any HF imports

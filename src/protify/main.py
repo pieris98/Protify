@@ -486,8 +486,9 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             log_id=f"{self.random_id}_{fold_info}",
         )
         
-        rho = test_metrics.get('spearman_rho', None)
-        mse = test_metrics.get('mse', None)
+        # Handle both plain and test-prefixed metric keys returned by HF Trainer
+        rho = test_metrics.get('spearman_rho', test_metrics.get('test_spearman_rho', None))
+        mse = test_metrics.get('mse', test_metrics.get('test_mse', None))
         return rho, mse
     
     def _run_full_finetuning(

@@ -6,6 +6,20 @@ from types import SimpleNamespace
 from typing import List, Tuple
 import torch
 
+
+def _infer_model_context_len(model, tokenizer) -> int:
+    """
+    Infer usable context length. 
+    Returns the maximum context length minus 2 for CLS and EOS tokens.
+    """
+    model_config = getattr(model, 'config', None)
+    if model_config is None and hasattr(model, 'esm') and hasattr(model.esm, 'config'):
+        model_config = model.esm.config
+    max_pos = int(getattr(model_config, 'max_position_embeddings', 1024))
+    num_special_tokens = getattr(tokenizer, 'num_special_tokens_to_add', lambda pair=False: tokenizer.num_special_tokens_to_add(pair))
+    return max(1, max_pos - num_special_tokens)
+
+
 def label_row(wt: str, pos: int, mt: str, sequence: str, token_probs: torch.Tensor, tokenizer) -> float:
     """
     Compute delta log-prob at a position within a sequence window.
@@ -45,6 +59,59 @@ def get_optimal_window(mutation_position_relative: int, seq_len_wo_special: int,
     else:
         return [max(0, mutation_position_relative - half_model_window), min(seq_len_wo_special, mutation_position_relative + half_model_window)]
 
+def get_sequence_slices(df, target_seq, model_context_len, start_idx=1, scoring_window="optimal", indel_mode=False):
+    """
+    Modified from https://github.com/OATML-Markslab/Tranception/blob/2ddf40e1db9d2d180d1b5fc9d1b39ad5b04fbb6d/tranception/utils/scoring_utils.py
+    Helper function that takes as input a (pandas) dataframe df that contains a list of mutant triplets (substitutions) or full mutated sequences (indels) for scoring.
+    It returns a processed DMS in which sequences have been sliced to satisfy the maximum context window of the model.
+    df: (dataframe) Input dataframe to be processed
+    target_seq: (string) Full reference sequence (wild type) that is mutated in the DMS assay.
+    model_context_len: (int) Maximum context size for the model.
+    start_idx: (int) Integer to move to 0-indexing of positions (mutation triplet are typically based on 1-indexing).
+    scoring_window: (string) Method to slice sequences longer than maximum context size: 
+        - optimal selects a single window as large as possible via the get_optimal_window function (this is the default)
+        - sliding splits the full sequence in contiguous (non-overlapping) chunks that are of size equal to the max context (except the last chunk which may be shorter)
+    indel_mode: (bool) Flag to be used when scoring insertions and deletions. Otherwise assumes substitutions.
+    Note: when scoring indels for sequences that would be longer than the model max context length, it is preferable to use the "sliding" scoring_window. Use "optimal" otherwise.
+    """
+    len_target_seq = len(target_seq)
+    num_mutants = len(df['mutated_seq'])
+    df=df.reset_index(drop=True)
+    if scoring_window=="optimal":
+        df['mutation_barycenter'] = df['mutant'].apply(lambda x: int(np.array([int(mutation[1:-1]) - start_idx for mutation in x.split(':')]).mean())) if not indel_mode else df['mutated_seq'].apply(lambda x: len(x)//2)
+        df['scoring_optimal_window'] = df['mutation_barycenter'].apply(lambda x: get_optimal_window(x, len_target_seq, model_context_len)) if not indel_mode else df['mutated_seq'].apply(lambda x: (0,len(x)))
+        df['sliced_mutated_seq'] = [df['mutated_seq'][index][df['scoring_optimal_window'][index][0]:df['scoring_optimal_window'][index][1]] for index in range(num_mutants)]
+        df['window_start'] = df['scoring_optimal_window'].map(lambda x: x[0]) 
+        df['window_end'] = df['scoring_optimal_window'].map(lambda x: x[1])
+        del df['scoring_optimal_window'], df['mutation_barycenter']
+        if 'mutant' in df: del df['mutant']
+        df_wt=df.copy()
+        df_wt['mutated_seq'] = [target_seq] * num_mutants
+        if indel_mode: # For indels, we set the wild type reference to be always the same (full length) sequence. We assume here that the length is lower than model context size (otherwise "Sliding" mode should be used)
+            df_wt['window_end'] = df_wt['mutated_seq'].map(lambda x:len(x))
+        df_wt['sliced_mutated_seq'] = [target_seq[df_wt['window_start'][index]:df_wt['window_end'][index]] for index in range(num_mutants)]
+        df = pd.concat([df,df_wt], axis=0)
+        df = df.drop_duplicates()
+    elif scoring_window=="sliding":
+        num_windows = 1 + int( len_target_seq / model_context_len)
+        df_list=[]
+        start=0
+        for window_index in range(1, num_windows+1):
+            df_sliced = df.copy()
+            df_sliced['sliced_mutated_seq'] = df_sliced['mutated_seq'].map(lambda x: x[start:start+model_context_len]) 
+            df_sliced['window_start'] = [start] * num_mutants 
+            df_sliced['window_end']  =  df_sliced['mutated_seq'].map(lambda x: min(len(x), start+model_context_len)) 
+            df_sliced_wt = df_sliced.copy()
+            df_sliced_wt['mutated_seq'] = [target_seq] * num_mutants
+            df_sliced_wt['sliced_mutated_seq'] = df_sliced_wt['mutated_seq'].map(lambda x: x[start:start+model_context_len])
+            df_sliced_wt['window_end'] = df_sliced_wt['mutated_seq'].map(lambda x: min(len(x), start+model_context_len)) #Need to adjust end index if WT and sequence are not same full length
+            df_list.append(df_sliced)
+            df_list.append(df_sliced_wt)
+            start += model_context_len
+        df_final = pd.concat(df_list,axis=0)
+        if 'mutant' in df_final: del df_final['mutant']
+        df = df_final.drop_duplicates()
+    return df.reset_index(drop=True)
 
 def _parse_mutant_string(mutant: str) -> List[Tuple[str, int, str]]:
     """
@@ -79,7 +146,7 @@ def _masked_position_log_probs(model, tokenizer, sequence: str, pos: int, device
     input_ids = tokens['input_ids'][0].to(device)
     attention_mask = tokens['attention_mask'][0].to(device)
 
-    # account for BOS at index 0
+    # account for CLS at index 0
     mask_pos = pos + 1
     if mask_pos <= 0 or mask_pos >= input_ids.shape[0] - 1:
         raise IndexError(f"Mask position {mask_pos} out of bounds for tokenized length {input_ids.shape[0]}")
@@ -114,7 +181,7 @@ def get_sequence_log_probability(sequence, tokenizer, model):
 
 
 def collect_proteingym_spearman(args: SimpleNamespace, model_names):
-    """Parse ProteinGym benchmark CSV and return {model_name: spearman}.
+    """Parse ProteinGym benchmark Summary CSV and return {model_name: spearman}.
 
     Looks for Summary_performance_DMS_[substitutions|indels]_Spearman.csv and
     creates a dictionary of {model_name: spearman} for the given model names.

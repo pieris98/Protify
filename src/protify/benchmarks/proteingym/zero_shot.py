@@ -2,7 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 import torch
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Union, Any
+from dataclasses import dataclass
 from tqdm.auto import tqdm
 from base_models.get_base_models import get_base_model
 from .data_loader import load_proteingym_dms
@@ -81,9 +82,9 @@ def zero_shot_scores_for_assay(
             for wt, pos, mt in muts:
                 # Sanity checks
                 if not (0 <= pos < len(wt_seq)):
-                    continue
+                    raise ValueError(f"Position {pos} out of range for sequence of length {len(wt_seq)}")
                 if wt_seq[pos] != wt:
-                    continue
+                    raise ValueError(f"WT mismatch at pos {pos}: expected {wt}, found {wt_seq[pos]}")
 
                 # Choose optimal window around the mutation site
                 start, end = get_optimal_window(

@@ -16,8 +16,8 @@ def _infer_model_context_len(model, tokenizer) -> int:
     if model_config is None and hasattr(model, 'esm') and hasattr(model.esm, 'config'):
         model_config = model.esm.config
     max_pos = int(getattr(model_config, 'max_position_embeddings', 1024))
-    # Fall back to 2 if unknown.
-    num_special_tokens = 2
+    # Fall back to 2 if unknown. 0-based indexing.
+    num_special_tokens = 1  
     try:
         fn = getattr(tokenizer, 'num_special_tokens_to_add', None)
         if callable(fn):

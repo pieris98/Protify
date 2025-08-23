@@ -12,6 +12,7 @@ from .lazy_predict import (
     ALL_MODEL_DICT
 )
 from .scikit_hypers import HYPERPARAMETER_DISTRIBUTIONS
+from ..seed_utils import get_sklearn_random_state
 
 
 class ScikitArguments:
@@ -23,7 +24,7 @@ class ScikitArguments:
         # Tuning arguments
         n_iter: int = 100,
         cv: int = 3,
-        random_state: int = 42,
+        random_state: Optional[int] = None,
         # Specific model arguments (optional)
         model_name: Optional[str] = None,
         model_args: Optional[Dict[str, Any]] = None,
@@ -33,7 +34,7 @@ class ScikitArguments:
         # Tuning arguments
         self.n_iter = n_iter
         self.cv = cv
-        self.random_state = random_state
+        self.random_state = random_state or get_sklearn_random_state()
         
         # Specific model arguments
         self.model_name = model_name

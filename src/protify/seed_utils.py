@@ -59,11 +59,11 @@ def set_cublas_workspace_config(logger: Optional[logging.Logger] = None):
         if logger:
             logger.warning(f"Could not detect GPU memory, using fallback config: {e}")
 
-def seed_worker(_worker_id: int):
+def seed_worker(worker_id: int):
     """Use with torch.utils.data.DataLoader(worker_init_fn=seed_worker) to sync NumPy/random per-worker."""
-    wseed = torch.initial_seed() % 2**32
-    np.random.seed(wseed)
-    random.seed(wseed)
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 def dataloader_generator(seed: int) -> "torch.Generator":
     """

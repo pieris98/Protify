@@ -9,6 +9,7 @@ from sklearn.manifold import TSNE as SklearnTSNE
 from typing import Optional, Union, List
 from matplotlib.colors import LinearSegmentedColormap
 from utils import torch_load, print_message
+from ..seed_utils import get_sklearn_random_state
 
 
 @dataclass
@@ -167,7 +168,7 @@ class DimensionalityReducer:
 class PCA(DimensionalityReducer):
     def __init__(self, args: VisualizationArguments):
         super().__init__(args)
-        self.pca = SklearnPCA(n_components=args.n_components, random_state=args.seed)
+        self.pca = SklearnPCA(n_components=args.n_components, random_state=get_sklearn_random_state() or args.seed)
         
     def fit_transform(self):
         return self.pca.fit_transform(self.embeddings)
@@ -179,7 +180,7 @@ class TSNE(DimensionalityReducer):
         self.tsne = SklearnTSNE(
             n_components=self.args.n_components,
             perplexity=self.args.perplexity,
-            random_state=self.args.seed
+            random_state=get_sklearn_random_state() or self.args.seed
         )
         
     def fit_transform(self):
@@ -193,7 +194,7 @@ class UMAP(DimensionalityReducer):
             n_components=self.args.n_components,
             n_neighbors=self.args.n_neighbors,
             min_dist=self.args.min_dist,
-            random_state=self.args.seed
+            random_state=get_sklearn_random_state() or self.args.seed
         )
         
     def fit_transform(self):

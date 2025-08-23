@@ -22,6 +22,7 @@ from sklearn.metrics import (
     mean_squared_error,
 )
 from utils import print_message
+from ..seed_utils import get_sklearn_random_state
 warnings.filterwarnings("ignore")
 pd.set_option("display.precision", 2)
 pd.set_option("display.float_format", lambda x: "%.2f" % x)
@@ -239,7 +240,7 @@ class LazyClassifier:
         ignore_warnings=True,
         custom_metric=None,
         predictions=False,
-        random_state=42,
+        random_state=None,
         classifiers="all",
     ):
         self.verbose = verbose
@@ -247,7 +248,7 @@ class LazyClassifier:
         self.custom_metric = custom_metric
         self.predictions = predictions
         self.models = {}
-        self.random_state = random_state
+        self.random_state = random_state or get_sklearn_random_state()
         self.classifiers = classifiers
 
     def fit(self, X_train, X_test, y_train, y_test):
@@ -483,7 +484,7 @@ class LazyRegressor:
         ignore_warnings=True,
         custom_metric=None,
         predictions=False,
-        random_state=42,
+        random_state=None,
         regressors="all",
     ):
         self.verbose = verbose
@@ -491,7 +492,7 @@ class LazyRegressor:
         self.custom_metric = custom_metric
         self.predictions = predictions
         self.models = {}
-        self.random_state = random_state
+        self.random_state = random_state or get_sklearn_random_state()
         self.regressors = regressors
 
     def fit(self, X_train, X_test, y_train, y_test):

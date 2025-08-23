@@ -70,7 +70,7 @@ def parse_arguments():
     # ----------------- ScikitArguments ----------------- # # TODO add to GUI
     parser.add_argument("--scikit_n_iter", type=int, default=10, help="Number of iterations for scikit model.")
     parser.add_argument("--scikit_cv", type=int, default=3, help="Number of cross-validation folds for scikit model.")
-    parser.add_argument("--scikit_random_state", type=int, default=42, help="Random state for scikit model.")
+    parser.add_argument("--scikit_random_state", type=int, default=None, help="Random state for scikit model (if None, uses global seed).")
     parser.add_argument("--scikit_model_name", type=str, default=None, help="Name of the scikit model to use.")
     parser.add_argument("--use_scikit", action="store_true", default=False, help="Use scikit model (default: False).")
     parser.add_argument("--n_jobs", type=int, default=1, help="Number of processes to use in scikit.") # TODO integrate with GUI and main

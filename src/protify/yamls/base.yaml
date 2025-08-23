@@ -88,6 +88,5 @@ base_grad_accum: !!int 8
 lr: !!float 1e-4
 weight_decay: !!float 0.00
 patience: !!int 1
-seed: !!int 42
 full_finetuning: !!bool false
 hybrid_probe: !!bool false

@@ -100,7 +100,9 @@ def parse_arguments():
     #parser.add_argument("--optimizer", type=str, default='adamw', help='Optimizer.')
     parser.add_argument("--weight_decay", type=float, default=0.00, help="Weight decay.")
     parser.add_argument("--patience", type=int, default=1, help="Patience for early stopping.")
-    parser.add_argument("--seed", type=int, default=42, help="Seed for random number generation.")
+    parser.add_argument("--seed", type=int, default=None, help="Seed for reproducibility (if omitted, current time is used).")
+    parser.add_argument("--deterministic", action="store_true", default=False,
+                        help="Enable deterministic behavior for reproducibility (will slow down training).")
     parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning (default: False).")
     parser.add_argument("--hybrid_probe", action="store_true", default=False, help="Hybrid probe (default: False).")
 
@@ -123,12 +125,25 @@ def parse_arguments():
         yaml_args.synthyra_api_key = args.synthyra_api_key
         yaml_args.wandb_api_key = args.wandb_api_key
         yaml_args.yaml_path = args.yaml_path
+        # Ensure seed and deterministic flags are present/propagated
+        if not hasattr(yaml_args, 'seed'):
+            yaml_args.seed = args.seed
+        yaml_args.deterministic = getattr(args, 'deterministic', False)
         return yaml_args
     else:
         return args
 
 if __name__ == "__main__":
     args = parse_arguments()
+
+    # Set global seed before doing anything else
+    try:
+        from seed_utils import set_global_seed
+        # If seed is None, set_global_seed will derive it from current time
+        chosen_seed = set_global_seed(getattr(args, 'seed', None), deterministic=getattr(args, 'deterministic', False))
+        args.seed = chosen_seed
+    except Exception:
+        pass
 
     if args.hf_home is not None:
         # Needs to happen before any HF imports
@@ -476,6 +491,18 @@ def main(args: SimpleNamespace):
         replayer = LogReplayer(args.replay_path)
         replay_args = replayer.parse_log()
         replay_args.replay_path = args.replay_path
+        # Re-apply seed using the replayed settings to ensure exact reproducibility
+        try:
+            from seed_utils import set_global_seed
+            # If no seed is present in replay, fall back to time-based seed
+            if not hasattr(replay_args, 'seed') or replay_args.seed is None:
+                replay_args.seed = None
+            if not hasattr(replay_args, 'deterministic') or replay_args.deterministic is None:
+                replay_args.deterministic = getattr(args, 'deterministic', False)
+            chosen_seed = set_global_seed(replay_args.seed, deterministic=replay_args.deterministic)
+            replay_args.seed = chosen_seed
+        except Exception:
+            pass
         main = MainProcess(replay_args, GUI=False)
         for k, v in main.full_args.__dict__.items():
             print(f"{k}:\t{v}")

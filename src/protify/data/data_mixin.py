@@ -10,7 +10,7 @@ from datasets import load_dataset, Dataset
 from dataclasses import dataclass
 from utils import print_message
 from .supported_datasets import supported_datasets, standard_data_benchmark
-
+from ..seed_utils import get_global_seed
 
 AMINO_ACIDS = set('LAGVSERTIPDKQNFYMHWCXBUOZ*')
 CODONS = set('aA@bB#$%rRnNdDcCeEqQ^G&ghHiIj+MmlJLkK(fFpPoO=szZwSXTtxWyYuvUV]})')
@@ -260,10 +260,11 @@ class DataMixin:
                 train_set, valid_set, test_set = dataset['train'], dataset['valid'], dataset['test']
             except:
                 # No valid or test set, make 10% splits randomly
-                train_set = dataset['train'].train_test_split(test_size=0.2, seed=42)
+                seed = get_global_seed() if get_global_seed() is not None else 42
+                train_set = dataset['train'].train_test_split(test_size=0.2, seed=seed)
                 valid_set = train_set['test']
                 train_set = train_set['train']
-                test_set = train_set.train_test_split(test_size=0.5, seed=42)
+                test_set = train_set.train_test_split(test_size=0.5, seed=seed)
                 test_set = test_set['test']
 
             if not ppi:

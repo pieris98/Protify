@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from utils import print_message
+from seed_utils import set_global_seed
 
 
 def log_method_calls(func):
@@ -34,6 +35,7 @@ class MetricsLogger:
     def __init__(self, args):
         self.logger_args = args
         self._section_break = '\n' + '=' * 55 + '\n'
+        self.seed_value = None
 
     def _start_file(self):
         args = self.logger_args
@@ -73,6 +75,9 @@ class MetricsLogger:
     def _write_args(self):
         with open(self.log_file, 'a') as f:
             f.write(self._section_break)
+            # Write the seed value first if it exists
+            if self.seed_value is not None:
+                f.write(f"_global_seed:\t{self.seed_value}\n")
             for k, v in self.logger_args.__dict__.items():
                 if 'token' not in k.lower() and 'api' not in k.lower():
                     f.write(f"{k}:\t{v}\n")
@@ -80,6 +85,13 @@ class MetricsLogger:
 
     def start_log_main(self):
         self._start_file()
+        
+        # Set the global seed before writing args
+        # Use provided seed or generate from timestamp
+        seed = getattr(self.logger_args, 'seed', None)
+        if seed is None or seed < 0:  # Allow seed=0 but treat negative as unset
+            seed = None  # Will use timestamp in set_global_seed
+        self.seed_value = set_global_seed(seed)
 
         with open(self.log_file, 'w') as f:
             now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -91,9 +103,17 @@ class MetricsLogger:
             self._write_args()
 
         self._minimial_logger()
+        self.logger.info(f"Global random seed initialized to: {self.seed_value}")
 
     def start_log_gui(self):
         self._start_file()
+        
+        # Set the global seed before writing to file
+        seed = getattr(self.logger_args, 'seed', None)
+        if seed is None or seed < 0:
+            seed = None
+        self.seed_value = set_global_seed(seed)
+        
         with open(self.log_file, 'w') as f:
             now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             if self.logger_args.replay_path is not None:
@@ -102,7 +122,12 @@ class MetricsLogger:
             header = f"=== Logging session started at {now} ===\n"
             f.write(header)
             f.write(self._section_break)
+            # Write seed value for GUI mode
+            if self.seed_value is not None:
+                f.write(f"_global_seed:\t{self.seed_value}\n")
+            f.write(self._section_break)
         self._minimial_logger()
+        self.logger.info(f"Global random seed initialized to: {self.seed_value}")
 
     def load_tsv(self):
         """Load existing TSV data into self.logger_data_tracking (row=dataset, col=model)."""
@@ -244,12 +269,14 @@ class LogReplayer:
         self.log_file = Path(log_file_path)
         self.arguments = {}
         self.method_calls = []
+        self.global_seed = None
 
     def parse_log(self):
         """
         Reads the log file line by line. Extracts:
           1) Global arguments into self.arguments
           2) Method calls into self.method_calls (in order)
+          3) Global seed value if present
         """
         if not self.log_file.exists():
             raise FileNotFoundError(f"Log file not found: {self.log_file}")
@@ -260,8 +287,15 @@ class LogReplayer:
                 if line.startswith('='):
                     continue
                 elif line.startswith('INFO'):
-                    method = line.split(': ')[-1].strip()
-                    self.method_calls.append(method)
+                    # Check if this is the seed initialization message
+                    if 'Global random seed initialized to:' in line:
+                        try:
+                            self.global_seed = int(line.split(':')[-1].strip())
+                        except:
+                            pass
+                    else:
+                        method = line.split(': ')[-1].strip()
+                        self.method_calls.append(method)
                 elif ':\t' in line:
                     key, value = line.split(':\t')
                     key, value = key.strip(), value.strip()
@@ -269,7 +303,16 @@ class LogReplayer:
                         value = ast.literal_eval(value)
                     except (ValueError, SyntaxError):
                         pass
-                    self.arguments[key] = value
+                    # Handle special _global_seed key
+                    if key == '_global_seed':
+                        self.global_seed = int(value)
+                    else:
+                        self.arguments[key] = value
+        
+        # Restore the global seed if found
+        if self.global_seed is not None:
+            set_global_seed(self.global_seed)
+            print_message(f"Restored global random seed to: {self.global_seed}")
 
         return SimpleNamespace(**self.arguments)
 

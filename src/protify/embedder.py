@@ -8,6 +8,7 @@ from tqdm.auto import tqdm
 from dataclasses import dataclass
 from typing import Optional, Callable, List
 from huggingface_hub import hf_hub_download
+from seed_utils import seed_worker, dataloader_generator, get_global_seed
 
 from data.dataset_classes import SimpleProteinDataset
 from base_models.get_base_models import get_base_model
@@ -199,7 +200,9 @@ class Embedder:
             prefetch_factor=2 if self.num_workers > 0 else None,
             collate_fn=collate_fn,
             shuffle=False,
-            pin_memory=True
+            pin_memory=True,
+            worker_init_fn=seed_worker,
+            generator=dataloader_generator(get_global_seed())
         )
 
         if self.sql:

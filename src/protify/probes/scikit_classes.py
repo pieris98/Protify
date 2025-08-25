@@ -12,7 +12,7 @@ from .lazy_predict import (
     ALL_MODEL_DICT
 )
 from .scikit_hypers import HYPERPARAMETER_DISTRIBUTIONS
-from ..seed_utils import get_sklearn_random_state
+from seed_utils import get_sklearn_random_state
 
 
 class ScikitArguments:

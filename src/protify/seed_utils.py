@@ -124,9 +124,8 @@ def set_global_seed(seed: Optional[int] = None,
         if hasattr(torch, 'use_deterministic_algorithms'):
             try:
                 torch.use_deterministic_algorithms(True, warn_only=False)
-            except:
-                pass
-                print('torch.use_deterministic_algorithms is not available')
+            except Exception as e:
+                print(f'torch.use_deterministic_algorithms is not available: {e}')
     
     if logger:
         logger.info(f"Global random seed set to: {seed}")

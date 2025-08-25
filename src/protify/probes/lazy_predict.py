@@ -22,7 +22,7 @@ from sklearn.metrics import (
     mean_squared_error,
 )
 from utils import print_message
-from ..seed_utils import get_sklearn_random_state
+from seed_utils import get_sklearn_random_state
 warnings.filterwarnings("ignore")
 pd.set_option("display.precision", 2)
 pd.set_option("display.float_format", lambda x: "%.2f" % x)

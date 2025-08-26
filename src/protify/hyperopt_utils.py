@@ -37,7 +37,7 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
                             base_probe: Dict[str, Any], base_trainer: Dict[str, Any],
                             probe_args: Any, trainer_args: Any, full_args: Any,
                             sweep_config: Dict[str, Any], probe_keys: set, trainer_keys: set,
-                            emb_dict: Any, ppi: bool, random_id: str, model: Any,
+                            emb_dict: Any, ppi: bool, random_id: str,
                             get_base_model_for_training, get_probe, wrap_lora,
                             trainer_base_model, trainer_hybrid_model, trainer_probe):
     """

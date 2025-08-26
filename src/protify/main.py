@@ -417,7 +417,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     emb_dict=emb_dict,
                     ppi=ppi,
                     random_id=self.random_id,
-                    model=model,
                     get_base_model_for_training=get_base_model_for_training,
                     get_probe=get_probe,
                     wrap_lora=wrap_lora,

@@ -354,8 +354,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         metric = {"name": self.full_args.sweep_metric, "goal": self.full_args.sweep_goal}
         early_term = sweep_config.get("early_terminate", None)
 
-        # select_metric function moved to hyperopt_utils.py
-
         # Keys allowed to be set from sweeps
         probe_keys = set(['hidden_size','dropout','n_layers','pre_ln','classifier_dim','transformer_dropout','classifier_dropout','n_heads','rotary','lora','lora_r','lora_alpha','lora_dropout','probe_type','tokenwise'])
         trainer_keys = set(['lr','weight_decay','num_epochs','probe_batch_size','base_batch_size','probe_grad_accum','base_grad_accum','patience','seed'])
@@ -394,10 +392,8 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 # Snapshot current args so we can restore after each trial
                 base_probe = copy.deepcopy(self.probe_args.__dict__)
                 base_trainer = copy.deepcopy(self.trainer_args.__dict__)
-
-                # apply_config function moved to hyperopt_utils.py
-
-                # Create objective function using hyperopt_utils
+                model, tokenizer = get_base_model_for_training(model_name, tokenwise=self.probe_args.tokenwise, num_labels=self.probe_args.num_labels, hybrid=False)
+                    
                 objective = create_objective_function(
                     model_name=model_name,
                     data_name=data_name,
@@ -674,7 +670,6 @@ def main(args: SimpleNamespace):
         main.write_results()
         main.generate_plots()
         main.end_log()
-
 
 if __name__ == "__main__":
     main(args)

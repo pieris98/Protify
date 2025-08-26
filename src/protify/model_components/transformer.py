@@ -118,7 +118,9 @@ class TransformerConfig(PretrainedConfig):
         expansion_ratio: float = 8 / 3,
         dropout: float = 0.1,
         rotary: bool = True,
+        **kwargs
     ):
+        super().__init__(**kwargs)
         self.hidden_size = hidden_size
         self.n_heads = n_heads
         self.n_layers = n_layers

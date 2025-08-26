@@ -1,7 +1,3 @@
-"""
-Utility functions for hyperparameter optimization in Protify.
-"""
-
 import copy
 import json
 import wandb

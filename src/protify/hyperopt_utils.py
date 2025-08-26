@@ -71,31 +71,36 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
     train_set, valid_set, test_set, num_labels, label_type, ppi = dataset
     
     def objective():
-        # New run
-        run = wandb.init(project=full_args.wandb_project,
-                          entity=full_args.wandb_entity,
-                          config=sweep_config,
-                          reinit=True,
-                          tags=["sweep", f"model:{model_name}", f"data:{data_name}"],
+        run = wandb.init(
+            project=full_args.wandb_project,
+            entity=full_args.wandb_entity,
+            config=sweep_config,
+            reinit=True,
+            tags=["sweep", f"model:{model_name}", f"data:{data_name}"],
         )
         run.name = f"sweep-{model_name}_{data_name}-{run.id[:6]}"
         try:
-            # Reset to base then apply config
+            # Reset args, apply sweep cfg
             probe_args.__dict__.update(copy.deepcopy(base_probe))
             trainer_args.__dict__.update(copy.deepcopy(base_trainer))
             trainer_args.make_plots = False
             trainer_args.sweep_mode = True
-            
+
             cfg = dict(wandb.config)
             apply_config(cfg, probe_args, trainer_args, probe_keys, trainer_keys)
 
             if full_args.full_finetuning:
+                model, tokenizer = get_base_model_for_training(
+                    model_name,
+                    tokenwise=probe_args.tokenwise,
+                    num_labels=probe_args.num_labels,
+                    hybrid=False,
+                )
+                if probe_args.lora:
+                    model = wrap_lora(model, probe_args.lora_r, probe_args.lora_alpha, probe_args.lora_dropout)
                 _, valid_metrics, test_metrics = trainer_base_model(
-                    model, 
-                    tokenizer=get_base_model_for_training(model_name,
-                                                          tokenwise=probe_args.tokenwise, 
-                                                          num_labels=probe_args.num_labels, 
-                                                          hybrid=False),
+                    model,
+                    tokenizer=tokenizer,
                     model_name=model_name,
                     data_name=data_name,
                     train_dataset=train_set,
@@ -104,11 +109,14 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
                     ppi=ppi,
                     log_id=random_id,
                 )
+
             elif full_args.hybrid_probe:
-                model, tokenizer = get_base_model_for_training(model_name, 
-                                                                tokenwise=probe_args.tokenwise, 
-                                                                num_labels=probe_args.num_labels, 
-                                                                hybrid=True)
+                model, tokenizer = get_base_model_for_training(
+                    model_name,
+                    tokenwise=probe_args.tokenwise,
+                    num_labels=probe_args.num_labels,
+                    hybrid=True,
+                )
                 if probe_args.lora:
                     model = wrap_lora(model, probe_args.lora_r, probe_args.lora_alpha, probe_args.lora_dropout)
                 probe = get_probe(probe_args)
@@ -125,7 +133,15 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
                     ppi=ppi,
                     log_id=random_id,
                 )
-            else:
+
+            else:  # pure probe
+                # You still need a tokenizer for the trainer
+                _, tokenizer = get_base_model_for_training(
+                    model_name,
+                    tokenwise=probe_args.tokenwise,
+                    num_labels=probe_args.num_labels,
+                    hybrid=False,
+                )
                 probe = get_probe(probe_args)
                 _, valid_metrics, test_metrics = trainer_probe(
                     model=probe,
@@ -140,7 +156,7 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
                     log_id=random_id,
                 )
 
-            # Log to wandb
+            # Log & return sweep metric
             all_metrics = {}
             if isinstance(valid_metrics, dict):
                 for k, v in valid_metrics.items():
@@ -151,7 +167,7 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
             wandb.log(all_metrics)
 
             metric_value = select_metric(valid_metrics, full_args.sweep_metric)
-            return metric_value
+            return float(metric_value)
         finally:
             run.finish()
     

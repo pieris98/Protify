@@ -401,7 +401,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 # Snapshot current args so we can restore after each trial
                 base_probe = copy.deepcopy(self.probe_args.__dict__)
                 base_trainer = copy.deepcopy(self.trainer_args.__dict__)
-                model, tokenizer = get_base_model_for_training(model_name, tokenwise=self.probe_args.tokenwise, num_labels=self.probe_args.num_labels, hybrid=False)
 
                 objective = create_objective_function(
                     model_name=model_name,

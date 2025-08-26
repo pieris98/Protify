@@ -46,6 +46,7 @@ class TrainerArguments:
             full_finetuning: bool = False,
             hybrid_probe: bool = False,
             num_workers: int = 0,
+            make_plots: bool = True,
             **kwargs
     ):
         self.model_save_dir = model_save_dir
@@ -66,6 +67,7 @@ class TrainerArguments:
         self.full_finetuning = full_finetuning
         self.hybrid_probe = hybrid_probe
         self.num_workers = num_workers
+        self.make_plots = make_plots
 
     def __call__(self, probe: Optional[bool] = True):
         if self.train_data_size > 350000:
@@ -161,15 +163,16 @@ class TrainerMixin:
         y_pred, y_true = y_pred.astype(np.float32), y_true.astype(np.float32)
         print_message(f'y_pred: {y_pred.shape}\ny_true: {y_true.shape}\nFinal test metrics: \n{test_metrics}\n')
 
-        output_dir = os.path.join(self.trainer_args.plots_dir, log_id)
-        os.makedirs(output_dir, exist_ok=True)
-        save_path = os.path.join(output_dir, f"{data_name}_{model_name}_{log_id}.png")
-        title = f"{data_name} {model_name} {log_id}"
+        if self.trainer_args.make_plots and self.trainer_args.plots_dir is not None:
+            output_dir = os.path.join(self.trainer_args.plots_dir, log_id)
+            os.makedirs(output_dir, exist_ok=True)
+            save_path = os.path.join(output_dir, f"{data_name}_{model_name}_{log_id}.png")
+            title = f"{data_name} {model_name} {log_id}"
 
-        if task_type == 'regression':
-            regression_ci_plot(y_true, y_pred, save_path, title)
-        else:
-            classification_ci_plot(y_true, y_pred, save_path, title)
+            if task_type == 'regression':
+                regression_ci_plot(y_true, y_pred, save_path, title)
+            else:
+                classification_ci_plot(y_true, y_pred, save_path, title)
 
         if self.trainer_args.save:
             try:

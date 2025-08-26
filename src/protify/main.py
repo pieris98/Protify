@@ -109,7 +109,7 @@ def parse_arguments():
     parser.add_argument("--use_wandb_hyperopt", action="store_true", default=False, help="Use Weights & Biases hyperparameter optimization.")
     parser.add_argument("--wandb_project", type=str, default="Protify", help="W&B project name for sweeps.")
     parser.add_argument("--wandb_entity", type=str, default=None, help="W&B entity (team/user) for sweeps.")
-    parser.add_argument("--sweep_config_path", type=str, default='yamls/sweep_config.yaml', help="Path to W&B sweep config YAML.")
+    parser.add_argument("--sweep_config_path", type=str, default=None, help="Path to W&B sweep config YAML. If not specified, will automatically choose sweep_full.yaml for full finetuning or sweep_probe.yaml for probe/hybrid.")
     parser.add_argument("--sweep_count", type=int, default=10, help="Number of hyperparameter trials to run in the sweep.")
     parser.add_argument("--sweep_method", type=str, default="bayes", choices=["bayes", "grid", "random"], help="Sweep method for hyperparameter optimization.")
     parser.add_argument("--sweep_metric", type=str, default="eval_loss", help="Metric to optimize during sweep.")
@@ -340,15 +340,24 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         import json
         import wandb
         sweep_config = {}
-        if self.full_args.sweep_config_path is not None and os.path.exists(self.full_args.sweep_config_path):
-            with open(self.full_args.sweep_config_path, 'r') as f:
-                sweep_config = yaml.safe_load(f)
-
+        
         if self.full_args.full_finetuning:
-            params_to_hyperopt = sweep_config.get("parameters_full", {})
+            sweep_config_path = 'yamls/sweep_full.yaml'
         else:
-            # use probe settings for both probe and hybrid
-            params_to_hyperopt = sweep_config.get("parameters_probe", {})
+            sweep_config_path = 'yamls/sweep_probe.yaml'
+        
+        # Override with user-specified path if provided
+        if self.full_args.sweep_config_path is not None:
+            sweep_config_path = self.full_args.sweep_config_path
+            
+        if os.path.exists(sweep_config_path):
+            with open(sweep_config_path, 'r') as f:
+                sweep_config = yaml.safe_load(f)
+        else:
+            self.logger.warning(f"Sweep config file not found: {sweep_config_path}")
+
+        # Get parameters from the loaded sweep config
+        params_to_hyperopt = sweep_config.get("parameters", {})
 
         method = self.full_args.sweep_method
         metric = {"name": self.full_args.sweep_metric, "goal": self.full_args.sweep_goal}

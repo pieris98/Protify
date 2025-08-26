@@ -2,7 +2,7 @@ import os
 import argparse
 import yaml
 from types import SimpleNamespace
-from .hyperopt_utils import select_metric, apply_config, create_objective_function
+from hyperopt_utils import select_metric, apply_config, create_objective_function
 
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"

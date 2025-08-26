@@ -396,8 +396,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                         input_dim = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
                     self.probe_args.input_dim = input_dim * 2 if (ppi and not self._full) else input_dim
 
-                results_list = []
-
                 # Snapshot current args so we can restore after each trial
                 base_probe = copy.deepcopy(self.probe_args.__dict__)
                 base_trainer = copy.deepcopy(self.trainer_args.__dict__)

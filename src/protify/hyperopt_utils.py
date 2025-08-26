@@ -24,7 +24,7 @@ def select_metric(metrics: Dict[str, Any], sweep_metric: str) -> float:
 def apply_config(cfg: Dict[str, Any], probe_args: Any, trainer_args: Any, 
                 probe_keys: set, trainer_keys: set) -> None:
     """
-    Function to apply config values to probe and trainer arguments
+    Function to apply sweep config values to probe and trainer arguments
     """
     for k, v in cfg.items():
         if k in probe_keys and hasattr(probe_args, k):
@@ -135,8 +135,7 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
                     log_id=random_id,
                 )
 
-            else:  # pure probe
-                # You still need a tokenizer for the trainer
+            else:  # nn probe
                 _, tokenizer = get_base_model_for_training(
                     model_name,
                     tokenwise=probe_args.tokenwise,
@@ -166,11 +165,10 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
                 for k, v in test_metrics.items():
                     all_metrics[f"{k}"] = v
             wandb.log(all_metrics)
-
             metric_value = select_metric(valid_metrics, full_args.sweep_metric)
             results_list.append({
                 "wandb_run_id": run.id,
-                "selected_metric": float(metric_value),
+                full_args.sweep_metric: metric_value,
                 "config": dict(run.config),
                 "valid_metrics": valid_metrics,
                 "test_metrics": test_metrics,
@@ -178,5 +176,4 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
             return float(metric_value)
         finally:
             run.finish()
-    
     return objective

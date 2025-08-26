@@ -2,7 +2,6 @@ import os
 import argparse
 import yaml
 from types import SimpleNamespace
-from hyperopt_utils import select_metric, apply_config, create_objective_function
 
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -185,6 +184,7 @@ from embedder import EmbeddingArguments, Embedder
 from logger import MetricsLogger, log_method_calls
 from utils import torch_load, print_message
 from visualization.plot_result import create_plots
+from hyperopt_utils import apply_config, create_objective_function
 
 
 class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
@@ -339,14 +339,18 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         import copy
         import json
         import wandb
+        import csv
+
         sweep_config = {}
         
         if self.full_args.full_finetuning:
             sweep_config_path = 'yamls/sweep_full.yaml'
+        elif self.probe_args.probe_type == 'transformer':
+            sweep_config_path = 'yamls/sweep_transformer_probe.yaml'
         else:
             sweep_config_path = 'yamls/sweep_probe.yaml'
         
-        # Override with user-specified path if provided
+        # Override if path specified
         if self.full_args.sweep_config_path is not None:
             sweep_config_path = self.full_args.sweep_config_path
             
@@ -356,7 +360,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         else:
             self.logger.warning(f"Sweep config file not found: {sweep_config_path}")
 
-        # Get parameters from the loaded sweep config
         params_to_hyperopt = sweep_config.get("parameters", {})
 
         method = self.full_args.sweep_method
@@ -371,20 +374,48 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         self.logger.info(f"Hyperopt over {total_combinations} model/dataset combinations")
 
         for model_name in self.model_args.model_names:
-            # Prepare tokenizer and embeddings info if needed
             tokenizer = get_tokenizer(model_name)
             test_seq = self.all_seqs[0]
 
+            if model_name in ["Random", "Random-Transformer"]:
+                message = f"Skipping hyperparameter optimization for {model_name}."
+                self.logger.info(message)
+                print_message(message)
+
+                for data_name, dataset in self.datasets.items():
+                    self.logger.info(f"Obtaining results for {data_name} with {model_name}")
+                    train_set, valid_set, test_set, num_labels, label_type, ppi = dataset
+                    self.probe_args.num_labels = num_labels
+                    self.probe_args.task_type = label_type
+                    self.trainer_args.task_type = label_type
+                    self.trainer_args.make_plots = True
+
+                    emb_dict = None
+                    if not self.full_args.full_finetuning:
+                        if self._sql:
+                            save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.db')
+                            input_dim = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
+                        else:
+                            save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.pth')
+                            emb_dict = torch_load(save_path)
+                            input_dim = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
+                        self.probe_args.input_dim = input_dim * 2 if (ppi and not self._full) else input_dim
+                    if self.full_args.full_finetuning:
+                        _ = self._run_full_finetuning(model_name, data_name, train_set, valid_set, test_set, ppi, sweep_mode=False)
+                    elif self.full_args.hybrid_probe:
+                        _ = self._run_hybrid_probe(model_name, data_name, train_set, valid_set, test_set, tokenizer, emb_dict=emb_dict, ppi=ppi, sweep_mode=False)
+                    else:
+                        _ = self._run_nn_probe(model_name, data_name, train_set, valid_set, test_set, tokenizer, emb_dict=emb_dict, ppi=ppi, sweep_mode=False)
+                continue
+
             for data_name, dataset in self.datasets.items():
                 self.logger.info(f"Starting W&B sweep for {data_name} with {model_name}")
+                print_message(f"Starting W&B sweep for {data_name} with {model_name}")
                 train_set, valid_set, test_set, num_labels, label_type, ppi = dataset
-
-                # Update task-specific settings
                 self.probe_args.num_labels = num_labels
                 self.probe_args.task_type = label_type
                 self.trainer_args.task_type = label_type
 
-                # Determine input dim and embedding dict if needed
                 emb_dict = None
                 if not self.full_args.full_finetuning:
                     if self._sql:
@@ -396,7 +427,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                         input_dim = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
                     self.probe_args.input_dim = input_dim * 2 if (ppi and not self._full) else input_dim
 
-                # Snapshot current args so we can restore after each trial
+                # Save base args for restoring after each trial
                 base_probe = copy.deepcopy(self.probe_args.__dict__)
                 base_trainer = copy.deepcopy(self.trainer_args.__dict__)
 
@@ -434,37 +465,48 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 wandb.agent(sweep_id, function=objective, count=self.full_args.sweep_count)
 
                 # Sort, write, and save sweep results
-                results_list.sort(key=lambda x: x['selected_metric'], reverse=True)
+                reverse_flag = True if self.full_args.sweep_goal == "maximize" else False
+                results_list.sort(key=lambda x: x[self.full_args.sweep_metric], reverse=reverse_flag)
                 sweep_log_path = os.path.join(self.full_args.log_dir, f"{self.random_id}_sweep_{data_name}_{model_name}.csv")
-                import csv as csv
                 with open(sweep_log_path, 'w', newline='', encoding='utf-8') as f:
                     writer = csv.writer(f, delimiter=',')
-                    # header
-                    header = ["rank","wandb_run_id","selected_metric","config","valid_metrics","test_metrics"]
-                    writer.writerow(header)
+                    # Columns
+                    columns = ["rank","wandb_run_id",self.full_args.sweep_metric,"config","valid_metrics","test_metrics"]
+                    writer.writerow(columns)
                     for idx, res in enumerate(results_list, start=1):
                         writer.writerow([
                             idx,
                             res['wandb_run_id'],
-                            res['selected_metric'],
+                            res[self.full_args.sweep_metric],
                             json.dumps(res['config']),
                             json.dumps(res['valid_metrics']),
                             json.dumps(res['test_metrics']),
                         ])
 
-                # Apply best config and run final full training with plots/logging enabled
+                # Log best hyperparameters
                 best = results_list[0] if results_list else None
                 if best is None:
                     self.logger.info("No sweep results found; skipping final training for this combo")
                     continue
+                best_score = best[self.full_args.sweep_metric]
+                best_config = best['config']
+                self.logger.info(f"Best sweep result - {self.full_args.sweep_metric}: {best_score}")
+                self.logger.info(f"Best hyperparameters: {json.dumps(best_config, indent=2)}")
+                print_message(f"Best sweep result for {data_name} with {model_name}:\n"
+                           f"Metric: {self.full_args.sweep_metric} = {best_score}\n"
+                           f"Hyperparameters: {json.dumps(best_config, indent=2)}")
 
-                # Restore base then apply best
+                # Restore base args then apply best
                 self.probe_args.__dict__.update(copy.deepcopy(base_probe))
                 self.trainer_args.__dict__.update(copy.deepcopy(base_trainer))
-                apply_config(best['config'], self.probe_args, self.trainer_args, probe_keys, trainer_keys)
+                apply_config(best_config, self.probe_args, self.trainer_args, probe_keys, trainer_keys)
                 self.trainer_args.make_plots = True
 
-                self.logger.info(f"Running final training with best config for {data_name}/{model_name}")
+                self.logger.info(
+                    f"Training {'probe' if not self.full_args.full_finetuning else 'model'}"
+                    f"for {data_name} with {model_name} with best hyperparameters found by the W&B sweep."
+                    f"Sweep details saved under {self.full_args.log_dir}/"
+)
                 if self.full_args.full_finetuning:
                     _ = self._run_full_finetuning(model_name, data_name, train_set, valid_set, test_set, ppi, sweep_mode=False)
                 elif self.full_args.hybrid_probe:

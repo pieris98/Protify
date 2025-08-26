@@ -402,6 +402,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 base_probe = copy.deepcopy(self.probe_args.__dict__)
                 base_trainer = copy.deepcopy(self.trainer_args.__dict__)
 
+                results_list = []
                 objective = create_objective_function(
                     model_name=model_name,
                     data_name=data_name,
@@ -417,12 +418,14 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     emb_dict=emb_dict,
                     ppi=ppi,
                     random_id=self.random_id,
+                    results_list=results_list,
                     get_base_model_for_training=get_base_model_for_training,
                     get_probe=get_probe,
                     wrap_lora=wrap_lora,
                     trainer_base_model=self.trainer_base_model,
                     trainer_hybrid_model=self.trainer_hybrid_model,
-                    trainer_probe=self.trainer_probe
+                    trainer_probe=self.trainer_probe,
+                    results_list=results_list,
                 )
                 wb_sweep = {
                     "method": method,

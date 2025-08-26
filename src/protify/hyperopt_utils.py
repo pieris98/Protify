@@ -37,7 +37,7 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
                             base_probe: Dict[str, Any], base_trainer: Dict[str, Any],
                             probe_args: Any, trainer_args: Any, full_args: Any,
                             sweep_config: Dict[str, Any], probe_keys: set, trainer_keys: set,
-                            emb_dict: Any, ppi: bool, random_id: str,
+                            emb_dict: Any, ppi: bool, random_id: str, results_list: List[Dict[str, Any]],
                             get_base_model_for_training, get_probe, wrap_lora,
                             trainer_base_model, trainer_hybrid_model, trainer_probe):
     """
@@ -57,6 +57,7 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
         trainer_keys: Set of valid trainer configuration keys
         emb_dict: Embedding dictionary
         ppi: Whether this is a PPI task
+        results_list: List to store results
         random_id: Random identifier for logging
         get_base_model_for_training: Function to get base model for training
         get_probe: Function to get probe
@@ -160,13 +161,20 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
             all_metrics = {}
             if isinstance(valid_metrics, dict):
                 for k, v in valid_metrics.items():
-                    all_metrics[f"valid_{k}"] = v
+                    all_metrics[f"{k}"] = v
             if isinstance(test_metrics, dict):
                 for k, v in test_metrics.items():
-                    all_metrics[f"test_{k}"] = v
+                    all_metrics[f"{k}"] = v
             wandb.log(all_metrics)
 
             metric_value = select_metric(valid_metrics, full_args.sweep_metric)
+            results_list.append({
+                "wandb_id": run.id,
+                "selected_metric": float(metric_value),
+                "config": dict(run.config),
+                "valid_metrics": valid_metrics,
+                "test_metrics": test_metrics,
+            })
             return float(metric_value)
         finally:
             run.finish()

@@ -339,7 +339,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         import copy
         import json
         import wandb
-        # Load sweep config
+        sweep_config = {}
         if self.full_args.sweep_config_path is not None and os.path.exists(self.full_args.sweep_config_path):
             with open(self.full_args.sweep_config_path, 'r') as f:
                 sweep_config = yaml.safe_load(f)

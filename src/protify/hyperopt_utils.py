@@ -79,7 +79,6 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
                           tags=["sweep", f"model:{model_name}", f"data:{data_name}"],
         )
         run.name = f"sweep-{model_name}_{data_name}-{run.id[:6]}"
-        run.save()
         try:
             # Reset to base then apply config
             probe_args.__dict__.update(copy.deepcopy(base_probe))

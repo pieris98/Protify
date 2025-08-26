@@ -17,3 +17,6 @@ src/protify/private_yamls
 *.db
 *.yaml
 !yamls/base.yaml
+!yamls/sweep_full.yaml
+!yamls/sweep_probe.yaml
+!yamls/sweep_transformer_probe.yaml

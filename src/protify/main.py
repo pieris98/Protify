@@ -423,7 +423,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     trainer_base_model=self.trainer_base_model,
                     trainer_hybrid_model=self.trainer_hybrid_model,
                     trainer_probe=self.trainer_probe,
-                    results_list=results_list,
                 )
                 wb_sweep = {
                     "method": method,

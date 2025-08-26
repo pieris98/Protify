@@ -112,8 +112,8 @@ def parse_arguments():
     parser.add_argument("--sweep_config_path", type=str, default='yamls/sweep_config.yaml', help="Path to W&B sweep config YAML.")
     parser.add_argument("--sweep_count", type=int, default=10, help="Number of hyperparameter trials to run in the sweep.")
     parser.add_argument("--sweep_method", type=str, default="bayes", choices=["bayes", "grid", "random"], help="Sweep method for hyperparameter optimization.")
-    parser.add_argument("--sweep_metric", type=str, default="mcc", help="Metric to optimize during sweep.")
-    parser.add_argument("--sweep_goal", type=str, default='maximize', choices=['maximize', 'minimize'], help="Goal for the sweep metric (maximize/minimize)")
+    parser.add_argument("--sweep_metric", type=str, default="eval_loss", help="Metric to optimize during sweep.")
+    parser.add_argument("--sweep_goal", type=str, default='minimize', choices=['maximize', 'minimize'], help="Goal for the sweep metric (maximize/minimize)")
     args = parser.parse_args()
 
     if args.hf_token is not None:
@@ -393,7 +393,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 base_probe = copy.deepcopy(self.probe_args.__dict__)
                 base_trainer = copy.deepcopy(self.trainer_args.__dict__)
                 model, tokenizer = get_base_model_for_training(model_name, tokenwise=self.probe_args.tokenwise, num_labels=self.probe_args.num_labels, hybrid=False)
-                    
+
                 objective = create_objective_function(
                     model_name=model_name,
                     data_name=data_name,

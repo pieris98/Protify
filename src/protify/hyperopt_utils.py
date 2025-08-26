@@ -169,7 +169,7 @@ def create_objective_function(model_name: str, data_name: str, dataset: Tuple,
 
             metric_value = select_metric(valid_metrics, full_args.sweep_metric)
             results_list.append({
-                "wandb_id": run.id,
+                "wandb_run_id": run.id,
                 "selected_metric": float(metric_value),
                 "config": dict(run.config),
                 "valid_metrics": valid_metrics,

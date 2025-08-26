@@ -10,7 +10,7 @@ os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 
-def parse_arguments():
+def parse_arguments():  
     parser = argparse.ArgumentParser(description="Script with arguments mirroring the provided YAML settings.")
     # ----------------- ID ----------------- #
     parser.add_argument("--hf_username", default="Synthyra", help="Hugging Face username.")

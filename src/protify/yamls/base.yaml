@@ -5,6 +5,10 @@ synthyra_api_key: null
 wandb_api_key: null
 
 
+# Random seeds
+seed: !!int 42
+deterministic: !!bool false
+
 # Paths
 yaml_path: null
 log_dir: logs

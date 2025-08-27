@@ -32,7 +32,7 @@ def parse_arguments():
     # ----------------- DataArguments ----------------- #
     parser.add_argument("--delimiter", default=",", help="Delimiter for data.")
     parser.add_argument("--col_names", nargs="+", default=["seqs", "labels"], help="Column names.")
-    parser.add_argument("--max_length", type=int, default=1024, help="Maximum sequence length.")
+    parser.add_argument("--max_length", type=int, default=128, help="Maximum sequence length.")
     parser.add_argument("--trim", action="store_true", default=False,
                         help="Whether to trim sequences (default: False). If False, sequences are removed from the dataset if they are longer than max length. If True, they are truncated to max length."
                         )
@@ -125,25 +125,16 @@ def parse_arguments():
         yaml_args.synthyra_api_key = args.synthyra_api_key
         yaml_args.wandb_api_key = args.wandb_api_key
         yaml_args.yaml_path = args.yaml_path
-        # Ensure seed and deterministic flags are present/propagated
-        if not hasattr(yaml_args, 'seed'):
-            yaml_args.seed = args.seed
-        yaml_args.deterministic = getattr(args, 'deterministic', False)
+        yaml_args.seed = args.seed
+        yaml_args.deterministic = args.deterministic
         return yaml_args
     else:
         return args
 
-if __name__ == "__main__":
-    args = parse_arguments()
 
-    # Set global seed before doing anything else
-    try:
-        from seed_utils import set_global_seed
-        # If seed is None, set_global_seed will derive it from current time
-        chosen_seed = set_global_seed(getattr(args, 'seed', None), deterministic=getattr(args, 'deterministic', False))
-        args.seed = chosen_seed
-    except Exception:
-        pass
+if __name__ == "__main__":
+    # Settings that need to happen pre-imports
+    args = parse_arguments()
 
     if args.hf_home is not None:
         # Needs to happen before any HF imports
@@ -163,6 +154,12 @@ if __name__ == "__main__":
         print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")
         print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
 
+    # Set global seed before doing anything else    
+    # If seed is None, set_global_seed will derive it from current time
+    from seed_utils import set_determinism
+    if args.deterministic:
+        set_determinism()
+
 
 import torch
 from torchinfo import summary
@@ -177,6 +174,7 @@ from embedder import EmbeddingArguments, Embedder
 from logger import MetricsLogger, log_method_calls
 from utils import torch_load, print_message
 from visualization.plot_result import create_plots
+from seed_utils import set_global_seed
 
 
 class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
@@ -486,6 +484,9 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         
 
 def main(args: SimpleNamespace):
+    chosen_seed = set_global_seed(args.seed)
+    args.seed = chosen_seed
+
     if args.replay_path is not None:
         from logger import LogReplayer
         replayer = LogReplayer(args.replay_path)
@@ -493,7 +494,6 @@ def main(args: SimpleNamespace):
         replay_args.replay_path = args.replay_path
         # Re-apply seed using the replayed settings to ensure exact reproducibility
         try:
-            from seed_utils import set_global_seed
             # If no seed is present in replay, fall back to time-based seed
             if not hasattr(replay_args, 'seed') or replay_args.seed is None:
                 replay_args.seed = None

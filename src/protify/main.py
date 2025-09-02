@@ -32,7 +32,7 @@ def parse_arguments():
     # ----------------- DataArguments ----------------- #
     parser.add_argument("--delimiter", default=",", help="Delimiter for data.")
     parser.add_argument("--col_names", nargs="+", default=["seqs", "labels"], help="Column names.")
-    parser.add_argument("--max_length", type=int, default=1024, help="Maximum sequence length.")
+    parser.add_argument("--max_length", type=int, default=128, help="Maximum sequence length.")
     parser.add_argument("--trim", action="store_true", default=False,
                         help="Whether to trim sequences (default: False). If False, sequences are removed from the dataset if they are longer than max length. If True, they are truncated to max length."
                         )
@@ -70,7 +70,7 @@ def parse_arguments():
     # ----------------- ScikitArguments ----------------- # # TODO add to GUI
     parser.add_argument("--scikit_n_iter", type=int, default=10, help="Number of iterations for scikit model.")
     parser.add_argument("--scikit_cv", type=int, default=3, help="Number of cross-validation folds for scikit model.")
-    parser.add_argument("--scikit_random_state", type=int, default=42, help="Random state for scikit model.")
+    parser.add_argument("--scikit_random_state", type=int, default=None, help="Random state for scikit model (if None, uses global seed).")
     parser.add_argument("--scikit_model_name", type=str, default=None, help="Name of the scikit model to use.")
     parser.add_argument("--use_scikit", action="store_true", default=False, help="Use scikit model (default: False).")
     parser.add_argument("--n_jobs", type=int, default=1, help="Number of processes to use in scikit.") # TODO integrate with GUI and main
@@ -100,7 +100,9 @@ def parse_arguments():
     #parser.add_argument("--optimizer", type=str, default='adamw', help='Optimizer.')
     parser.add_argument("--weight_decay", type=float, default=0.00, help="Weight decay.")
     parser.add_argument("--patience", type=int, default=1, help="Patience for early stopping.")
-    parser.add_argument("--seed", type=int, default=42, help="Seed for random number generation.")
+    parser.add_argument("--seed", type=int, default=None, help="Seed for reproducibility (if omitted, current time is used).")
+    parser.add_argument("--deterministic", action="store_true", default=False,
+                        help="Enable deterministic behavior for reproducibility (will slow down training).")
     parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning (default: False).")
     parser.add_argument("--hybrid_probe", action="store_true", default=False, help="Hybrid probe (default: False).")
 
@@ -123,11 +125,15 @@ def parse_arguments():
         yaml_args.synthyra_api_key = args.synthyra_api_key
         yaml_args.wandb_api_key = args.wandb_api_key
         yaml_args.yaml_path = args.yaml_path
+        yaml_args.seed = args.seed
+        yaml_args.deterministic = args.deterministic
         return yaml_args
     else:
         return args
 
+
 if __name__ == "__main__":
+    # Settings that need to happen pre-imports
     args = parse_arguments()
 
     if args.hf_home is not None:
@@ -148,6 +154,12 @@ if __name__ == "__main__":
         print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")
         print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
 
+    # Set global seed before doing anything else    
+    # If seed is None, set_global_seed will derive it from current time
+    from seed_utils import set_determinism
+    if args.deterministic:
+        set_determinism()
+
 
 import torch
 from torchinfo import summary
@@ -162,6 +174,7 @@ from embedder import EmbeddingArguments, Embedder
 from logger import MetricsLogger, log_method_calls
 from utils import torch_load, print_message
 from visualization.plot_result import create_plots
+from seed_utils import set_global_seed
 
 
 class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
@@ -471,11 +484,25 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         
 
 def main(args: SimpleNamespace):
+    chosen_seed = set_global_seed(args.seed)
+    args.seed = chosen_seed
+
     if args.replay_path is not None:
         from logger import LogReplayer
         replayer = LogReplayer(args.replay_path)
         replay_args = replayer.parse_log()
         replay_args.replay_path = args.replay_path
+        # Re-apply seed using the replayed settings to ensure exact reproducibility
+        try:
+            # If no seed is present in replay, fall back to time-based seed
+            if not hasattr(replay_args, 'seed') or replay_args.seed is None:
+                replay_args.seed = None
+            if not hasattr(replay_args, 'deterministic') or replay_args.deterministic is None:
+                replay_args.deterministic = getattr(args, 'deterministic', False)
+            chosen_seed = set_global_seed(replay_args.seed, deterministic=replay_args.deterministic)
+            replay_args.seed = chosen_seed
+        except Exception:
+            pass
         main = MainProcess(replay_args, GUI=False)
         for k, v in main.full_args.__dict__.items():
             print(f"{k}:\t{v}")

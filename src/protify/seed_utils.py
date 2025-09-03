@@ -92,7 +92,7 @@ def set_global_seed(seed: Optional[int] = None) -> int:
 
 def set_determinism():
     # set_cublas_workspace_config() must happen BEFORE importing torch
-    set_cublas_workspace_config()
+    #set_cublas_workspace_config()
 
     # Import torch only after the env var has been set
     import torch

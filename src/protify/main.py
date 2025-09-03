@@ -3,7 +3,7 @@ import argparse
 import yaml
 from types import SimpleNamespace
 
-
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -154,7 +154,7 @@ if __name__ == "__main__":
         print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")
         print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
 
-    # Set global seed before doing anything else    
+    # Set global seed before doing anything else
     # If seed is None, set_global_seed will derive it from current time
     from seed_utils import set_determinism
     if args.deterministic:

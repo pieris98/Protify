@@ -28,7 +28,6 @@ def parse_arguments():
     parser.add_argument("--plots_dir", default="plots", help="Directory to save plots.")
     parser.add_argument("--replay_path", type=str, default=None, help="Path to the replay file.")
     parser.add_argument("--pretrained_probe_path", type=str, default=None) # TODO not used right now
-    parser.add_argument("--custom_plm_path", type=str, default=None)
 
     # ----------------- DataArguments ----------------- #
     parser.add_argument("--delimiter", default=",", help="Delimiter for data.")

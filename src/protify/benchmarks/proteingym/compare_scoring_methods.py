@@ -38,7 +38,8 @@ def compare_scoring_methods(
         dms_ids = ALL_DMS_IDS
     
     all_summary_results = []
-    
+    device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+
     for model_name in model_names:
         print(f"\n{'='*80}")
         print(f"PROCESSING MODEL: {model_name}")

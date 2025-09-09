@@ -644,7 +644,7 @@ def main(args: SimpleNamespace):
             
             summary_df = compare_scoring_methods(
                 model_names=model_names,
-                device=args.device,
+                device=None,
                 methods=None,
                 dms_ids=dms_ids,
                 progress=True,

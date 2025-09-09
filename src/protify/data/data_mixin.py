@@ -256,7 +256,7 @@ class DataMixin:
             if 'inverse' in data_name.lower():
                 dataset = dataset.rename_columns({'seqs': 'labels', 'labels': 'seqs'})
             ppi = 'SeqA' in dataset['train'].column_names
-            print_message(f'PPI: {ppi}')
+            print_message(f'PPI (or dual sequence input dataset): {ppi}')
             try:
                 train_set, valid_set, test_set = dataset['train'], dataset['valid'], dataset['test']
             except:

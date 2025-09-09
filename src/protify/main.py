@@ -156,8 +156,8 @@ if __name__ == "__main__":
 
     # Set global seed before doing anything else    
     # If seed is None, set_global_seed will derive it from current time
-    from seed_utils import set_determinism
     if args.deterministic:
+        from seed_utils import set_determinism
         set_determinism()
 
 

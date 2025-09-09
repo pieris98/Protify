@@ -111,6 +111,10 @@ def get_base_model(model_name: str):
     elif 'onehot' in model_name.lower():
         from .one_hot import build_one_hot_model
         return build_one_hot_model(model_name)
+    elif 'custom' in model_name.lower():
+        model_path = model_name.split('---')[-1]
+        from .custom_model import build_custom_model
+        return build_custom_model(model_path)
     else:
         raise ValueError(f"Model {model_name} not supported")
 

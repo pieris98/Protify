@@ -81,7 +81,11 @@ class BaseModelArguments:
 
 
 def get_base_model(model_name: str):
-    if 'random' in model_name.lower():
+    if 'custom' in model_name.lower():
+        model_path = model_name.split('---')[-1]
+        from .custom_model import build_custom_model
+        return build_custom_model(model_path)
+    elif 'random' in model_name.lower():
         from .random import build_random_model
         return build_random_model(model_name)
     elif 'esm2' in model_name.lower() or 'dsm' in model_name.lower():

@@ -40,7 +40,7 @@ def parse_arguments():
     parser.add_argument("--data_dirs", nargs="+", default=[], help="List of local data directories.")
 
     # ----------------- BaseModelArguments ----------------- #
-    parser.add_argument("--model_names", nargs="+", default=["ESM2-8"], help="List of model names to use.")
+    parser.add_argument("--model_names", nargs="+", default=["ESM2-8"], help="List of model names to use. To use a custom model, use the format 'custom---<path_to_model>'.")
 
     # ----------------- ProbeArguments ----------------- #
     parser.add_argument("--probe_type", choices=["linear", "transformer", "retrievalnet", "lyra"], default="linear", help="Type of probe.")

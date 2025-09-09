@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import argparse
 import os
+import torch
 from typing import List, Optional, Dict
 from scipy.stats import spearmanr
 from .zero_shot import zero_shot_scores_for_assay

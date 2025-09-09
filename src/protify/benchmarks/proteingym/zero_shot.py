@@ -38,6 +38,8 @@ def zero_shot_scores_for_assay(
     # Get sliced sequences
     target_seq = df['target_seq'].iloc[0]
     model_context_len = MODEL_CONTEXT_LENGTH.get(model_name, 1024)  # Default to 1024 if model not found
+    if model_context_len is None:
+        model_context_len = len(target_seq)
     sliced_df = get_sequence_slices(
         df, 
         target_seq=target_seq, 
@@ -83,7 +85,6 @@ def zero_shot_scores_for_assay(
                     window_start = slice_row['window_start']
                     window_end = slice_row['window_end']
                     
-                    # Check if this mutation falls within this window
                     if window_start <= pos < window_end:
                         window_seq = slice_row['sliced_mutated_seq']
                         pos_rel = pos - window_start
@@ -106,6 +107,7 @@ def zero_shot_scores_for_assay(
                         break
                         
         elif scoring_method == "mutant_marginal":
+            # Feed full mutant sequence (no masking), compare scores between mutant and wildtype at mutated positions
             mt_slices = mutant_slices[mutant_slices['mutated_seq'] == mutated_seq]
             
             for wt, pos, mt in muts:
@@ -136,7 +138,7 @@ def zero_shot_scores_for_assay(
                         break
                         
         elif scoring_method == "wildtype_marginal":
-            # For wildtype marginal, we use the wildtype sequence slices
+            # Feed full wildtype sequence (no masking), compare scores at mutated positions
             wt_slices = mutant_slices[mutant_slices['mutated_seq'] == target_seq]
             
             for wt, pos, mt in muts:
@@ -199,7 +201,6 @@ def run_zero_shot(
     repo_id: str = "GleghornLab/ProteinGym_DMS",
     results_dir: str = os.path.join('src', 'protify', 'results'),
     device: Optional[str] = None,
-    hf_token: Optional[str] = None,
     show_progress: bool = True,
     scoring_method: str = "masked_marginal",
 ) -> None:
@@ -208,7 +209,7 @@ def run_zero_shot(
     if show_progress:
         assay_iterator = tqdm(dms_ids, desc="All assays", unit="assay", position=0)
     for dms_id in assay_iterator:
-        df = load_proteingym_dms(dms_id, mode=mode, repo_id=repo_id, hf_token=hf_token)
+        df = load_proteingym_dms(dms_id, mode=mode, repo_id=repo_id)
         if df is None or len(df) == 0:
             continue
         if show_progress and hasattr(assay_iterator, 'set_description_str'):

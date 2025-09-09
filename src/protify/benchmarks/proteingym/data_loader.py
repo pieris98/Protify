@@ -8,7 +8,7 @@ from datasets import load_dataset
 from huggingface_hub import hf_hub_download
 
 
-def _load_parquet_by_dms(repo_id: str, dms_id: str, hf_token: Optional[str] = None) -> Optional[pd.DataFrame]:
+def _load_parquet_by_dms(repo_id: str, dms_id: str) -> Optional[pd.DataFrame]:
     """
     Try to load a single-assay parquet shard from the Hub at by_dms_id/{sanitized}.parquet.
     Returns a DataFrame if found; otherwise None.
@@ -22,7 +22,7 @@ def _load_parquet_by_dms(repo_id: str, dms_id: str, hf_token: Optional[str] = No
     candidates.append(f"by_dms_id/{id_str}__{short_hash}.parquet")
     for filename in candidates:
         try:
-            local_path = hf_hub_download(repo_id=repo_id, filename=filename, repo_type="dataset", token=hf_token)
+            local_path = hf_hub_download(repo_id=repo_id, filename=filename, repo_type="dataset")
         except Exception:
             continue
         try:
@@ -33,7 +33,7 @@ def _load_parquet_by_dms(repo_id: str, dms_id: str, hf_token: Optional[str] = No
     return None
 
 
-def _load_via_index_select(repo_id: str, dms_id: str, hf_token: Optional[str] = None) -> Optional[pd.DataFrame]:
+def _load_via_index_select(repo_id: str, dms_id: str) -> Optional[pd.DataFrame]:
     """
     Use an index.json mapping DMS_id -> row indices to select rows efficiently
     from the cached Arrow dataset without a full scan.
@@ -51,7 +51,7 @@ def _load_via_index_select(repo_id: str, dms_id: str, hf_token: Optional[str] = 
     indices = index.get(str(dms_id))
     if not indices:
         return None
-    base = load_dataset(repo_id, split="train", streaming=False, token=hf_token)
+    base = load_dataset(repo_id, split="train", streaming=False)
     try:
         subset = base.select(indices)
         df = subset.to_pandas().reset_index(drop=True)
@@ -60,19 +60,19 @@ def _load_via_index_select(repo_id: str, dms_id: str, hf_token: Optional[str] = 
         return None
 
 
-def load_proteingym_dms(dms_id: str, mode: Optional[str] = None, repo_id: str = "GleghornLab/ProteinGym_DMS", hf_token: Optional[str] = None) -> pd.DataFrame:
+def load_proteingym_dms(dms_id: str, mode: Optional[str] = None, repo_id: str = "GleghornLab/ProteinGym_DMS") -> pd.DataFrame:
     """
     Loads a single ProteinGym DMS assay from Hugging Face.
     """
     # per-assay parquet shard
-    df = _load_parquet_by_dms(repo_id=repo_id, dms_id=dms_id, hf_token=hf_token)
+    df = _load_parquet_by_dms(repo_id=repo_id, dms_id=dms_id)
     if df is None:
         # use precomputed index to select
-        df = _load_via_index_select(repo_id=repo_id, dms_id=dms_id, hf_token=hf_token)
+        df = _load_via_index_select(repo_id=repo_id, dms_id=dms_id)
     if df is None:
         # try streaming filter to avoid materializing full dataset
         try:
-            hf_stream = load_dataset(repo_id, split="train", streaming=True, token=hf_token)
+            hf_stream = load_dataset(repo_id, split="train", streaming=True)
             rows = [row for row in hf_stream if row.get("DMS_id", None) == dms_id]
             df = pd.DataFrame.from_records(rows)
         except Exception:

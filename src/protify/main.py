@@ -115,6 +115,8 @@ def parse_arguments():
                         help="ProteinGym filtering mode: 'benchmark', 'indels', 'multiple', or None.")
     parser.add_argument("--scoring_method", choices=["masked", "unmasked", "pll"], default="masked",
                         help="Zero-shot scoring method: 'masked' (default), 'unmasked' (full sequence), 'pll' (per-position log-probabilities).")
+    parser.add_argument("--compare_scoring_methods", action="store_true", default=False,
+                        help="Compare different scoring methods across models and DMS assays (default: False).")
 
     args = parser.parse_args()
 
@@ -192,6 +194,7 @@ from utils import torch_load, print_message, expand_dms_ids_all
 from visualization.plot_result import create_plots
 from benchmarks.proteingym.zero_shot import run_zero_shot
 from benchmarks.proteingym.scoring_utils import collect_proteingym_spearman
+from benchmarks.proteingym.compare_scoring_methods import compare_scoring_methods
 
 
 class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
@@ -563,7 +566,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         results_root = getattr(args, 'results_dir', 'results')
         results_dir = os.path.join(results_root, 'proteingym')
         mode = getattr(args, 'mode', None)
-        hf_token = getattr(args, 'hf_token', None)
         scoring_method = getattr(args, 'scoring_method', 'masked')
         print_message(f"Running ProteinGym zero-shot with [{scoring_method}] scoring on {len(dms_ids)} DMS ids with models: {', '.join(model_names)}")
         for model_name in model_names:
@@ -571,10 +573,9 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 dms_ids=dms_ids,
                 model_name=model_name,
                 mode=mode,
-                repo_id="nikraf/ProteinGym_DMS",
+                repo_id="GleghornLab/ProteinGym_DMS",
                 results_dir=results_dir,
                 device=None,
-                hf_token=hf_token,
                 scoring_method=scoring_method,
             )
         print_message(f"ProteinGym zero-shot complete. Results in {results_dir}")
@@ -627,6 +628,30 @@ def main(args: SimpleNamespace):
         main = MainProcess(args, GUI=False)
         for k, v in main.full_args.__dict__.items():
             print(f"{k}:\t{v}")
+
+        if getattr(args, 'compare_scoring_methods', False) and getattr(args, 'proteingym', False):
+            # Run scoring method comparison
+            print_message("Running scoring method comparison...")
+            dms_ids = getattr(args, 'dms_ids', []) or []
+            dms_ids = expand_dms_ids_all(dms_ids)
+            model_names = getattr(args, 'model_names', []) or []
+            if len(model_names) == 0:
+                raise ValueError("--model_names must specify at least one model")
+            
+            # Set up output path
+            results_root = getattr(args, 'results_dir', 'results')
+            output_csv = os.path.join(results_root, 'scoring_methods_comparison.csv')
+            
+            summary_df = compare_scoring_methods(
+                model_names=model_names,
+                device=args.device,
+                methods=None,
+                dms_ids=dms_ids,
+                progress=True,
+                output_csv=output_csv
+            )
+            print_message(f"Scoring method comparison complete. Results saved to {output_csv}")
+            return
 
         if getattr(args, 'proteingym', False):
             main.run_proteingym_zero_shot()

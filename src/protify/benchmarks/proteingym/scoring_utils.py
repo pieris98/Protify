@@ -79,21 +79,23 @@ def get_sequence_slices(df, target_seq, model_context_len, start_idx=1, scoring_
         df = pd.concat([df,df_wt], axis=0)
         df = df.drop_duplicates()
     elif scoring_window=="sliding":
-        num_windows = 1 + int( len_target_seq / model_context_len)
+        if model_context_len is None:
+            model_context_len = len_target_seq
         df_list=[]
         start=0
-        for window_index in range(1, num_windows+1):
+        while start < len_target_seq:
+            end = min(start + model_context_len, len_target_seq)
             df_sliced = df.copy()
-            df_sliced['sliced_mutated_seq'] = df_sliced['mutated_seq'].map(lambda x: x[start:start+model_context_len]) 
+            df_sliced['sliced_mutated_seq'] = df_sliced['mutated_seq'].map(lambda x: x[start:end]) 
             df_sliced['window_start'] = [start] * num_mutants 
-            df_sliced['window_end']  =  df_sliced['mutated_seq'].map(lambda x: min(len(x), start+model_context_len)) 
+            df_sliced['window_end']  =  df_sliced['mutated_seq'].map(lambda x: (min(len(x), end))) 
             df_sliced_wt = df_sliced.copy()
             df_sliced_wt['mutated_seq'] = [target_seq] * num_mutants
-            df_sliced_wt['sliced_mutated_seq'] = df_sliced_wt['mutated_seq'].map(lambda x: x[start:start+model_context_len])
-            df_sliced_wt['window_end'] = df_sliced_wt['mutated_seq'].map(lambda x: min(len(x), start+model_context_len)) #Need to adjust end index if WT and sequence are not same full length
+            df_sliced_wt['sliced_mutated_seq'] = df_sliced_wt['mutated_seq'].map(lambda x: x[start:end])
+            df_sliced_wt['window_end'] = df_sliced_wt['mutated_seq'].map(lambda x: min(len(x), end))
             df_list.append(df_sliced)
             df_list.append(df_sliced_wt)
-            start += model_context_len
+            start = end
         df_final = pd.concat(df_list,axis=0)
         df = df_final.drop_duplicates()
     return df.reset_index(drop=True)

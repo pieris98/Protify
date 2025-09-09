@@ -31,6 +31,10 @@ class BaseSequenceTokenizer:
     @property
     def cls_token_id(self):
         return getattr(self.tokenizer, 'cls_token_id')
+
+    @property
+    def mask_token_id(self):
+        return getattr(self.tokenizer, 'mask_token_id')
     
     def save_pretrained(self, save_dir: str):
         self.tokenizer.save_pretrained(save_dir)

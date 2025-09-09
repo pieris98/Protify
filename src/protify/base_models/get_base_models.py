@@ -80,38 +80,34 @@ class BaseModelArguments:
             self.model_names = model_names
 
 
-def get_base_model(model_name: str):
+def get_base_model(model_name: str, masked_lm: bool = False):
     if 'random' in model_name.lower():
         from .random import build_random_model
         return build_random_model(model_name)
     elif 'esm2' in model_name.lower() or 'dsm' in model_name.lower():
         from .esm2 import build_esm2_model
-        import os
-        masked_lm = os.environ.get('PROTIFY_PROTEINGYM', '0') == '1'
         return build_esm2_model(model_name, masked_lm=masked_lm)
     elif 'esmc' in model_name.lower():
         from .esmc import build_esmc_model
-        import os
-        masked_lm = os.environ.get('PROTIFY_PROTEINGYM', '0') == '1'
         return build_esmc_model(model_name, masked_lm=masked_lm)
     elif 'protbert' in model_name.lower():
         from .protbert import build_protbert_model
-        return build_protbert_model(model_name)
+        return build_protbert_model(model_name, masked_lm=masked_lm)
     elif 'prott5' in model_name.lower():
         from .prott5 import build_prott5_model
-        return build_prott5_model(model_name)
+        return build_prott5_model(model_name, masked_lm=masked_lm)
     elif 'ankh' in model_name.lower():
         from .ankh import build_ankh_model
-        return build_ankh_model(model_name)
+        return build_ankh_model(model_name, masked_lm=masked_lm)
     elif 'glm' in model_name.lower():
         from .glm import build_glm2_model
-        return build_glm2_model(model_name)
+        return build_glm2_model(model_name, masked_lm=masked_lm)
     elif 'dplm' in model_name.lower():
         from .dplm import build_dplm_model
-        return build_dplm_model(model_name)
+        return build_dplm_model(model_name, masked_lm=masked_lm)
     elif 'protclm' in model_name.lower():
         from .protCLM import build_protCLM
-        return build_protCLM(model_name)
+        return build_protCLM(model_name, masked_lm=masked_lm)
     elif 'onehot' in model_name.lower():
         from .one_hot import build_one_hot_model
         return build_one_hot_model(model_name)

@@ -46,7 +46,6 @@ class TrainerArguments:
             full_finetuning: bool = False,
             hybrid_probe: bool = False,
             num_workers: int = 0,
-            use_validation: bool = False,
             **kwargs
     ):
         self.model_save_dir = model_save_dir
@@ -67,21 +66,18 @@ class TrainerArguments:
         self.full_finetuning = full_finetuning
         self.hybrid_probe = hybrid_probe
         self.num_workers = num_workers
-        self.use_validation = use_validation
 
-    def __call__(self, probe: Optional[bool] = True, do_eval: Optional[bool] = None):
-        if do_eval is None:
-            do_eval = self.use_validation
+    def __call__(self, probe: Optional[bool] = True):
         if self.train_data_size > 350000:
             eval_strats = {
-                'eval_strategy': 'steps' if do_eval else 'no',
-                'eval_steps': 5000 if do_eval else None,
-                'save_strategy': 'steps' if do_eval else 'epoch',
-                'save_steps': 5000 if do_eval else None,
+                'eval_strategy': 'steps',
+                'eval_steps': 5000,
+                'save_strategy': 'steps',
+                'save_steps': 5000,
             }
         else:
             eval_strats = {
-                'eval_strategy': 'epoch' if do_eval else 'no',
+                'eval_strategy': 'epoch',
                 'save_strategy': 'epoch',
             }
 
@@ -106,9 +102,9 @@ class TrainerArguments:
             save_total_limit=3,
             logging_steps=1000,
             report_to='none',
-            load_best_model_at_end=bool(do_eval),
-            metric_for_best_model='eval_loss' if do_eval else None,
-            greater_is_better=False if do_eval else None,
+            load_best_model_at_end=True,
+            metric_for_best_model='eval_loss',
+            greater_is_better=False,
             seed=self.seed,
             label_names=['labels'],
             dataloader_num_workers=self.num_workers,
@@ -136,31 +132,25 @@ class TrainerMixin:
         task_type = self.trainer_args.task_type
         compute_metrics = get_compute_metrics(task_type)
         self.trainer_args.train_data_size = len(train_dataset)
-        do_eval = getattr(self.trainer_args, 'use_validation', False) and (valid_dataset is not None)
-        hf_trainer_args = self.trainer_args(probe=probe, do_eval=do_eval)
+        hf_trainer_args = self.trainer_args(probe=probe)
         ### TODO add options for optimizers and schedulers
         trainer = Trainer(
             model=model,
             args=hf_trainer_args,
             train_dataset=train_dataset,
-            eval_dataset=valid_dataset if do_eval else None,
+            eval_dataset=valid_dataset,
             data_collator=data_collator,
             compute_metrics=compute_metrics,
-            callbacks=[EarlyStoppingCallback(early_stopping_patience=self.trainer_args.patience)] if do_eval else None
+            callbacks=[EarlyStoppingCallback(early_stopping_patience=self.trainer_args.patience)]
         )
         trainer.can_return_loss = True
-        try:
-            metrics = trainer.evaluate(test_dataset)
-            print_message(f'Initial metrics: {metrics}')
-        except Exception:
-            pass
+        metrics = trainer.evaluate(test_dataset)
+        print_message(f'Initial metrics: {metrics}')
 
         trainer.train()
 
-        valid_metrics = {}
-        if do_eval and valid_dataset is not None:
-            valid_metrics = trainer.evaluate(valid_dataset)
-            print_message(f'Final validation metrics: {valid_metrics}')
+        valid_metrics = trainer.evaluate(valid_dataset)
+        print_message(f'Final validation metrics: {valid_metrics}')
 
         y_pred, y_true, test_metrics = trainer.predict(test_dataset)
         if isinstance(y_pred, tuple):
@@ -250,20 +240,17 @@ class TrainerMixin:
             full=full,
             train=True
         )
-        if getattr(self.trainer_args, 'use_validation', False) and valid_dataset is not None:
-            valid_dataset = DatasetClass(
-                hf_dataset=valid_dataset,
-                input_dim=input_dim,
-                task_type=task_type,
-                db_path=db_path,
-                emb_dict=emb_dict,
-                batch_size=batch_size,
-                read_scaler=read_scaler,
-                full=full,
-                train=False
-            )
-        else:
-            valid_dataset = None
+        valid_dataset = DatasetClass(
+            hf_dataset=valid_dataset,
+            input_dim=input_dim,
+            task_type=task_type,
+            db_path=db_path,
+            emb_dict=emb_dict,
+            batch_size=batch_size,
+            read_scaler=read_scaler,
+            full=full,
+            train=False
+        )
         test_dataset = DatasetClass(
             hf_dataset=test_dataset,
             input_dim=input_dim,
@@ -311,10 +298,7 @@ class TrainerMixin:
         data_collator = CollatorClass(tokenizer=tokenizer, task_type=task_type)
 
         train_dataset = DatasetClass(hf_dataset=train_dataset, train=True)
-        if getattr(self.trainer_args, 'use_validation', False) and valid_dataset is not None:
-            valid_dataset = DatasetClass(hf_dataset=valid_dataset, train=False)
-        else:
-            valid_dataset = None
+        valid_dataset = DatasetClass(hf_dataset=valid_dataset, train=False)
         test_dataset = DatasetClass(hf_dataset=test_dataset, train=False)
 
         return self._train(
@@ -374,9 +358,3 @@ class TrainerMixin:
                 ppi=ppi,
                 log_id=log_id,
             )
-
-
-
-
-
-

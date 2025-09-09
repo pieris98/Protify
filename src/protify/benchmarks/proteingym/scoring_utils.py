@@ -7,38 +7,6 @@ from typing import List, Tuple
 import torch
 
 
-def _infer_model_context_len(model, tokenizer) -> int:
-    """
-    Infer usable context length. 
-    Returns the maximum context length minus 2 for CLS and EOS tokens.
-    """
-    model_config = getattr(model, 'config', None)
-    if model_config is None and hasattr(model, 'esm') and hasattr(model.esm, 'config'):
-        model_config = model.esm.config
-    max_pos = int(getattr(model_config, 'max_position_embeddings', 1024))
-    # Fall back to 2 if unknown. 0-based indexing.
-    num_special_tokens = 1  
-    try:
-        fn = getattr(tokenizer, 'num_special_tokens_to_add', None)
-        if callable(fn):
-            num_special_tokens = int(fn(pair=False))
-        else:
-            alt = getattr(tokenizer, 'num_special_tokens', None)
-            if callable(alt):
-                num_special_tokens = int(alt())
-            else:
-                count = 0
-                if getattr(tokenizer, 'bos_token_id', None) is not None:
-                    count += 1
-                if getattr(tokenizer, 'eos_token_id', None) is not None:
-                    count += 1
-                if count > 0:
-                    num_special_tokens = count
-    except Exception:
-        num_special_tokens = 2
-    return max(1, max_pos - num_special_tokens)
-
-
 def label_row(wt: str, pos: int, mt: str, sequence: str, token_probs: torch.Tensor, tokenizer) -> float:
     """
     Compute delta log-prob at a position within a sequence window.
@@ -103,7 +71,6 @@ def get_sequence_slices(df, target_seq, model_context_len, start_idx=1, scoring_
         df['window_start'] = df['scoring_optimal_window'].map(lambda x: x[0]) 
         df['window_end'] = df['scoring_optimal_window'].map(lambda x: x[1])
         del df['scoring_optimal_window'], df['mutation_barycenter']
-        if 'mutant' in df: del df['mutant']
         df_wt=df.copy()
         df_wt['mutated_seq'] = [target_seq] * num_mutants
         if indel_mode: # For indels, we set the wild type reference to be always the same (full length) sequence. We assume here that the length is lower than model context size (otherwise "Sliding" mode should be used)
@@ -128,10 +95,18 @@ def get_sequence_slices(df, target_seq, model_context_len, start_idx=1, scoring_
             df_list.append(df_sliced_wt)
             start += model_context_len
         df_final = pd.concat(df_list,axis=0)
-        if 'mutant' in df_final: del df_final['mutant']
         df = df_final.drop_duplicates()
     return df.reset_index(drop=True)
 
+def _apply_mutations_to_sequence(wt_seq: str, mutations: List[Tuple[str, int, str]]) -> str:
+    """Apply mutations to wildtype sequence."""
+    mutant_seq = list(wt_seq)
+    for wt, pos, mt in mutations:
+        if mutant_seq[pos] != wt:
+            raise ValueError(f"WT mismatch at pos {pos}: expected {wt}, found {mutant_seq[pos]}")
+        mutant_seq[pos] = mt
+    return ''.join(mutant_seq)
+    
 def _parse_mutant_string(mutant: str) -> List[Tuple[str, int, str]]:
     """
     Parse a ProteinGym mutant string where each mutation is separated by ':'.
@@ -152,51 +127,6 @@ def _parse_mutant_string(mutant: str) -> List[Tuple[str, int, str]]:
         # -1 for 0-based indexing
         parsed.append((wt, int(pos) - 1, mt))
     return parsed
-
-
-
-@torch.no_grad()
-def _masked_position_log_probs(model, tokenizer, sequence: str, pos: int, device: torch.device) -> torch.Tensor:
-    """
-    Return log-probs at the masked position `pos` in `sequence`.
-    Handles tokenizer special tokens.
-    """
-    tokens = tokenizer(sequence, return_tensors='pt', add_special_tokens=True)
-    input_ids = tokens['input_ids'][0].to(device)
-    attention_mask = tokens['attention_mask'][0].to(device)
-
-    # account for CLS at index 0
-    mask_pos = pos + 1
-    if mask_pos <= 0 or mask_pos >= input_ids.shape[0] - 1:
-        raise IndexError(f"Mask position {mask_pos} out of bounds for tokenized length {input_ids.shape[0]}")
-
-    masked = input_ids.clone()
-    mask_id = tokenizer.mask_token_id
-    if mask_id is None:
-        mask_id = tokenizer.convert_tokens_to_ids(getattr(tokenizer, 'mask_token', '<mask>'))
-    masked[mask_pos] = mask_id
-
-    outputs = model(masked.unsqueeze(0), attention_mask=attention_mask.unsqueeze(0))
-    logits = outputs.logits[0, mask_pos]
-    return torch.log_softmax(logits, dim=-1).detach()
-
-
-@torch.no_grad()
-def get_sequence_log_probability(sequence, tokenizer, model):
-    """Compute the log probability of the unmasked sequence."""
-    input_tokens = tokenizer.encode(sequence, return_tensors="pt").to("cuda")
-
-    with torch.no_grad():
-        output = model(input_tokens)
-        logits = output["logits"]
-        probabilities = torch.nn.functional.softmax(logits, dim=-1)
-
-    input_ids = input_tokens[0]  # Token IDs of amino acids
-    token_probs = probabilities[0, torch.arange(len(input_ids)), input_ids]
-
-    seq_log_prob = token_probs.log().sum().item()  # Sum log probabilities
-
-    return seq_log_prob
 
 
 def collect_proteingym_spearman(args: SimpleNamespace, model_names):
@@ -242,3 +172,124 @@ def collect_proteingym_spearman(args: SimpleNamespace, model_names):
     except Exception as e:
         print(f"Error collecting ProteinGym Spearman metrics: {e}")
         return {}
+
+
+'''
+Scoring Functions
+'''
+
+@torch.no_grad()
+def _position_log_probs(model, tokenizer, scoring_method: str, sequence: str, pos: int, device: torch.device) -> torch.Tensor:
+    """
+    Return log-probs at the target position `pos`.
+    We tokenize with special tokens and map to the corresponding token index (pos + 1).
+    For masked_marginal, we replace w/ mask token before forward.
+    """
+    tokens = tokenizer(sequence, return_tensors='pt', add_special_tokens=True)
+    input_ids = tokens['input_ids'][0].to(device)
+    attention_mask = tokens['attention_mask'][0].to(device)
+
+    token_idx = pos + 1
+    
+    # Bounds checking
+    if token_idx <= 0 or token_idx >= input_ids.shape[0] - 1:
+        raise IndexError(f"Position {token_idx} out of bounds for tokenized length {input_ids.shape[0]}")
+    
+    if scoring_method == "masked_marginal":
+        mask_id = tokenizer.mask_token_id
+        if mask_id is None:
+            mask_id = tokenizer.convert_tokens_to_ids(getattr(tokenizer, 'mask_token', '<mask>'))
+        if mask_id is None:
+            raise ValueError("Tokenizer has no mask token.")
+        masked = input_ids.clone()
+        masked[token_idx] = mask_id
+        outputs = model(masked.unsqueeze(0), attention_mask=attention_mask.unsqueeze(0))
+    else:
+        outputs = model(input_ids.unsqueeze(0), attention_mask=attention_mask.unsqueeze(0))
+    logits = outputs.logits[0, token_idx]
+    return torch.log_softmax(logits, dim=-1).detach()
+
+
+@torch.no_grad()
+def get_sequence_log_probability(sequence, tokenizer, model, device: torch.device):
+    """Compute the log probability of the entire, unmasked sequence."""
+    tokens = tokenizer(sequence, return_tensors='pt', add_special_tokens=True)
+    input_ids = tokens['input_ids'][0].to(device)
+    attention_mask = tokens['attention_mask'][0].to(device)
+
+    with torch.no_grad():
+        output = model(input_ids.unsqueeze(0), attention_mask=attention_mask.unsqueeze(0))
+        logits = output["logits"]
+        probabilities = torch.nn.functional.softmax(logits, dim=-1)
+    seq_log_prob = 0.0
+    for pos in range(1, input_ids.size(0) - 1):
+        token_id = input_ids[pos].item()
+        token_prob = probabilities[0, pos, token_id]
+        seq_log_prob += token_prob.log().item()
+    return seq_log_prob
+
+@torch.no_grad()
+def calculate_pll(sequence: str, tokenizer, model, device: torch.device) -> Tuple[float, float]:
+    """Calculate pseudo-log-likelihood by masking each position iteratively."""
+    tokens = tokenizer(sequence, return_tensors="pt", add_special_tokens=True)
+    input_ids = tokens['input_ids'][0].to(device)
+    attention_mask = tokens['attention_mask'][0].to(device)
+    
+    mask_id = tokenizer.mask_token_id
+    if mask_id is None:
+        mask_id = tokenizer.convert_tokens_to_ids(getattr(tokenizer, 'mask_token', '<mask>'))
+
+    total_ll = 0.0
+    with torch.no_grad():
+        for pos in range(1, input_ids.size(0) - 1):  # Skip CLS token at position 0
+            masked = input_ids.clone()
+            masked[pos] = mask_id
+            outputs = model(masked.unsqueeze(0), attention_mask=attention_mask.unsqueeze(0))
+            logits = outputs.logits[0, pos]
+            logp = torch.log_softmax(logits, -1)
+            true_id = input_ids[0, pos].item()
+            total_ll += logp[true_id].item()
+    return total_ll, total_ll / L
+
+# dictionary of context lengths for supported models in Protify
+MODEL_CONTEXT_LENGTH = {
+    'ESM2-8': 2048,    # ESM Family models utilize huggingface.co/Synthyra/FastESM2_650
+    'ESM2-35': 2048,   # style models, which have 2048 context window
+    'ESM2-150': 2048,
+    'ESM2-650': 2048,
+    'ESM2-3B': 2048,
+    'Random': None,
+    'Random-Transformer': 1024,
+    'Random-ESM2-8': 2048,       
+    'Random-ESM2-35': 2048,      
+    'Random-ESM2-150': 2048,
+    'Random-ESM2-650': 2048,
+    'ESMC-300': 2048,
+    'ESMC-600': 2048,
+    'ESM2-diff-150': 1026,
+    'ESM2-diffAV-150': 1026,
+    'ProtBert': 40000, 
+    'ProtBert-BFD': 40000,
+    'ProtT5': 512,
+    'ProtT5-XL-UniRef50-full-prec': 512,
+    'ProtT5-XXL-UniRef50': 512,
+    'ProtT5-XL-BFD': 512,
+    'ProtT5-XXL-BFD': 512,
+    'ANKH-Base': 512,
+    'ANKH-Large': 512,
+    'ANKH2-Large': 512,
+    'GLM2-150': 4096,
+    'GLM2-650': 4096,
+    'GLM2-GAIA': 4096,
+    'DPLM-150': 1024,
+    'DPLM-650': 1024,
+    'DPLM-3B': 1024,
+    'DSM-150': 1024,
+    'DSM-650': 1024,
+    'DSM-PPI': 1024,
+    'ProtCLM-1b': 2048,
+    'OneHot-Protein': None,
+    'OneHot-DNA': None,
+    'OneHot-RNA': None,
+    'OneHot-Codon': None,
+}

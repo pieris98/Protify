@@ -10,12 +10,14 @@ from .data_loader import load_proteingym_dms
 from .scoring_utils import (
     label_row,
     get_optimal_window,
+    get_sequence_slices,
     _parse_mutant_string,
-    _masked_position_log_probs,
+    _apply_mutations_to_sequence,
+    _position_log_probs,
     get_sequence_log_probability,
+    calculate_pll,
 )
-
-
+from .scoring_utils import MODEL_CONTEXT_LENGTH
 
 def zero_shot_scores_for_assay(
     df: pd.DataFrame,
@@ -23,92 +25,168 @@ def zero_shot_scores_for_assay(
     device: Optional[str] = None,
     progress: bool = True,
     tqdm_position: int = 1,
-    scoring_method: str = "masked",
+    scoring_method: str = "masked_marginal",
+    scoring_window: str = "optimal" # "optimal" or "sliding"
 ) -> pd.DataFrame:
     if df is None or len(df) == 0:
         raise ValueError("Input DataFrame is empty")
-    model, tokenizer = get_base_model(model_name)
+    
+    model, tokenizer = get_base_model(model_name, masked_lm=True)
     device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     model = model.to(device).eval()
-    tokenizer = getattr(tokenizer, "tokenizer", tokenizer)
-    # Determine usable model window (exclude specials)
-    model_config = getattr(model, 'config', None)
-    if model_config is None and hasattr(model, 'esm') and hasattr(model.esm, 'config'):
-        model_config = model.esm.config
-    max_pos = int(getattr(model_config, 'max_position_embeddings', 1024))
-    model_window = max(1, max_pos - 2)
-
+    
+    # Get sliced sequences
+    target_seq = df['target_seq'].iloc[0]
+    model_context_len = MODEL_CONTEXT_LENGTH.get(model_name, 1024)  # Default to 1024 if model not found
+    sliced_df = get_sequence_slices(
+        df, 
+        target_seq=target_seq, 
+        model_context_len=model_context_len, 
+        start_idx=1, 
+        scoring_window=scoring_window, 
+        indel_mode=False
+    )
+    
+    # Group sliced_df mutant to process each variant
+    grouped = sliced_df.groupby('mutant')
     scores: List[float] = []
-    row_iterator = df.iterrows()
+    
+    iterator = df.iterrows()
     if progress:
-        row_iterator = tqdm(
-            row_iterator,
+        iterator = tqdm(
+            iterator,
             total=len(df),
             desc="Assay variants",
             unit="variant",
             position=tqdm_position,
             leave=False,
         )
-    if scoring_method == "unmasked":
-        for _, row in row_iterator:
-            wt_seq: str = row['target_seq']
-            mut_seq: str = row['mutated_seq']
-            if mut_seq is None or not isinstance(mut_seq, str) or len(mut_seq) == 0:
-                scores.append(float('nan'))
-                continue
-            try:
-                mut_lp = get_sequence_log_probability(mut_seq, tokenizer, model)
-                wt_lp = get_sequence_log_probability(wt_seq, tokenizer, model)
-                scores.append(float(mut_lp - wt_lp))
-            except Exception:
-                scores.append(float('nan'))
-    else:
-        # Determine usable model window (exclude specials)
-        model_config = getattr(model, 'config', None)
-        if model_config is None and hasattr(model, 'esm') and hasattr(model.esm, 'config'):
-            model_config = model.esm.config
-        max_pos = int(getattr(model_config, 'max_position_embeddings', 1024))
-        model_window = max(1, max_pos - 2)
-        # Cache masked-position log-probs by (window_seq, idx_rel_0)
-        log_prob_cache: Dict[Tuple[str, int], torch.Tensor] = {}
-
-        for _, row in row_iterator:
-            wt_seq: str = row['target_seq']
-            muts = _parse_mutant_string(row['mutant'])
-            if len(muts) == 0:
-                scores.append(float('nan'))
-                continue
-            total = 0.0
+    
+    log_prob_cache: Dict[Tuple[str, int, str], torch.Tensor] = {}
+    
+    for _, row in iterator:
+        mutant = row['mutant']
+        mutated_seq = row['mutated_seq']
+        muts = _parse_mutant_string(mutant)
+        
+        # Get all sliced seqs for this mutant
+        mutant_slices = grouped.get_group(mutant)
+        
+        total_score = 0.0
+        
+        if scoring_method == "masked_marginal":
+            mt_slices = mutant_slices[mutant_slices['mutated_seq'] == mutated_seq]
+            
             for wt, pos, mt in muts:
-                # Sanity checks
-                if not (0 <= pos < len(wt_seq)):
-                    raise ValueError(f"Position {pos} out of range for sequence of length {len(wt_seq)}")
-                if wt_seq[pos] != wt:
-                    raise ValueError(f"WT mismatch at pos {pos}: expected {wt}, found {wt_seq[pos]}")
-
-                # Choose optimal window around the mutation site
-                start, end = get_optimal_window(
-                    mutation_position_relative=pos,
-                    seq_len_wo_special=len(wt_seq),
-                    model_window=model_window,
-                )
-                window_seq = wt_seq[start:end]
-                pos_rel = pos - start
-
-                cache_key = (window_seq, pos_rel)
-                if cache_key not in log_prob_cache:
-                    log_prob_cache[cache_key] = _masked_position_log_probs(model, tokenizer, window_seq, pos_rel, device).cpu()
-                lps = log_prob_cache[cache_key]
-
-                # Build token_probs for label_row at this position
-                vocab_size = lps.shape[-1]
-                token_probs = torch.full((1, len(window_seq), vocab_size), fill_value=-1e9, dtype=lps.dtype)
-                token_probs[0, pos_rel, :] = lps
-
-                # Compute score at the position relative to window
-                score = label_row(wt, pos_rel, mt, window_seq, token_probs, tokenizer)
-                total += float(score)
-            scores.append(total)
+                # Find the slice that contains this mutation position
+                for _, slice_row in mt_slices.iterrows():
+                    window_start = slice_row['window_start']
+                    window_end = slice_row['window_end']
+                    
+                    # Check if this mutation falls within this window
+                    if window_start <= pos < window_end:
+                        window_seq = slice_row['sliced_mutated_seq']
+                        pos_rel = pos - window_start
+                        
+                        cache_key = (window_seq, pos_rel, scoring_method)
+                        if cache_key not in log_prob_cache:
+                            log_prob_cache[cache_key] = _position_log_probs(
+                                model, tokenizer, scoring_method, window_seq, pos_rel, device
+                            ).cpu()
+                        lps = log_prob_cache[cache_key]
+                        
+                        # Build token_probs for label_row at this position
+                        vocab_size = lps.shape[-1]
+                        token_probs = torch.full((1, len(window_seq), vocab_size), fill_value=-1e9, dtype=lps.dtype)
+                        token_probs[0, pos_rel, :] = lps
+                        
+                        # Compute score at the position relative to window
+                        score = label_row(wt, pos_rel, mt, window_seq, token_probs, tokenizer)
+                        total_score += float(score)
+                        break
+                        
+        elif scoring_method == "mutant_marginal":
+            mt_slices = mutant_slices[mutant_slices['mutated_seq'] == mutated_seq]
+            
+            for wt, pos, mt in muts:
+                # Find the slice that contains this mutation position
+                for _, slice_row in mt_slices.iterrows():
+                    window_start = slice_row['window_start']
+                    window_end = slice_row['window_end']
+                    
+                    # Check if this mutation falls within this window
+                    if window_start <= pos < window_end:
+                        window_seq = slice_row['sliced_mutated_seq']
+                        pos_rel = pos - window_start
+                        
+                        cache_key = (window_seq, pos_rel, scoring_method)
+                        if cache_key not in log_prob_cache:
+                            log_prob_cache[cache_key] = _position_log_probs(
+                                model, tokenizer, scoring_method, window_seq, pos_rel, device
+                            ).cpu()
+                        lps = log_prob_cache[cache_key]
+                        
+                        vocab_size = lps.shape[-1]
+                        token_probs = torch.full((1, len(window_seq), vocab_size), fill_value=-1e9, dtype=lps.dtype)
+                        token_probs[0, pos_rel, :] = lps
+                        
+                        # For mutant marginal: score wt vs mt when we have mt at pos_rel
+                        score = label_row(mt, pos_rel, wt, window_seq, token_probs, tokenizer)
+                        total_score -= float(score)  # Negate because we want mt - wt
+                        break
+                        
+        elif scoring_method == "wildtype_marginal":
+            # For wildtype marginal, we use the wildtype sequence slices
+            wt_slices = mutant_slices[mutant_slices['mutated_seq'] == target_seq]
+            
+            for wt, pos, mt in muts:
+                # Find the slice that contains this mutation position
+                for _, slice_row in wt_slices.iterrows():
+                    window_start = slice_row['window_start']
+                    window_end = slice_row['window_end']
+                    
+                    # Check if this mutation falls within this window
+                    if window_start <= pos < window_end:
+                        window_seq = slice_row['sliced_mutated_seq']
+                        pos_rel = pos - window_start
+                        
+                        cache_key = (window_seq, pos_rel, scoring_method)
+                        if cache_key not in log_prob_cache:
+                            log_prob_cache[cache_key] = _position_log_probs(
+                                model, tokenizer, scoring_method, window_seq, pos_rel, device
+                            ).cpu()
+                        lps = log_prob_cache[cache_key]
+                        
+                        vocab_size = lps.shape[-1]
+                        token_probs = torch.full((1, len(window_seq), vocab_size), fill_value=-1e9, dtype=lps.dtype)
+                        token_probs[0, pos_rel, :] = lps
+                        
+                        score = label_row(wt, pos_rel, mt, window_seq, token_probs, tokenizer)
+                        total_score += float(score)
+                        break
+                        
+        elif scoring_method == "pll":
+            mt_slices = mutant_slices[mutant_slices['mutated_seq'] == mutated_seq]
+            
+            # Calculate PLL for all slices and average
+            slice_scores = []
+            for _, slice_row in mt_slices.iterrows():
+                window_seq = slice_row['sliced_mutated_seq']
+                _, pll = calculate_pll(window_seq, tokenizer, model, device)
+                slice_scores.append(pll)
+            total_score = sum(slice_scores) / len(slice_scores) if slice_scores else 0.0
+            
+        else:  # scoring_method == "global_log_prob"
+            mt_slices = mutant_slices[mutant_slices['mutated_seq'] == mutated_seq]
+            
+            # Calculate log prob for all slices and sum
+            for _, slice_row in mt_slices.iterrows():
+                window_seq = slice_row['sliced_mutated_seq']
+                log_prob = get_sequence_log_probability(window_seq, tokenizer, model, device)
+                total_score += log_prob
+        
+        scores.append(total_score)
+    
     out = df.copy()
     out['delta_log_prob'] = scores
     return out
@@ -123,7 +201,7 @@ def run_zero_shot(
     device: Optional[str] = None,
     hf_token: Optional[str] = None,
     show_progress: bool = True,
-    scoring_method: str = "masked",
+    scoring_method: str = "masked_marginal",
 ) -> None:
     os.makedirs(results_dir, exist_ok=True)
     assay_iterator = dms_ids
@@ -144,7 +222,7 @@ def run_zero_shot(
             scoring_method=scoring_method,
         )
         # Aggregate per-assay predictions across models in a single CSV per DMS
-        suffix = 'masked' if scoring_method == 'masked' else 'unmasked'
+        suffix = scoring_method
         per_dms_path = os.path.join(results_dir, f"{dms_id}__zs_{suffix}.csv")
 
         # Prepare results for saving: rename score column to current model name to match config.json

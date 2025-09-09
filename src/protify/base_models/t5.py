@@ -148,3 +148,5 @@ class T5ForTokenClassification(T5EncoderModel):
             logits=logits,
         )
     
+class T5ForMaskedLM(T5EncoderModel):
+    

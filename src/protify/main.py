@@ -108,20 +108,13 @@ def parse_arguments():
     parser.add_argument("--hybrid_probe", action="store_true", default=False, help="Hybrid probe (default: False).")
     
     # ----------------- ProteinGym Arguments ----------------- #
-    parser.add_argument("--proteingym_zs", action="store_true", default=False,
-                        help="Run ProteinGym zero-shot only and exit.")
     parser.add_argument("--dms_ids", nargs="+", default=["all"],
                         help="ProteinGym DMS assay IDs to evaluate (space-separated), or 'all' to run all assays.")
+    parser.add_argument("--proteingym", action="store_true", default=False, help="ProteinGym (default: False).") 
     parser.add_argument("--mode", type=str, default=None,
                         help="ProteinGym filtering mode: 'benchmark', 'indels', 'multiple', or None.")
     parser.add_argument("--scoring_method", choices=["masked", "unmasked", "pll"], default="masked",
                         help="Zero-shot scoring method: 'masked' (default), 'unmasked' (full sequence), 'pll' (per-position log-probabilities).")
-    parser.add_argument("--proteingym_supervised", action="store_true", default=False,
-                        help="Run ProteinGym supervised CV training and write CSV scores, then exit.")
-    parser.add_argument("--selected_mode", type=str, default="supervised",
-                        help="ProteinGym supervised mode: 'supervised', 'supervised_multiples', or 'indels_supervised'.")
-    parser.add_argument("--no_validation", action="store_true", default=False,
-                        help="Disable creating/using a validation split for ProteinGym supervised folds.")
 
     args = parser.parse_args()
 
@@ -160,9 +153,9 @@ if __name__ == "__main__":
 
     # Require that either datasets are specified or a ProteinGym experiment is chosen
     has_datasets = bool(getattr(args, 'data_names', []) or getattr(args, 'data_dirs', []))
-    has_proteingym = bool(getattr(args, 'proteingym_zs', False) or getattr(args, 'proteingym_supervised', False))
+    has_proteingym = bool(getattr(args, 'proteingym', False))
     if not has_datasets and not has_proteingym:
-        raise AssertionError("No datasets specified. Provide --data_names or --data_dirs, or specify an experiment with --proteingym_zs or --proteingym_supervised.")
+        raise AssertionError("No datasets specified. Provide --data_names or --data_dirs, or run a ProteinGym experiment.")
 
     if args.hf_home is not None:
         # Needs to happen before any HF imports
@@ -186,8 +179,6 @@ if __name__ == "__main__":
 import torch
 from torchinfo import summary
 import numpy as np
-from scipy.stats import spearmanr
-from sklearn.metrics import mean_squared_error
 
 from probes.get_probe import ProbeArguments, get_probe
 from base_models.get_base_models import BaseModelArguments, get_tokenizer, get_base_model_for_training
@@ -201,7 +192,6 @@ from utils import torch_load, print_message, expand_dms_ids_all
 from visualization.plot_result import create_plots
 from benchmarks.proteingym.zero_shot import run_zero_shot
 from benchmarks.proteingym.scoring_utils import collect_proteingym_spearman
-from benchmarks.proteingym.supervised import prepare_supervised_dms_for_probe, get_cv_fold_variables
 
 
 class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
@@ -278,170 +268,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
         self.log_metrics(data_name, model_name, test_metrics, split_name='test')
         return probe
-
-    def run_proteingym_supervised(self):
-        """
-        Train supervised probes on ProteinGym DMS assays using 5-fold CV schemes.
-        Writes CSV rows with columns: model_name, DMS_id, fold_variable_name, Spearman, MSE
-        """
-        import numpy as np
-        
-        dms_ids = getattr(self.full_args, 'dms_ids', ["all"]) or ["all"]
-        repo_id = 'GleghornLab/ProteinGym_DMS'
-        hf_token = getattr(self.full_args, 'hf_token', None)
-        mode = getattr(self.full_args, 'mode', 'supervised')
-        results_root = getattr(self.full_args, 'results_dir', 'results')
-        out_dir = os.path.join(results_root, 'proteingym', 'supervised')
-        os.makedirs(out_dir, exist_ok=True)
-        
-        use_validation = not getattr(self.full_args, 'no_validation', False)
-        self.trainer_args.use_validation = use_validation
-        
-        dms_ids = expand_dms_ids_all(dms_ids)
-        if len(dms_ids) == 0:
-            raise ValueError("--dms_ids is required when --proteingym_supervised is specified")
-        fold_cols = get_cv_fold_variables(mode)
-        model_names = self.model_args.model_names if hasattr(self, 'model_args') else []
-        if not model_names:
-            model_names = getattr(self.full_args, 'model_names', []) or []
-            
-        rows = []
-        self.embedding_args.save_embeddings = True
-        
-        for model_name in model_names:
-            print_message(f"Processing model: {model_name}")
-            for dms_id in dms_ids:
-                try:
-                    df_mut, emb_dict, _ = prepare_supervised_dms_for_probe(
-                        dms_id=dms_id,
-                        model_name=model_name,
-                        tokenizer=get_tokenizer(model_name),
-                        mode=mode,
-                        repo_id=repo_id,
-                        hf_token=hf_token,
-                        scoring_window='optimal',
-                        embedding_args=self.embedding_args,
-                    )
-                except Exception as e:
-                    print_message(f"Failed to prepare DMS {dms_id}: {e}")
-                    continue
-                
-                seqs = df_mut['sliced_mutated_seq'].astype(str).tolist()
-                labels = df_mut['DMS_score'].astype(float).tolist()
-                
-                # Process each CV scheme
-                for fold_col in fold_cols:
-                    if fold_col not in df_mut.columns or df_mut[fold_col].isna().all():
-                        continue
-                    
-                    spearman_vals, mse_vals = [], []
-                    
-                    # Process each fold
-                    for k in sorted(df_mut[fold_col].dropna().unique()):
-                        try:
-                            k_int = int(k)
-                        except (ValueError, TypeError):
-                            continue
-                        
-                        # Create train/test split
-                        test_mask = (df_mut[fold_col] == k_int)
-                        train_mask = ~test_mask
-                        
-                        train_indices = np.where(train_mask.values)[0]
-                        test_indices = np.where(test_mask.values)[0]
-                        
-                        if len(train_indices) == 0 or len(test_indices) == 0:
-                            continue
-                        
-                        if use_validation:
-                            valid_size = max(1, int(0.2 * len(train_indices)))
-                            np.random.seed(42)
-                            np.random.shuffle(train_indices)
-                            valid_indices = train_indices[:valid_size]
-                            subtrain_indices = train_indices[valid_size:]
-                        else:
-                            # No validation split: use all training indices for subtrain
-                            valid_indices = None
-                            subtrain_indices = train_indices
-                        
-                        def select_data(indices):
-                            return [seqs[i] for i in indices], [labels[i] for i in indices]
-                        
-                        subtrain_seqs, subtrain_labels = select_data(subtrain_indices)
-                        if use_validation:
-                            valid_seqs, valid_labels = select_data(valid_indices)
-                        else:
-                            valid_seqs, valid_labels = None, None
-                        test_seqs, test_labels = select_data(test_indices)
-                        
-                        rho, mse = self._train_nn_probe_fold(
-                            model_name=model_name,
-                            dms_id=dms_id,
-                            subtrain_seqs=subtrain_seqs,
-                            subtrain_labels=subtrain_labels,
-                            valid_seqs=valid_seqs,
-                            valid_labels=valid_labels,
-                            test_seqs=test_seqs,
-                            test_labels=test_labels,
-                            emb_dict=emb_dict,
-                            fold_info=f"{fold_col}_fold{k_int}"
-                        )
-                        spearman_vals.append(float(rho))
-                        mse_vals.append(float(mse))
-                    
-                    # Aggregate metrics across folds
-                    if spearman_vals or mse_vals:
-                        row = {
-                            'model_name': model_name,
-                            'DMS_id': dms_id,
-                            'fold_variable_name': fold_col,
-                            'Spearman': float(np.mean(spearman_vals)) if spearman_vals else float('nan'),
-                            'MSE': float(np.mean(mse_vals)) if mse_vals else float('nan'),
-                            'Spearman_std': float(np.std(spearman_vals)) if spearman_vals else float('nan'),
-                            'MSE_std': float(np.std(mse_vals)) if mse_vals else float('nan'),
-                            'n_folds': len(spearman_vals)
-                        }
-                        rows.append(row)
-                        print_message(f"  {dms_id}/{fold_col}: Spearman={row['Spearman']:.3f}±{row['Spearman_std']:.3f}")
-        
-        out_csv = os.path.join(out_dir, f"supervised_scores_{self.random_id}.csv")
-        df_out = pd.DataFrame(rows)
-        df_out.to_csv(out_csv, index=False)
-        print_message(f"ProteinGym supervised results written to {out_csv}")
-
-        # After all models are scored, run benchmark performance computation
-        try:
-            print_message(f"Beginning benchmark performance computation")
-            pg_dir = os.path.join(os.path.dirname(__file__), 'benchmarks', 'proteingym')
-            reference_mapping = os.path.join(pg_dir, 'DMS_substitutions.csv')
-            perf_out_dir = os.path.join(getattr(self.full_args, 'results_dir', 'results'), 'proteingym', 'benchmark_performance')
-            os.makedirs(perf_out_dir, exist_ok=True)
-
-            script_path = os.path.join(pg_dir, 'DMS_benchmark_performance_supervised.py')
-            input_scoring_file = os.path.join(
-                getattr(self.full_args, 'results_dir', 'results'), 'proteingym', 'supervised', f"supervised_scores_{self.random_id}.csv"
-            )
-            script_cmd = [
-                sys.executable, script_path,
-                '--input_scoring_file', input_scoring_file,
-                '--output_performance_file_folder', perf_out_dir,
-                '--DMS_reference_file_path', reference_mapping,
-            ]
-            model_names = getattr(self.full_args, 'model_names', []) or []
-            if isinstance(model_names, (list, tuple)) and len(model_names) > 0:
-                script_cmd += ['--selected_model_names', *model_names]
-            dms_ids = expand_dms_ids_all(getattr(self.full_args, 'dms_ids', []) or [])
-            if isinstance(dms_ids, (list, tuple)) and len(dms_ids) > 0:
-                script_cmd += ['--selected_dms_ids', *[str(x) for x in dms_ids]]
-            selected_mode = getattr(self.full_args, 'mode', 'supervised')
-            if isinstance(selected_mode, str) and len(selected_mode) > 0:
-                script_cmd += ['--selected_mode', selected_mode]
-            subprocess.run(script_cmd, check=True)
-
-            print_message(f"Supervised benchmark performance computed. Outputs in {perf_out_dir}")
-        except Exception as e:
-            print_message(f"Failed to compute supervised benchmark performance: {e}")
-
 
     def _train_nn_probe_fold(self, model_name, dms_id, subtrain_seqs, subtrain_labels,
                             valid_seqs, valid_labels, test_seqs, test_labels, 
@@ -727,7 +553,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         # Signal base model loader to use MaskedLM variants
         os.environ['PROTIFY_PROTEINGYM'] = '1'
         dms_ids = getattr(args, 'dms_ids', []) or []
-        from utils import expand_dms_ids_all
         dms_ids = expand_dms_ids_all(dms_ids)
         if len(dms_ids) == 0:
             raise ValueError("--dms_ids is required when --proteingym is specified")
@@ -803,36 +628,22 @@ def main(args: SimpleNamespace):
         for k, v in main.full_args.__dict__.items():
             print(f"{k}:\t{v}")
 
-        # If proteingym_zs is requested, run it and log its aggregated Spearman metrics
-        if getattr(args, 'proteingym_zs', False):
+        if getattr(args, 'proteingym', False):
             main.run_proteingym_zero_shot()
             try:
                 pg_scores = collect_proteingym_spearman(args, getattr(args, 'model_names', []))
                 for model_name, score in pg_scores.items():
                     if isinstance(score, (int, float)):
-                        main.log_metrics('protein_gym_zs', model_name, {'spearman': float(score)})
+                        main.log_metrics('proteingym', model_name, {'spearman': float(score)})
             except Exception as e:
-                print_message(f"Failed to log ProteinGym_zs metrics: {e}")
+                print_message(f"Failed to log ProteinGym metrics: {e}")
 
         # Proceed with the standard workflow
+        os.environ['PROTIFY_PROTEINGYM'] = '0'
         main.apply_current_settings()
         main.get_datasets()
         num_seqs = len(main.all_seqs) if hasattr(main, 'all_seqs') else 0
         print_message(f"Number of sequences: {num_seqs}")
-
-        # Optionally run ProteinGym supervised and exit
-        if getattr(args, 'proteingym_supervised', False):
-            main.run_proteingym_supervised()
-            try:
-                pg_scores = collect_proteingym_spearman(args, getattr(args, 'model_names', []))
-                for model_name, score in pg_scores.items():
-                    if isinstance(score, (int, float)):
-                        main.log_metrics('proteingym_supervised', model_name, {'spearman': float(score)})
-            except Exception as e:
-                print_message(f"Failed to log ProteinGym supervised metrics: {e}")
-
-            main.end_log()
-            sys.exit(0)
 
         if main.full_args.full_finetuning:
             main.run_full_finetuning()

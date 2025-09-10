@@ -3,6 +3,7 @@ import numpy as np
 import argparse
 import os
 import torch
+import time
 from typing import List, Optional, Dict
 from scipy.stats import spearmanr
 from .zero_shot import zero_shot_scores_for_assay
@@ -29,7 +30,7 @@ def compare_scoring_methods(
         output_csv: Optional path to save results CSV
         
     Returns:
-        DataFrame with model_name, scoring_method, and Average_Spearman columns
+        DataFrame with model_name, scoring_method, Average_Spearman, Average_Time_Seconds, Total_Time_Seconds, and n_assays columns
     """
     if methods is None:
         methods = ["masked_marginal", "mutant_marginal", "wildtype_marginal", 
@@ -50,6 +51,7 @@ def compare_scoring_methods(
             # Store results for each assay
             assay_results = []
             spearman_results = []
+            timing_results = []
             
             for dms_id in dms_ids:
                 print(f"\nProcessing DMS ID: {dms_id}")
@@ -64,6 +66,9 @@ def compare_scoring_methods(
                 
                 for method in methods:
                     print(f"Running {method} scoring for {dms_id}...")
+                    
+                    # Measure timing for this scoring method
+                    start_time = time.time()
                     scored_df = zero_shot_scores_for_assay(
                         df=df,
                         model_name=model_name,
@@ -71,6 +76,11 @@ def compare_scoring_methods(
                         progress=progress,
                         scoring_method=method
                     )
+                    end_time = time.time()
+                    method_duration = end_time - start_time
+                    
+                    print(f"  {method} scoring completed in {method_duration:.2f} seconds")
+                    
                     assay_result[f'{method}_score'] = scored_df['delta_log_prob']
                     
                     # Calculate Spearman
@@ -97,11 +107,19 @@ def compare_scoring_methods(
                         'method': method,
                         'spearman_rho': spearman_rho
                     })
+                    
+                    # Store timing results
+                    timing_results.append({
+                        'dms_id': dms_id,
+                        'method': method,
+                        'duration_seconds': method_duration
+                    })
                         
                 assay_results.append(assay_result)
             
-            # Calculate average Spearman correlations for this model
+            # Calculate average Spearman correlations and timing for this model
             spearman_df = pd.DataFrame(spearman_results)
+            timing_df = pd.DataFrame(timing_results)
             summary_results = []
             
             for method in methods:
@@ -115,10 +133,21 @@ def compare_scoring_methods(
                     avg_spearman = np.nan
                     n_assays = 0
                 
+                # Calculate timing statistics for this method
+                method_timing_data = timing_df[timing_df['method'] == method]['duration_seconds']
+                if len(method_timing_data) > 0:
+                    avg_time = method_timing_data.mean()
+                    total_time = method_timing_data.sum()
+                else:
+                    avg_time = np.nan
+                    total_time = np.nan
+                
                 summary_results.append({
                     'model_name': model_name,
                     'scoring_method': method,
                     'Average_Spearman': avg_spearman,
+                    'Average_Time_Seconds': avg_time,
+                    'Total_Time_Seconds': total_time,
                     'n_assays': n_assays
                 })
             
@@ -138,6 +167,8 @@ def compare_scoring_methods(
                 'model_name': model_name,
                 'scoring_method': method,
                 'Average_Spearman': np.nan,
+                'Average_Time_Seconds': np.nan,
+                'Total_Time_Seconds': np.nan,
                 'n_assays': 0
             } for method in methods])
             all_summary_results.append(failed_summary)

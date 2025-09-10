@@ -113,7 +113,7 @@ def parse_arguments():
     parser.add_argument("--proteingym", action="store_true", default=False, help="ProteinGym (default: False).") 
     parser.add_argument("--mode", type=str, default=None,
                         help="ProteinGym filtering mode: 'benchmark', 'indels', 'multiple', or None.")
-    parser.add_argument("--scoring_method", choices=["masked", "unmasked", "pll"], default="masked",
+    parser.add_argument("--scoring_method", choices=["masked_marginal", "mutant_marginal", "wildtype_marginal", "pll", "global_log_prob"], default="masked_marginal",
                         help="Zero-shot scoring method: 'masked' (default), 'unmasked' (full sequence), 'pll' (per-position log-probabilities).")
     parser.add_argument("--compare_scoring_methods", action="store_true", default=False,
                         help="Compare different scoring methods across models and DMS assays (default: False).")

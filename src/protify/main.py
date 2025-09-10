@@ -110,11 +110,13 @@ def parse_arguments():
     # ----------------- ProteinGym Arguments ----------------- #
     parser.add_argument("--dms_ids", nargs="+", default=["all"],
                         help="ProteinGym DMS assay IDs to evaluate (space-separated), or 'all' to run all assays.")
-    parser.add_argument("--proteingym", action="store_true", default=False, help="ProteinGym (default: False).") 
+    parser.add_argument("--proteingym", action="store_true", default=False, help="ProteinGym (default: False).")
     parser.add_argument("--mode", type=str, default=None,
                         help="ProteinGym filtering mode: 'benchmark', 'indels', 'multiple', or None.")
     parser.add_argument("--scoring_method", choices=["masked_marginal", "mutant_marginal", "wildtype_marginal", "pll", "global_log_prob"], default="masked_marginal",
-                        help="Zero-shot scoring method: 'masked' (default), 'unmasked' (full sequence), 'pll' (per-position log-probabilities).")
+                        help="Select a scoring method for ProteinGym zero-shot.")
+    parser.add_argument("--scoring_window", choices=["optimal", "sliding"], default="optimal",
+                        help="Select how to slice the sequence for ProteinGym zero-shot.")
     parser.add_argument("--compare_scoring_methods", action="store_true", default=False,
                         help="Compare different scoring methods across models and DMS assays (default: False).")
 
@@ -567,6 +569,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         results_dir = os.path.join(results_root, 'proteingym')
         mode = getattr(args, 'mode', None)
         scoring_method = getattr(args, 'scoring_method', 'masked')
+        scoring_window = getattr(args, 'scoring_window', 'optimal')
         print_message(f"Running ProteinGym zero-shot with [{scoring_method}] scoring on {len(dms_ids)} DMS ids with models: {', '.join(model_names)}")
         for model_name in model_names:
             _ = run_zero_shot(
@@ -577,6 +580,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 results_dir=results_dir,
                 device=None,
                 scoring_method=scoring_method,
+                scoring_window=scoring_window,
             )
         print_message(f"ProteinGym zero-shot complete. Results in {results_dir}")
 

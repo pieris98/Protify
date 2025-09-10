@@ -65,6 +65,8 @@ def zero_shot_scores_for_assay(
         )
     
     log_prob_cache: Dict[Tuple[str, int, str], torch.Tensor] = {}
+    pll_cache: Dict[str, Tuple[float, float]] = {}
+    global_log_prob_cache: Dict[str, float] = {}
     
     for _, row in iterator:
         mutant = row['mutant']
@@ -174,7 +176,9 @@ def zero_shot_scores_for_assay(
             slice_scores = []
             for _, slice_row in mt_slices.iterrows():
                 window_seq = slice_row['sliced_mutated_seq']
-                _, pll = calculate_pll(window_seq, tokenizer, model, device)
+                if window_seq not in pll_cache:
+                    pll_cache[window_seq] = calculate_pll(window_seq, tokenizer, model, device)
+                _, pll = pll_cache[window_seq]
                 slice_scores.append(pll)
             total_score = sum(slice_scores) / len(slice_scores) if slice_scores else 0.0
             
@@ -184,7 +188,9 @@ def zero_shot_scores_for_assay(
             # Calculate log prob for all slices and sum
             for _, slice_row in mt_slices.iterrows():
                 window_seq = slice_row['sliced_mutated_seq']
-                log_prob = get_sequence_log_probability(window_seq, tokenizer, model, device)
+                if window_seq not in global_log_prob_cache:
+                    global_log_prob_cache[window_seq] = get_sequence_log_probability(window_seq, tokenizer, model, device)
+                log_prob = global_log_prob_cache[window_seq]
                 total_score += log_prob
         
         scores.append(total_score)
@@ -203,6 +209,7 @@ def run_zero_shot(
     device: Optional[str] = None,
     show_progress: bool = True,
     scoring_method: str = "masked_marginal",
+    scoring_window: str = "optimal",
 ) -> None:
     os.makedirs(results_dir, exist_ok=True)
     assay_iterator = dms_ids
@@ -221,6 +228,7 @@ def run_zero_shot(
             progress=show_progress,
             tqdm_position=1,
             scoring_method=scoring_method,
+            scoring_window=scoring_window
         )
         # Aggregate per-assay predictions across models in a single CSV per DMS
         suffix = scoring_method

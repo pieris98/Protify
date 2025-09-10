@@ -406,15 +406,20 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             # get tokenizer
             tokenizer = get_tokenizer(model_name)
 
+            if 'custom' in model_name.lower():
+                clean_model_name = model_name.split('---')[-1].split('/')[-1]
+            else:
+                clean_model_name = model_name
+
             # get embedding size
             if self._sql:
                 # for sql, the embeddings will be gathered in real time during training
-                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.db')
+                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{clean_model_name}_{self._full}.db')
                 input_dim = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
                 emb_dict = None
             else:
                 # for pth, the embeddings are loaded entirely into RAM and accessed during training
-                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.pth')
+                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{clean_model_name}_{self._full}.pth')
                 emb_dict = torch_load(save_path)
                 input_dim = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
 
@@ -433,11 +438,11 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 self.probe_args.task_type = label_type
                 ### TODO we currently need both, settings should probably be consolidated
                 self.trainer_args.task_type = label_type
-                self.logger.info(f'Training probe for {data_name} with {model_name}')
+                self.logger.info(f'Training probe for {data_name} with {clean_model_name}')
                 ### TODO eventually add options for optimizers and schedulers
                 ### TODO here is probably where we can differentiate between the different training schemes
                 _ = self._run_nn_probe(
-                    model_name=model_name,
+                    model_name=clean_model_name,
                     data_name=data_name,
                     train_set=train_set,
                     valid_set=valid_set,

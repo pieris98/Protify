@@ -238,6 +238,7 @@ def calculate_pll(sequence: str, tokenizer, model, device: torch.device) -> Tupl
     if mask_id is None:
         mask_id = tokenizer.convert_tokens_to_ids(getattr(tokenizer, 'mask_token', '<mask>'))
 
+    L = input_ids.size(0) - 2  # Length of sequence excluding CLS and SEP tokens
     total_ll = 0.0
     with torch.no_grad():
         for pos in range(1, input_ids.size(0) - 1):  # Skip CLS token at position 0
@@ -246,7 +247,7 @@ def calculate_pll(sequence: str, tokenizer, model, device: torch.device) -> Tupl
             outputs = model(masked.unsqueeze(0), attention_mask=attention_mask.unsqueeze(0))
             logits = outputs.logits[0, pos]
             logp = torch.log_softmax(logits, -1)
-            true_id = input_ids[0, pos].item()
+            true_id = input_ids[pos].item()
             total_ll += logp[true_id].item()
     return total_ll, total_ll / L
 

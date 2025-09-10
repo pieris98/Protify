@@ -88,8 +88,8 @@ def zero_shot_scores_for_assay(
                     if window_start <= pos < window_end:
                         window_seq = slice_row['sliced_mutated_seq']
                         pos_rel = pos - window_start
-                        
-                        cache_key = (window_seq, pos_rel, scoring_method)
+                        key_seq = window_seq[:pos_rel] + '<mask>' + window_seq[pos_rel+1:]
+                        cache_key = (key_seq, pos_rel, scoring_method)
                         if cache_key not in log_prob_cache:
                             log_prob_cache[cache_key] = _position_log_probs(
                                 model, tokenizer, scoring_method, window_seq, pos_rel, device

@@ -66,7 +66,6 @@ def zero_shot_scores_for_assay(
     
     log_prob_cache: Dict[Tuple[str, int, str], torch.Tensor] = {}
     pll_cache: Dict[str, Tuple[float, float]] = {}
-    global_log_prob_cache: Dict[str, float] = {}
     
     for _, row in iterator:
         mutant = row['mutant']
@@ -170,11 +169,11 @@ def zero_shot_scores_for_assay(
                         break
                         
         elif scoring_method == "pll":
-            mt_slices = mutant_slices[mutant_slices['mutated_seq'] == mutated_seq]
+            wt_slices = mutant_slices[mutant_slices['mutated_seq'] == target_seq]
             
             # Calculate PLL for all slices and average
             slice_scores = []
-            for _, slice_row in mt_slices.iterrows():
+            for _, slice_row in wt_slices.iterrows():
                 window_seq = slice_row['sliced_mutated_seq']
                 if window_seq not in pll_cache:
                     pll_cache[window_seq] = calculate_pll(window_seq, tokenizer, model, device)
@@ -188,10 +187,8 @@ def zero_shot_scores_for_assay(
             # Calculate log prob for all slices and sum
             for _, slice_row in mt_slices.iterrows():
                 window_seq = slice_row['sliced_mutated_seq']
-                if window_seq not in global_log_prob_cache:
-                    global_log_prob_cache[window_seq] = get_sequence_log_probability(window_seq, tokenizer, model, device)
-                log_prob = global_log_prob_cache[window_seq]
-                total_score += log_prob
+                seq_log_prob = get_sequence_log_probability(window_seq, tokenizer, model, device)
+                total_score += seq_log_prob
         
         scores.append(total_score)
     

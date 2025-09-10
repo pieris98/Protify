@@ -254,7 +254,7 @@ class Embedder:
 
     def __call__(self, model_name: str):
         if 'custom' in model_name.lower():
-            clean_model_name = model_name.split('---')[-1]
+            clean_model_name = model_name.split('---')[-1].split('/')[-1]
         else:
             clean_model_name = model_name
 

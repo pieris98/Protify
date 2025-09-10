@@ -33,8 +33,7 @@ def compare_scoring_methods(
         DataFrame with model_name, scoring_method, Average_Spearman, Average_Time_Seconds, Total_Time_Seconds, and n_assays columns
     """
     if methods is None:
-        methods = ["masked_marginal", "mutant_marginal", "wildtype_marginal", 
-                  "pll", "global_log_prob"]
+        methods = ["masked_marginal", "mutant_marginal", "wildtype_marginal", "global_log_prob"]
     
     if dms_ids is None:
         dms_ids = ALL_DMS_IDS

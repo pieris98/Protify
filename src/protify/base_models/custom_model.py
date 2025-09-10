@@ -1,4 +1,4 @@
-from transformers import AutoModel
+from transformers import AutoModel, AutoTokenizer
 
 
 """

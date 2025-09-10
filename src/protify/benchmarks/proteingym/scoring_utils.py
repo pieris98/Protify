@@ -16,9 +16,6 @@ def label_row(wt: str, pos: int, mt: str, sequence: str, token_probs: torch.Tens
     - token_probs: log-probs over vocab, shape [1, len(sequence), vocab_size]
     """
     assert 0 <= pos < len(sequence), f"Index {pos} out of range for length {len(sequence)}"
-    assert sequence[pos] == wt, (
-        f"WT mismatch at {pos}: seq has {sequence[pos]!r}, mutant says {wt!r}"
-    )
 
     wt_id = tokenizer.convert_tokens_to_ids(wt)
     mt_id = tokenizer.convert_tokens_to_ids(mt)

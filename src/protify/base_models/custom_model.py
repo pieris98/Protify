@@ -13,4 +13,14 @@ def build_custom_model(model_path: str):
     return model, tokenizer
 
 
-# py -m src.protify.base_models.custom_model
+def build_custom_tokenizer(model_path: str):
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    return tokenizer
+
+
+if __name__ == "__main__":
+    # py -m src.protify.base_models.custom_model
+    model, tokenizer = build_custom_model('lhalle/esm2_t6_8M_UR50D')
+    print(model)
+    print(tokenizer)
+    print(tokenizer('MEKVQYLTRSAIRRASTIEMPQQARQKLQNLFINFCLILICBBOLLICIIVMLL'))

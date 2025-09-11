@@ -35,14 +35,14 @@ supported_datasets = {
     'foldseek-inverse': 'lhallee/foldseek_dataset',
     'ec-active': 'lhallee/ec_active',
     'bernett_processed': 'lhallee/bernett_processed',
-    'taxon_domain': 'GleghornLab/taxonomy_domain',
-    'taxon_kingdom': 'GleghornLab/taxonomy_kingdom',
-    'taxon_phylum': 'GleghornLab/taxonomy_phylum',
-    'taxon_class': 'GleghornLab/taxonomy_class',
-    'taxon_order': 'GleghornLab/taxonomy_order',
-    'taxon_family': 'GleghornLab/taxonomy_family',
-    'taxon_genus': 'GleghornLab/taxonomy_genus',
-    'taxon_species': 'GleghornLab/taxonomy_species',
+    'taxon_domain': 'GleghornLab/taxonomy_domain_0.4_clusters',
+    'taxon_kingdom': 'GleghornLab/taxonomy_kingdom_0.4_clusters',
+    'taxon_phylum': 'GleghornLab/taxonomy_phylum_0.4_clusters',
+    'taxon_class': 'GleghornLab/taxonomy_class_0.4_clusters',
+    'taxon_order': 'GleghornLab/taxonomy_order_0.4_clusters',
+    'taxon_family': 'GleghornLab/taxonomy_family_0.4_clusters',
+    'taxon_genus': 'GleghornLab/taxonomy_genus_0.4_clusters',
+    'taxon_species': 'GleghornLab/taxonomy_species_0.4_clusters',
 }
 
 internal_datasets = {

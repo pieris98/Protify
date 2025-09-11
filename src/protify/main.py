@@ -31,7 +31,7 @@ def parse_arguments():
 
     # ----------------- DataArguments ----------------- #
     parser.add_argument("--delimiter", default=",", help="Delimiter for data.")
-    parser.add_argument("--col_names", nargs="+", default=["seqs", "labels"], help="Column names.")
+    parser.add_argument("--col_names", nargs="+", default=["seqs", "labels"], help="Column names.") # DEPRECATED, found automatically now
     parser.add_argument("--max_length", type=int, default=128, help="Maximum sequence length.")
     parser.add_argument("--trim", action="store_true", default=False,
                         help="Whether to trim sequences (default: False). If False, sequences are removed from the dataset if they are longer than max length. If True, they are truncated to max length."

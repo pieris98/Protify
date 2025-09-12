@@ -268,12 +268,12 @@ class LyraForSequenceClassification(PreTrainedModel):
         )
 
         self.pooler = Pooler(config.pooling_types)
-        classifier_dim = intermediate_correction_fn(2.0, config.num_labels)
+        classifier_size = intermediate_correction_fn(2.0, config.num_labels)
         self.classifier = nn.Sequential(
             nn.LayerNorm(config.hidden_size),
-            nn.Linear(config.hidden_size, classifier_dim),
+            nn.Linear(config.hidden_size, classifier_size),
             nn.GELU(),
-            nn.Linear(classifier_dim, config.num_labels),
+            nn.Linear(classifier_size, config.num_labels),
         )
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels
@@ -317,12 +317,12 @@ class LyraForTokenClassification(PreTrainedModel):
             n_layers=config.n_layers,
         )
         self.loss_fct = get_loss_fct(config.task_type)
-        classifier_dim = intermediate_correction_fn(2.0, config.num_labels)
+        classifier_size = intermediate_correction_fn(2.0, config.num_labels)
         self.classifier = nn.Sequential(
             nn.LayerNorm(config.hidden_size),
-            nn.Linear(config.hidden_size, classifier_dim),
+            nn.Linear(config.hidden_size, classifier_size),
             nn.GELU(),
-            nn.Linear(classifier_dim, config.num_labels),
+            nn.Linear(classifier_size, config.num_labels),
         )
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels

@@ -425,9 +425,9 @@ class GUI(MainProcess):
 
         # FF Dimension
         ttk.Label(self.probe_tab, text="Classifier Dimension:").grid(row=7, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["classifier_dim"] = tk.IntVar(value=4096)
-        spin_classifier_dim = ttk.Spinbox(self.probe_tab, from_=1, to=10000, textvariable=self.settings_vars["classifier_dim"])
-        spin_classifier_dim.grid(row=7, column=1, padx=10, pady=5)
+        self.settings_vars["classifier_size"] = tk.IntVar(value=4096)
+        spin_classifier_size = ttk.Spinbox(self.probe_tab, from_=1, to=10000, textvariable=self.settings_vars["classifier_size"])
+        spin_classifier_size.grid(row=7, column=1, padx=10, pady=5)
         self.add_help_button(self.probe_tab, 7, 2, "Dimension of the classifier/feedforward layer in transformer probe.")
 
         # Classifier Dropout
@@ -872,7 +872,7 @@ class GUI(MainProcess):
         self.full_args.dropout = self.settings_vars["dropout"].get()
         self.full_args.n_layers = self.settings_vars["n_layers"].get()
         self.full_args.pre_ln = self.settings_vars["pre_ln"].get()
-        self.full_args.classifier_dim = self.settings_vars["classifier_dim"].get()
+        self.full_args.classifier_size = self.settings_vars["classifier_size"].get()
         self.full_args.transformer_dropout = self.settings_vars["transformer_dropout"].get()
         self.full_args.classifier_dropout = self.settings_vars["classifier_dropout"].get()
         self.full_args.n_heads = self.settings_vars["n_heads"].get()

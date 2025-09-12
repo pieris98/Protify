@@ -47,7 +47,7 @@ n_layers: !!int 1
 sim_type: dot #valid options: dot, cosine, euclidean
 token_attention: !!bool false
 pre_ln: !!bool true
-classifier_dim: !!int 4096
+classifier_size: !!int 4096
 transformer_dropout: !!float 0.1
 classifier_dropout: !!float 0.2
 n_heads: !!int 4
@@ -81,6 +81,7 @@ embedding_pooling_types:
 save_embeddings: !!bool false
 embed_dtype: !!str float32
 sql: !!bool false
+read_scaler: !!int 100
 
 
 # TrainerArguments:

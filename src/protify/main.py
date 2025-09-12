@@ -51,7 +51,7 @@ def parse_arguments():
     parser.add_argument("--n_layers", type=int, default=1, help="Number of layers.")
     parser.add_argument("--pre_ln", action="store_false", default=True,
                         help="Disable pre-layernorm (default: enabled). Use --pre_ln to toggle off.")
-    parser.add_argument("--classifier_dim", type=int, default=4096, help="Feed-forward dimension.")
+    parser.add_argument("--classifier_size", type=int, default=4096, help="Feed-forward dimension.")
     parser.add_argument("--transformer_dropout", type=float, default=0.1, help="Dropout rate for the transformer layers.")
     parser.add_argument("--classifier_dropout", type=float, default=0.2, help="Dropout rate for the classifier.")
     parser.add_argument("--n_heads", type=int, default=4, help="Number of heads in multi-head attention.")

@@ -15,7 +15,7 @@ class TransformerProbeConfig(PretrainedConfig):
             self,
             input_dim: int = 768,
             hidden_size: int = 512,
-            classifier_dim: int = 4096,
+            classifier_size: int = 4096,
             transformer_dropout: float = 0.1,
             classifier_dropout: float = 0.2,
             num_labels: int = 2,
@@ -31,7 +31,7 @@ class TransformerProbeConfig(PretrainedConfig):
         super().__init__(**kwargs)
         self.input_dim = input_dim
         self.hidden_size = hidden_size
-        self.classifier_dim = classifier_dim
+        self.classifier_size = classifier_size
         self.transformer_dropout = transformer_dropout
         self.classifier_dropout = classifier_dropout
         self.task_type = task_type
@@ -76,10 +76,10 @@ class TransformerForSequenceClassification(PreTrainedModel):
         proj_dim = intermediate_correction_fn(expansion_ratio=2, hidden_size=config.num_labels)
         self.classifier = nn.Sequential(
             nn.LayerNorm(classifier_input_dim),
-            nn.Linear(classifier_input_dim, config.classifier_dim),
+            nn.Linear(classifier_input_dim, config.classifier_size),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
-            nn.Linear(config.classifier_dim, proj_dim),
+            nn.Linear(config.classifier_size, proj_dim),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
             nn.Linear(proj_dim, config.num_labels)
@@ -143,10 +143,10 @@ class TransformerForTokenClassification(PreTrainedModel):
         proj_dim = intermediate_correction_fn(expansion_ratio=2, hidden_size=config.num_labels)
         self.classifier = nn.Sequential(
             nn.LayerNorm(config.hidden_size),
-            nn.Linear(config.hidden_size, config.classifier_dim),
+            nn.Linear(config.hidden_size, config.classifier_size),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
-            nn.Linear(config.classifier_dim, proj_dim),
+            nn.Linear(config.classifier_size, proj_dim),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
             nn.Linear(proj_dim, proj_dim),

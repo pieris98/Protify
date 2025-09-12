@@ -93,15 +93,10 @@ class TransformerForSequenceClassification(PreTrainedModel):
             labels: Optional[torch.Tensor] = None,
             output_attentions: Optional[bool] = False,
     ) -> SequenceClassifierOutput:
-        print(f"Embeddings shape: {embeddings.shape}")
         x = self.input_layer(embeddings)
-        print(f"Input layer shape: {x.shape}")
         x = self.transformer(x, attention_mask)
-        print(f"Transformer shape: {x.shape}")
         x = self.pooler(x, attention_mask)
-        print(f"Pooler shape: {x.shape}")
         logits = self.classifier(x)
-        print(f"Classifier shape: {logits.shape}")
         loss = None
         if labels is not None:
             if self.task_type == 'regression':

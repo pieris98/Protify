@@ -113,7 +113,7 @@ class DataMixin:
         hist, _ = np.histogram(arr, bins=10, range=(0.0, 1.0))
         cond4 = int((hist > 0).sum()) >= 7
         sigmoid_regression_status = cond1 and cond2 and cond3 and cond4
-        print(f'Sigmoid regression status: {sigmoid_regression_status}')
+        print(f'Sigmoid regression status: {sigmoid_regression_status}, cond1: {cond1}, cond2: {cond2}, cond3: {cond3}, cond4: {cond4}')
         return sigmoid_regression_status
 
     def _select_from_sql(self, c, seq, cast_to_torch=True):

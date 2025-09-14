@@ -168,7 +168,6 @@ class TransformerForTokenClassification(PreTrainedModel):
         loss = None
         if labels is not None:
             print(f'Logits: {logits.shape}, Labels: {labels.shape}')
-            return 0.0
             if self.task_type == 'regression':
                 loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
             elif self.task_type == 'sigmoid_regression':

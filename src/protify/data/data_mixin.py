@@ -117,7 +117,9 @@ class DataMixin:
         # Histogram coverage: at least 7 of 10 bins non-empty
         hist, _ = np.histogram(arr, bins=10, range=(0.0, 1.0))
         non_empty = int((hist > 0).sum())
-        return non_empty >= 7
+        sigmoid_regression_status = non_empty >= 7
+        print(f'Sigmoid regression status: {sigmoid_regression_status}')
+        return sigmoid_regression_status
 
     def _select_from_sql(self, c, seq, cast_to_torch=True):
         c.execute("SELECT embedding FROM embeddings WHERE sequence = ?", (seq,))

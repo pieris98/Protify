@@ -130,7 +130,8 @@ class TrainerMixin:
             probe: Optional[bool] = True,
         ):
         task_type = self.trainer_args.task_type
-        compute_metrics = get_compute_metrics(task_type)
+        tokenwise = self.probe_args.tokenwise
+        compute_metrics = get_compute_metrics(task_type, tokenwise=tokenwise)
         self.trainer_args.train_data_size = len(train_dataset)
         hf_trainer_args = self.trainer_args(probe=probe)
         ### TODO add options for optimizers and schedulers

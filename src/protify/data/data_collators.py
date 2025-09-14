@@ -87,7 +87,7 @@ class StringLabelsCollator:
             # For sequence-level labels, just stack them
             batch_encoding['labels'] = torch.stack([torch.tensor(ex[1]) for ex in batch])
 
-        if self.task_type == 'multilabel' or self.task_type == 'regression':
+        if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
             batch_encoding['labels'] = batch_encoding['labels'].float()
         else:
             batch_encoding['labels'] = batch_encoding['labels'].long()
@@ -132,7 +132,7 @@ class EmbedsLabelsCollator:
 
             labels = torch.stack(padded_labels)
 
-            if self.task_type == 'multilabel' or self.task_type == 'regression':
+            if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
                 labels = labels.float()
             else:
                 labels = labels.long()
@@ -146,7 +146,7 @@ class EmbedsLabelsCollator:
             embeds = torch.stack([ex[0] for ex in batch])
             labels = torch.stack([ex[1] for ex in batch])
 
-            if self.task_type == 'multilabel' or self.task_type == 'regression':
+            if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
                 labels = labels.float()
             else:
                 labels = labels.long()

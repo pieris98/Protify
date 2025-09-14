@@ -98,6 +98,27 @@ class DataMixin:
             label_type = 'regression'
         return label_type
 
+    def _is_sigmoid_regression(self, labels) -> bool:
+        """Heuristic: labels within [0, 1] and cover the range approximately.
+        Uses 10-bin histogram coverage and span threshold.
+        """
+        try:
+            arr = np.array(labels, dtype=float).flatten()
+        except Exception:
+            return False
+        if arr.size == 0 or np.isnan(arr).any():
+            return False
+        min_val, max_val = float(arr.min()), float(arr.max())
+        if min_val < 0.0 - 1e-6 or max_val > 1.0 + 1e-6:
+            return False
+        # Require substantial span across [0,1]
+        if (max_val - min_val) < 0.8:
+            return False
+        # Histogram coverage: at least 7 of 10 bins non-empty
+        hist, _ = np.histogram(arr, bins=10, range=(0.0, 1.0))
+        non_empty = int((hist > 0).sum())
+        return non_empty >= 7
+
     def _select_from_sql(self, c, seq, cast_to_torch=True):
         c.execute("SELECT embedding FROM embeddings WHERE sequence = ?", (seq,))
         embedding = np.frombuffer(c.fetchone()[0], dtype=np.float32).reshape(1, -1)
@@ -272,6 +293,13 @@ class DataMixin:
                 num_labels = len(unique_tags)
             else:
                 if label_type == 'regression':
+                    # Detect sigmoid_regression (values in [0,1] covering the range)
+                    if self._is_sigmoid_regression(train_set['labels']):
+                        label_type = 'sigmoid_regression'
+                        num_labels = 1
+                    else:
+                        num_labels = 1
+                elif label_type == 'sigmoid_regression':
                     num_labels = 1
                 else: # if classification, get the total number of leabels
                     try:

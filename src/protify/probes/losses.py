@@ -5,16 +5,20 @@ from typing import Optional
 from utils import print_message
 
 
-def get_loss_fct(task_type):
+def get_loss_fct(task_type, tokenwise: bool = False):
     """
     Returns loss function based on task type
     """
-    if task_type == 'singlelabel' or task_type == 'tokenwise':
+    if task_type == 'singlelabel':
         loss_fct = nn.CrossEntropyLoss()
     elif task_type == 'multilabel':
         loss_fct = nn.BCEWithLogitsLoss()
-    elif task_type == 'regression':
+    elif tokenwise and not task_type == 'regression':
+        loss_fct = nn.CrossEntropyLoss()
+    elif task_type == 'regression' and not tokenwise:
         loss_fct = nn.MSELoss()
+    elif task_type == 'sigmoid_regression':
+        loss_fct = SoftBCELoss()
     else:
         print_message(f'Specified wrong classification type {task_type}')
     return loss_fct
@@ -148,11 +152,12 @@ class SoftBCELoss(nn.Module):
         else:
             soft_targets = y_true
 
+        # PyTorch BCE expects probabilities (after sigmoid) and does not
+        # support pos_weight. We ignore pos_weight here on purpose.
         loss = F.binary_cross_entropy(
             y_pred,
             soft_targets,
-            self.weight,
-            pos_weight=self.pos_weight,
+            weight=self.weight,
             reduction="none",
         )
 

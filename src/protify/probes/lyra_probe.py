@@ -288,9 +288,13 @@ class LyraForSequenceClassification(PreTrainedModel):
         x = self.lyra(embeddings)
         x = self.pooler(x, attention_mask)
         logits = self.classifier(x)
+        if self.task_type == 'sigmoid_regression':
+            logits = logits.sigmoid()
         loss = None
         if labels is not None:
             if self.task_type == 'regression':
+                loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
+            elif self.task_type == 'sigmoid_regression':
                 loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
             elif self.task_type == 'multilabel':
                 loss = self.loss_fct(logits, labels.float())

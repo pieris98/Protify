@@ -424,7 +424,10 @@ def get_compute_metrics(task_type: str, tokenwise: bool = False):
         compute_metrics = compute_single_label_classification_metrics
     elif task_type == 'multilabel':
         compute_metrics = compute_multi_label_classification_metrics
-    elif if not task_type == 'regression' and tokenwise:
+    elif task_type == 'sigmoid_regression':
+        # Treat sigmoid_regression like regression for metrics
+        compute_metrics = compute_tokenwise_regression_metrics if tokenwise else compute_regression_metrics
+    elif not task_type == 'regression' and tokenwise:
         compute_metrics = compute_tokenwise_classification_metrics
     elif task_type == 'regression' and not tokenwise:
         compute_metrics = compute_regression_metrics

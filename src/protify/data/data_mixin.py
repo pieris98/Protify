@@ -309,6 +309,9 @@ class DataMixin:
                         num_labels = len(full_list)
             datasets[data_name] = (train_set, valid_set, test_set, num_labels, label_type, ppi)
 
+        print(f'Label type: {label_type}')
+        print(f'Number of labels: {num_labels}')
+
         all_seqs = list(all_seqs)
         all_seqs = sorted(all_seqs, key=len, reverse=True) # longest first
         return datasets, all_seqs

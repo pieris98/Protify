@@ -108,7 +108,7 @@ class DataMixin:
         min_val, max_val = float(arr.min()), float(arr.max())
         cond2 = min_val < 0.0 - 1e-6 or max_val > 1.0 + 1e-6
         # Require substantial span across [0,1]
-        cond3 = (max_val - min_val) < 0.8:
+        cond3 = (max_val - min_val) < 0.8
         # Histogram coverage: at least 7 of 10 bins non-empty
         hist, _ = np.histogram(arr, bins=10, range=(0.0, 1.0))
         cond4 = int((hist > 0).sum()) >= 7

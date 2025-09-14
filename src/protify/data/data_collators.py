@@ -110,6 +110,7 @@ class EmbedsLabelsCollator:
             embeds, attention_mask = _pad_matrix_embeds(embeds, max_length)
             
             # Pad labels
+            print('labels')
             if self.task_type == 'tokenwise':
                 padded_labels = []
                 for label in labels:
@@ -125,16 +126,14 @@ class EmbedsLabelsCollator:
                     else:
                         padded_label = label[:max_length]
                     padded_labels.append(padded_label)
+                    print(padded_label.shape)
             else:
                 padded_labels = labels
             
             print('embeds')
             for embed in embeds:
                 print(embed.shape)
-
-            print('padded_labels')
-            for label in padded_labels:
-                print(label.shape)
+                
             labels = torch.stack(padded_labels)
 
             if self.task_type == 'multilabel':

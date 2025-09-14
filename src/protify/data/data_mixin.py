@@ -105,17 +105,20 @@ class DataMixin:
         arr = []
         for label in labels:
             arr.extend(label)
-        arr = np.array(arr, dtype=float).flatten()
-        cond1 = arr.size == 0 or np.isnan(arr).any()
+        arr = np.array(arr, dtype=float).flatten()        
+
         min_val, max_val = float(arr.min()), float(arr.max())
-        cond2 = min_val < 0.0 - 1e-6 or max_val > 1.0 + 1e-6
+        cond1 = min_val > 0.0 - 1e-6 and max_val < 1.0 + 1e-6
+
         # Require substantial span across [0,1]
-        cond3 = (max_val - min_val) < 0.8
+        cond2 = (max_val - min_val) > 0.75
+
         # Histogram coverage: at least 7 of 10 bins non-empty
         hist, _ = np.histogram(arr, bins=10, range=(0.0, 1.0))
-        cond4 = int((hist > 0).sum()) >= 7
-        sigmoid_regression_status = cond1 and cond2 and cond3 and cond4
-        print(f'Sigmoid regression status: {sigmoid_regression_status}, cond1: {cond1}, cond2: {cond2}, cond3: {cond3}, cond4: {cond4}')
+        cond3 = int((hist > 0).sum()) >= 7
+
+        sigmoid_regression_status = cond1 and cond2 and cond3
+        print(f'Sigmoid regression status: {sigmoid_regression_status}, cond1: {cond1}, cond2: {cond2}, cond3: {cond3}')
         return sigmoid_regression_status
 
     def _select_from_sql(self, c, seq, cast_to_torch=True):

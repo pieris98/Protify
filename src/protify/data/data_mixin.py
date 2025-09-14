@@ -102,22 +102,17 @@ class DataMixin:
         """Heuristic: labels within [0, 1] and cover the range approximately.
         Uses 10-bin histogram coverage and span threshold.
         """
-        try:
-            arr = np.array(labels, dtype=float).flatten()
-        except Exception:
-            return False
-        if arr.size == 0 or np.isnan(arr).any():
-            return False
+
+        arr = np.array(labels, dtype=float).flatten()
+        cond1 = arr.size == 0 or np.isnan(arr).any()
         min_val, max_val = float(arr.min()), float(arr.max())
-        if min_val < 0.0 - 1e-6 or max_val > 1.0 + 1e-6:
-            return False
+        cond2 = min_val < 0.0 - 1e-6 or max_val > 1.0 + 1e-6
         # Require substantial span across [0,1]
-        if (max_val - min_val) < 0.8:
-            return False
+        cond3 = (max_val - min_val) < 0.8:
         # Histogram coverage: at least 7 of 10 bins non-empty
         hist, _ = np.histogram(arr, bins=10, range=(0.0, 1.0))
-        non_empty = int((hist > 0).sum())
-        sigmoid_regression_status = non_empty >= 7
+        cond4 = int((hist > 0).sum()) >= 7
+        sigmoid_regression_status = cond1 and cond2 and cond3 and cond4
         print(f'Sigmoid regression status: {sigmoid_regression_status}')
         return sigmoid_regression_status
 

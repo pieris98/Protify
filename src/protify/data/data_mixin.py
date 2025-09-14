@@ -298,10 +298,6 @@ class DataMixin:
                     # Detect sigmoid_regression (values in [0,1] covering the range)
                     if self._is_sigmoid_regression(train_set['labels']):
                         label_type = 'sigmoid_regression'
-                        num_labels = 1
-                    else:
-                        num_labels = 1
-                elif label_type == 'sigmoid_regression':
                     num_labels = 1
                 else: # if classification, get the total number of leabels
                     try:

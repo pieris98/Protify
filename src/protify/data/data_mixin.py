@@ -102,8 +102,10 @@ class DataMixin:
         """Heuristic: labels within [0, 1] and cover the range approximately.
         Uses 10-bin histogram coverage and span threshold.
         """
-
-        arr = np.array(labels, dtype=float).flatten()
+        arr = []
+        for label in labels:
+            arr.extend(label)
+        arr = np.array(arr, dtype=float).flatten()
         cond1 = arr.size == 0 or np.isnan(arr).any()
         min_val, max_val = float(arr.min()), float(arr.max())
         cond2 = min_val < 0.0 - 1e-6 or max_val > 1.0 + 1e-6
@@ -291,7 +293,7 @@ class DataMixin:
             else:
                 if label_type == 'regression':
                     # Detect sigmoid_regression (values in [0,1] covering the range)
-                    if self._is_sigmoid_regression(train_set['labels']):
+                    if self._is_sigmoid_regression(list(train_set['labels'])):
                         label_type = 'sigmoid_regression'
                     num_labels = 1
                 else: # if classification, get the total number of leabels

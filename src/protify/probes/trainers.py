@@ -200,6 +200,7 @@ class TrainerMixin:
         read_scaler = self.trainer_args.read_scaler
         input_dim = self.probe_args.input_dim
         task_type = self.probe_args.task_type
+        print(f'task_type: {task_type}')
         full = self.embedding_args.matrix_embed
         db_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{full}.db')
 

@@ -103,9 +103,6 @@ class EmbedsLabelsCollator:
         if self.full:
             embeds = [ex[0] for ex in batch]
             labels = [ex[1] for ex in batch]
-
-            print(embeds[0].shape)
-            print(labels[0].shape)
             
             # Find max sequence length for padding
             max_length = max(embed.size(0) for embed in embeds)
@@ -131,6 +128,13 @@ class EmbedsLabelsCollator:
             else:
                 padded_labels = labels
             
+            print('embeds')
+            for embed in embeds:
+                print(embed.shape)
+
+            print('padded_labels')
+            for label in padded_labels:
+                print(label.shape)
             labels = torch.stack(padded_labels)
 
             if self.task_type == 'multilabel':

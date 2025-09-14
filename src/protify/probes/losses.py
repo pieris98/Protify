@@ -79,17 +79,31 @@ class SoftBCEWithLogitsLoss(nn.Module):
         else:
             soft_targets = y_true
 
-        loss = F.binary_cross_entropy_with_logits(
-            y_pred,
-            soft_targets,
-            self.weight,
-            pos_weight=self.pos_weight,
-            reduction="none",
-        )
-
+        # If we have an ignore_index, exclude ignored targets BEFORE computing BCE
         if self.ignore_index is not None:
             not_ignored_mask = y_true != self.ignore_index
-            loss *= not_ignored_mask.type_as(loss)
+            if not torch.any(not_ignored_mask):
+                return torch.zeros((), device=y_pred.device, dtype=y_pred.dtype)
+
+            y_pred = y_pred[not_ignored_mask]
+            soft_targets = soft_targets[not_ignored_mask]
+            weight = self.weight[not_ignored_mask] if self.weight is not None else None
+            pos_weight = self.pos_weight[not_ignored_mask] if self.pos_weight is not None else None
+            loss = F.binary_cross_entropy_with_logits(
+                y_pred,
+                soft_targets,
+                weight,
+                pos_weight=pos_weight,
+                reduction="none",
+            )
+        else:
+            loss = F.binary_cross_entropy_with_logits(
+                y_pred,
+                soft_targets,
+                self.weight,
+                pos_weight=self.pos_weight,
+                reduction="none",
+            )
 
         if self.reduction == "mean":
             loss = loss.mean()
@@ -153,18 +167,33 @@ class SoftBCELoss(nn.Module):
         else:
             soft_targets = y_true
 
-        # PyTorch BCE expects probabilities (after sigmoid) and does not
-        # support pos_weight. We ignore pos_weight here on purpose.
-        loss = F.binary_cross_entropy(
-            y_pred,
-            soft_targets,
-            weight=self.weight,
-            reduction="none",
-        )
-
+        # If we have an ignore_index, exclude ignored targets BEFORE computing BCE
         if self.ignore_index is not None:
             not_ignored_mask = y_true != self.ignore_index
-            loss *= not_ignored_mask.type_as(loss)
+            if not torch.any(not_ignored_mask):
+                return torch.zeros((), device=y_pred.device, dtype=y_pred.dtype)
+
+            y_pred = y_pred[not_ignored_mask]
+            soft_targets = soft_targets[not_ignored_mask]
+            weight = self.weight[not_ignored_mask] if self.weight is not None else None
+
+            # PyTorch BCE expects probabilities (after sigmoid) and does not
+            # support pos_weight. We ignore pos_weight here on purpose.
+            loss = F.binary_cross_entropy(
+                y_pred,
+                soft_targets,
+                weight=weight,
+                reduction="none",
+            )
+        else:
+            # PyTorch BCE expects probabilities (after sigmoid) and does not
+            # support pos_weight. We ignore pos_weight here on purpose.
+            loss = F.binary_cross_entropy(
+                y_pred,
+                soft_targets,
+                weight=self.weight,
+                reduction="none",
+            )
 
         if self.reduction == "mean":
             loss = loss.mean()

@@ -87,7 +87,7 @@ class StringLabelsCollator:
             # For sequence-level labels, just stack them
             batch_encoding['labels'] = torch.stack([torch.tensor(ex[1]) for ex in batch])
 
-        if self.task_type == 'multilabel':
+        if self.task_type == 'multilabel' or self.task_type == 'regression':
             batch_encoding['labels'] = batch_encoding['labels'].float()
         else:
             batch_encoding['labels'] = batch_encoding['labels'].long()
@@ -112,7 +112,6 @@ class EmbedsLabelsCollator:
             embeds, attention_mask = _pad_matrix_embeds(embeds, max_length)
             
             # Pad labels
-            print('labels')
             if self.tokenwise:
                 padded_labels = []
                 for label in labels:
@@ -128,17 +127,12 @@ class EmbedsLabelsCollator:
                     else:
                         padded_label = label[:max_length]
                     padded_labels.append(padded_label)
-                    print(padded_label.shape)
             else:
                 padded_labels = labels
-            
-            print('embeds')
-            for embed in embeds:
-                print(embed.shape)
 
             labels = torch.stack(padded_labels)
 
-            if self.task_type == 'multilabel':
+            if self.task_type == 'multilabel' or self.task_type == 'regression':
                 labels = labels.float()
             else:
                 labels = labels.long()
@@ -152,7 +146,7 @@ class EmbedsLabelsCollator:
             embeds = torch.stack([ex[0] for ex in batch])
             labels = torch.stack([ex[1] for ex in batch])
 
-            if self.task_type == 'multilabel':
+            if self.task_type == 'multilabel' or self.task_type == 'regression':
                 labels = labels.float()
             else:
                 labels = labels.long()

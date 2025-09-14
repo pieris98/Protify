@@ -170,6 +170,7 @@ class TransformerForTokenClassification(PreTrainedModel):
             if self.task_type == 'regression':
                 loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
             elif self.task_type == 'sigmoid_regression':
+                print(f'Logits: {logits.shape}, Labels: {labels.shape}')
                 loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
             elif self.task_type == 'multilabel':
                 loss = self.loss_fct(logits, labels.float())

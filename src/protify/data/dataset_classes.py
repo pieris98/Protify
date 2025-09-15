@@ -25,7 +25,7 @@ class PairEmbedsLabelsDatasetFromDisk(TorchDataset):
             task_type='regression',
             **kwargs
         ):
-        self.seqs_a, self.seqs_b, self.labels = hf_dataset[col_a], hf_dataset[col_b], hf_dataset[label_col]
+        self.seqs_a, self.seqs_b, self.labels = list(hf_dataset[col_a]), list(hf_dataset[col_b]), list(hf_dataset[label_col])
         self.db_file = db_path
         self.batch_size = batch_size
         self.input_dim = input_dim
@@ -120,9 +120,9 @@ class PairEmbedsLabelsDataset(TorchDataset):
             task_type='regression',
             **kwargs
         ):
-        self.seqs_a = hf_dataset[col_a]
-        self.seqs_b = hf_dataset[col_b]
-        self.labels = hf_dataset[label_col]
+        self.seqs_a = list(hf_dataset[col_a])
+        self.seqs_b = list(hf_dataset[col_b])
+        self.labels = list(hf_dataset[label_col])
         self.input_dim = input_dim // 2 if not full else input_dim # already scaled if ppi
         self.task_type = task_type
         self.full = full

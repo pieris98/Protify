@@ -2,7 +2,14 @@ import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 from typing import Optional
-from utils import print_message
+
+try:
+    from utils import print_message
+except ImportError:
+    try:
+        from protify.utils import print_message
+    except ImportError:
+        from utils import print_message
 
 
 def get_loss_fct(task_type, tokenwise: bool = False):

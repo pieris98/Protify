@@ -4,6 +4,7 @@ from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import SequenceClassifierOutput, TokenClassifierOutput
 from typing import List, Optional
 
+
 try:
     from ..pooler import Pooler
 except ImportError:
@@ -11,7 +12,6 @@ except ImportError:
         from protify.pooler import Pooler
     except ImportError:
         from pooler import Pooler
-
 try:
     from ..model_components.mlp import intermediate_correction_fn
 except ImportError:
@@ -19,7 +19,6 @@ except ImportError:
         from protify.model_components.mlp import intermediate_correction_fn
     except ImportError:
         from model_components.mlp import intermediate_correction_fn
-
 try:
     from ..model_components.transformer import Transformer, TokenFormer
 except ImportError:

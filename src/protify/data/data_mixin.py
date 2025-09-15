@@ -104,7 +104,10 @@ class DataMixin:
         """
         arr = []
         for label in labels:
-            arr.extend(label)
+            try:
+                arr.extend(label)
+            except:
+                arr.append(label)
         arr = np.array(arr, dtype=float).flatten()        
 
         min_val, max_val = float(arr.min()), float(arr.max())
@@ -247,21 +250,20 @@ class DataMixin:
                     test_set = test_set.map(lambda x: {'seqs': x['seqs'][:max_length]})
 
             # sanitize
-            # disabling sanitization for now
             if ppi:
-                #train_set = train_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
-                #                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
-                #valid_set = valid_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
-                #                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
-                #test_set = test_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
-                #                                    'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
+                train_set = train_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
+                                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
+                valid_set = valid_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
+                                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
+                test_set = test_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
+                                                    'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
                 all_seqs.update(list(train_set['SeqA']) + list(train_set['SeqB']))
                 all_seqs.update(list(valid_set['SeqA']) + list(valid_set['SeqB']))
                 all_seqs.update(list(test_set['SeqA']) + list(test_set['SeqB']))
             else:
-                #train_set = train_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
-                #valid_set = valid_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
-                #test_set = test_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
+                train_set = train_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
+                valid_set = valid_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
+                test_set = test_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
                 all_seqs.update(list(train_set['seqs']))
                 all_seqs.update(list(valid_set['seqs']))
                 all_seqs.update(list(test_set['seqs']))

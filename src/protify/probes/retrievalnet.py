@@ -4,8 +4,21 @@ from typing import Optional
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import SequenceClassifierOutput
 
-from model_components.attention import AttentionLogitsSequence, AttentionLogitsToken, Linear
-from model_components.transformer import TokenFormer, Transformer
+try:
+    from ..model_components.attention import AttentionLogitsSequence, AttentionLogitsToken, Linear
+except ImportError:
+    try:
+        from protify.model_components.attention import AttentionLogitsSequence, AttentionLogitsToken, Linear
+    except ImportError:
+        from model_components.attention import AttentionLogitsSequence, AttentionLogitsToken, Linear
+
+try:
+    from ..model_components.transformer import TokenFormer, Transformer
+except ImportError:
+    try:
+        from protify.model_components.transformer import TokenFormer, Transformer
+    except ImportError:
+        from model_components.transformer import TokenFormer, Transformer
 from .losses import get_loss_fct
 
 

@@ -5,8 +5,21 @@ from typing import Optional
 from einops import rearrange, repeat
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import SequenceClassifierOutput, TokenClassifierOutput
-from model_components.mlp import intermediate_correction_fn
-from pooler import Pooler
+try:
+    from ..model_components.mlp import intermediate_correction_fn
+except ImportError:
+    try:
+        from protify.model_components.mlp import intermediate_correction_fn
+    except ImportError:
+        from model_components.mlp import intermediate_correction_fn
+
+try:
+    from ..pooler import Pooler
+except ImportError:
+    try:
+        from protify.pooler import Pooler
+    except ImportError:
+        from pooler import Pooler
 from .losses import get_loss_fct
 
 

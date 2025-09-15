@@ -171,7 +171,7 @@ class EmbedsLabelsDatasetFromDisk(TorchDataset):
             task_type='singlelabel',
             **kwargs
         ): 
-        self.seqs, self.labels = hf_dataset[col_name], hf_dataset[label_col]
+        self.seqs, self.labels = list(hf_dataset[col_name]), list(hf_dataset[label_col])
         self.length = len(self.labels)
         self.max_length = len(max(self.seqs, key=len))
         print_message(f'Max length: {self.max_length}')
@@ -255,11 +255,11 @@ class EmbedsLabelsDatasetFromDisk(TorchDataset):
 
 class EmbedsLabelsDataset(TorchDataset):
     def __init__(self, hf_dataset, emb_dict, col_name='seqs', label_col='labels', task_type='singlelabel', full=False, **kwargs):
-        self.embeddings = self.get_embs(emb_dict, hf_dataset[col_name])
+        self.embeddings = self.get_embs(emb_dict, list(hf_dataset[col_name]))
         self.full = full
-        self.labels = hf_dataset[label_col]
+        self.labels = list(hf_dataset[label_col])
         self.task_type = task_type
-        self.max_length = len(max(hf_dataset[col_name], key=len))
+        self.max_length = len(max(list(hf_dataset[col_name]), key=len))
         print_message(f'Max length: {self.max_length}')
 
     def __len__(self):
@@ -286,8 +286,8 @@ class EmbedsLabelsDataset(TorchDataset):
 
 class StringLabelDataset(TorchDataset):    
     def __init__(self, hf_dataset, col_name='seqs', label_col='labels', **kwargs):
-        self.seqs = hf_dataset[col_name]
-        self.labels = hf_dataset[label_col]
+        self.seqs = list(hf_dataset[col_name])
+        self.labels = list(hf_dataset[label_col])
         self.lengths = [len(seq) for seq in self.seqs]
 
     def avg(self):
@@ -304,8 +304,8 @@ class StringLabelDataset(TorchDataset):
 
 class PairStringLabelDataset(TorchDataset):
     def __init__(self, hf_dataset, col_a='SeqA', col_b='SeqB', label_col='labels', train=True, **kwargs):
-        self.seqs_a, self.seqs_b = hf_dataset[col_a], hf_dataset[col_b]
-        self.labels = hf_dataset[label_col]
+        self.seqs_a, self.seqs_b = list(hf_dataset[col_a]), list(hf_dataset[col_b])
+        self.labels = list(hf_dataset[label_col])
         self.train = train
 
     def avg(self):

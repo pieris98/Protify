@@ -128,7 +128,7 @@ class PairEmbedsLabelsDataset(TorchDataset):
         self.full = full
 
         # Combine seqs_a and seqs_b to find all unique sequences needed
-        needed_seqs = set(hf_dataset[col_a] + hf_dataset[col_b])
+        needed_seqs = set(list(hf_dataset[col_a]) + list(hf_dataset[col_b]))
         # Filter emb_dict to keep only the necessary embeddings
         self.emb_dict = {seq: emb_dict[seq] for seq in needed_seqs if seq in emb_dict}
         # Check for any missing embeddings

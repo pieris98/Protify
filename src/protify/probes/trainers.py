@@ -130,7 +130,8 @@ class TrainerMixin:
             probe: Optional[bool] = True,
         ):
         task_type = self.trainer_args.task_type
-        compute_metrics = get_compute_metrics(task_type)
+        tokenwise = self.probe_args.tokenwise
+        compute_metrics = get_compute_metrics(task_type, tokenwise=tokenwise)
         self.trainer_args.train_data_size = len(train_dataset)
         hf_trainer_args = self.trainer_args(probe=probe)
         ### TODO add options for optimizers and schedulers
@@ -200,6 +201,8 @@ class TrainerMixin:
         read_scaler = self.trainer_args.read_scaler
         input_dim = self.probe_args.input_dim
         task_type = self.probe_args.task_type
+        tokenwise = self.probe_args.tokenwise
+        print(f'task_type: {task_type}')
         full = self.embedding_args.matrix_embed
         db_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{full}.db')
 
@@ -228,7 +231,7 @@ class TrainerMixin:
         hf_dataset, col_a, col_b, label_col, input_dim, task_type, db_path, emb_dict, batch_size, read_scaler, full, train
         """
 
-        data_collator = CollatorClass(tokenizer=tokenizer, full=full, task_type=task_type)
+        data_collator = CollatorClass(tokenizer=tokenizer, full=full, task_type=task_type, tokenwise=tokenwise)
         train_dataset = DatasetClass(
             hf_dataset=train_dataset,
             input_dim=input_dim,
@@ -287,6 +290,7 @@ class TrainerMixin:
             log_id=None,
         ):
         task_type = self.probe_args.task_type
+        tokenwise = self.probe_args.tokenwise
 
         if ppi:
             DatasetClass = PairStringLabelDataset
@@ -295,7 +299,7 @@ class TrainerMixin:
             DatasetClass = StringLabelDataset
             CollatorClass = StringLabelsCollator
 
-        data_collator = CollatorClass(tokenizer=tokenizer, task_type=task_type)
+        data_collator = CollatorClass(tokenizer=tokenizer, task_type=task_type, tokenwise=tokenwise)
 
         train_dataset = DatasetClass(hf_dataset=train_dataset, train=True)
         valid_dataset = DatasetClass(hf_dataset=valid_dataset, train=False)

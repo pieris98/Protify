@@ -97,10 +97,14 @@ class TransformerForSequenceClassification(PreTrainedModel):
         x = self.transformer(x, attention_mask)
         x = self.pooler(x, attention_mask)
         logits = self.classifier(x)
+        if self.task_type == 'sigmoid_regression':
+            logits = logits.sigmoid()
         loss = None
         if labels is not None:
             if self.task_type == 'regression':
-                loss = self.loss_fct(logits.flatten(), labels.view(-1).float())
+                loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
+            elif self.task_type == 'sigmoid_regression':
+                loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
             elif self.task_type == 'multilabel':
                 loss = self.loss_fct(logits, labels.float())
             else:
@@ -159,9 +163,20 @@ class TransformerForTokenClassification(PreTrainedModel):
         x = self.input_layer(embeddings)
         x = self.transformer(x, attention_mask)
         logits = self.classifier(x)
+        if self.task_type == 'sigmoid_regression':
+            logits = logits.sigmoid()
         loss = None
         if labels is not None:
-            loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            if self.task_type == 'regression':
+                loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
+            elif self.task_type == 'sigmoid_regression':
+                
+                loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
+            elif self.task_type == 'multilabel':
+                loss = self.loss_fct(logits, labels.float())
+            else:
+                loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1).long())
+
         return TokenClassifierOutput(
             loss=loss,
             logits=logits,

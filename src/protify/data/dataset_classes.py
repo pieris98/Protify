@@ -99,7 +99,7 @@ class PairEmbedsLabelsDatasetFromDisk(TorchDataset):
         if random.random() < 0.5:
             emb_a, emb_b = emb_b, emb_a
 
-        if self.task_type == 'multilabel' or self.task_type == 'regression':
+        if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
             label = torch.tensor(label, dtype=torch.float)
         else:
             label = torch.tensor(label, dtype=torch.long)
@@ -149,7 +149,7 @@ class PairEmbedsLabelsDataset(TorchDataset):
             emb_a, emb_b = emb_b, emb_a
 
         # Prepare the label
-        if self.task_type in ['multilabel', 'regression']:
+        if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
             label = torch.tensor(self.labels[idx], dtype=torch.float)
         else:
             label = torch.tensor(self.labels[idx], dtype=torch.long)
@@ -245,7 +245,7 @@ class EmbedsLabelsDatasetFromDisk(TorchDataset):
 
         self.index += 1
 
-        if self.task_type == 'multilabel' or self.task_type == 'regression':
+        if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
             label = torch.tensor(label, dtype=torch.float)
         else:
             label = torch.tensor(label, dtype=torch.long)
@@ -273,7 +273,7 @@ class EmbedsLabelsDataset(TorchDataset):
         return embeddings
 
     def __getitem__(self, idx):
-        if self.task_type == 'multilabel' or self.task_type == 'regression':
+        if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
             label = torch.tensor(self.labels[idx], dtype=torch.float)
         else:
             label = torch.tensor(self.labels[idx], dtype=torch.long)

@@ -43,6 +43,7 @@ supported_datasets = {
     'taxon_family': 'GleghornLab/taxonomy_family_0.4_clusters',
     'taxon_genus': 'GleghornLab/taxonomy_genus_0.4_clusters',
     'taxon_species': 'GleghornLab/taxonomy_species_0.4_clusters',
+    'plddt': 'GleghornLab/af2_plddt',
 }
 
 internal_datasets = {

@@ -40,9 +40,10 @@ class StringCollator:
 
 
 class StringLabelsCollator:
-    def __init__(self, tokenizer, task_type='tokenwise', **kwargs):
+    def __init__(self, tokenizer, task_type='regression', tokenwise=False, **kwargs):
         self.tokenizer = tokenizer
         self.task_type = task_type
+        self.tokenwise = tokenwise
 
     def __call__(self, batch: List[Tuple[str, Union[float, int]]]) -> Dict[str, torch.Tensor]:
         seqs = [ex[0] for ex in batch]
@@ -58,7 +59,7 @@ class StringLabelsCollator:
         )
         
         # Handle labels based on tokenwise flag
-        if self.task_type == 'tokenwise':
+        if self.tokenwise:
             # For token-wise labels, we need to pad to match the tokenized sequence length
             attention_mask = batch_encoding['attention_mask']
             lengths = [torch.sum(attention_mask[i]).item() for i in range(len(batch))]
@@ -86,7 +87,7 @@ class StringLabelsCollator:
             # For sequence-level labels, just stack them
             batch_encoding['labels'] = torch.stack([torch.tensor(ex[1]) for ex in batch])
 
-        if self.task_type == 'multilabel':
+        if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
             batch_encoding['labels'] = batch_encoding['labels'].float()
         else:
             batch_encoding['labels'] = batch_encoding['labels'].long()
@@ -95,9 +96,10 @@ class StringLabelsCollator:
 
 
 class EmbedsLabelsCollator:
-    def __init__(self, full=False, task_type='tokenwise', **kwargs):
+    def __init__(self, full=False, task_type='regression', tokenwise=False, **kwargs):
         self.full = full
         self.task_type = task_type
+        self.tokenwise = tokenwise
         
     def __call__(self, batch: List[Tuple[torch.Tensor, Union[float, int]]]) -> Dict[str, torch.Tensor]:
         if self.full:
@@ -110,7 +112,7 @@ class EmbedsLabelsCollator:
             embeds, attention_mask = _pad_matrix_embeds(embeds, max_length)
             
             # Pad labels
-            if self.task_type == 'tokenwise':
+            if self.tokenwise:
                 padded_labels = []
                 for label in labels:
                     if not isinstance(label, torch.Tensor):
@@ -127,10 +129,10 @@ class EmbedsLabelsCollator:
                     padded_labels.append(padded_label)
             else:
                 padded_labels = labels
-            
+
             labels = torch.stack(padded_labels)
 
-            if self.task_type == 'multilabel':
+            if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
                 labels = labels.float()
             else:
                 labels = labels.long()
@@ -144,7 +146,7 @@ class EmbedsLabelsCollator:
             embeds = torch.stack([ex[0] for ex in batch])
             labels = torch.stack([ex[1] for ex in batch])
 
-            if self.task_type == 'multilabel':
+            if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
                 labels = labels.float()
             else:
                 labels = labels.long()

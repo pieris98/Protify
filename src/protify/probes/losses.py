@@ -4,7 +4,7 @@ from torch import nn, Tensor
 from typing import Optional
 
 try:
-    from utils import print_message
+    from ..utils import print_message
 except ImportError:
     try:
         from protify.utils import print_message

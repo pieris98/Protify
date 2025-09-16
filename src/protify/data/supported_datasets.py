@@ -45,6 +45,7 @@ supported_datasets = {
     'taxon_species': 'GleghornLab/taxonomy_species_0.4_clusters',
     'plddt': 'GleghornLab/af2_plddt',
     'realness': 'GleghornLab/realness_dataset',
+    'diff_phylogeny': 'GleghornLab/diff_phylo',
 }
 
 internal_datasets = {

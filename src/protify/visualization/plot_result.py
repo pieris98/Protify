@@ -107,6 +107,7 @@ DATASET_NAMES = {
     'taxonomy_family': r'$taxonomy_{family}$',
     'taxonomy_genus': r'$taxonomy_{genus}$',
     'taxonomy_species': r'$taxonomy_{species}$',
+    'diff_phylogeny': r'$taxonomy_{different}$',
     
     # Alternative naming patterns (for backwards compatibility)
     'EC': 'EC',

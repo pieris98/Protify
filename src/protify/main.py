@@ -31,7 +31,7 @@ def parse_arguments():
 
     # ----------------- DataArguments ----------------- #
     parser.add_argument("--delimiter", default=",", help="Delimiter for data.")
-    parser.add_argument("--col_names", nargs="+", default=["seqs", "labels"], help="Column names.")
+    parser.add_argument("--col_names", nargs="+", default=["seqs", "labels"], help="Column names.") # DEPRECATED, found automatically now
     parser.add_argument("--max_length", type=int, default=128, help="Maximum sequence length.")
     parser.add_argument("--trim", action="store_true", default=False,
                         help="Whether to trim sequences (default: False). If False, sequences are removed from the dataset if they are longer than max length. If True, they are truncated to max length."
@@ -40,7 +40,7 @@ def parse_arguments():
     parser.add_argument("--data_dirs", nargs="+", default=[], help="List of local data directories.")
 
     # ----------------- BaseModelArguments ----------------- #
-    parser.add_argument("--model_names", nargs="+", default=["ESM2-8"], help="List of model names to use.")
+    parser.add_argument("--model_names", nargs="+", default=["ESM2-8"], help="List of model names to use. To use a custom model, use the format 'custom---<path_to_model>'.")
 
     # ----------------- ProbeArguments ----------------- #
     parser.add_argument("--probe_type", choices=["linear", "transformer", "retrievalnet", "lyra"], default="linear", help="Type of probe.")
@@ -51,7 +51,7 @@ def parse_arguments():
     parser.add_argument("--n_layers", type=int, default=1, help="Number of layers.")
     parser.add_argument("--pre_ln", action="store_false", default=True,
                         help="Disable pre-layernorm (default: enabled). Use --pre_ln to toggle off.")
-    parser.add_argument("--classifier_dim", type=int, default=4096, help="Feed-forward dimension.")
+    parser.add_argument("--classifier_size", type=int, default=4096, help="Feed-forward dimension.")
     parser.add_argument("--transformer_dropout", type=float, default=0.1, help="Dropout rate for the transformer layers.")
     parser.add_argument("--classifier_dropout", type=float, default=0.2, help="Dropout rate for the classifier.")
     parser.add_argument("--n_heads", type=int, default=4, help="Number of heads in multi-head attention.")
@@ -67,7 +67,7 @@ def parse_arguments():
     parser.add_argument("--sim_type", choices=["dot", "euclidean", "cosine"], default="dot", help="Cross-attention mechanism for token-parameter-attention")
     parser.add_argument("--token_attention", action="store_true", default=False, help="If true, use TokenFormer instead of Transformer blocks")
 
-    # ----------------- ScikitArguments ----------------- # # TODO add to GUI
+    # ----------------- ScikitArguments ----------------- #
     parser.add_argument("--scikit_n_iter", type=int, default=10, help="Number of iterations for scikit model.")
     parser.add_argument("--scikit_cv", type=int, default=3, help="Number of cross-validation folds for scikit model.")
     parser.add_argument("--scikit_random_state", type=int, default=None, help="Random state for scikit model (if None, uses global seed).")
@@ -156,8 +156,8 @@ if __name__ == "__main__":
 
     # Set global seed before doing anything else
     # If seed is None, set_global_seed will derive it from current time
-    from seed_utils import set_determinism
     if args.deterministic:
+        from seed_utils import set_determinism
         set_determinism()
 
 
@@ -406,15 +406,20 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             # get tokenizer
             tokenizer = get_tokenizer(model_name)
 
+            if 'custom' in model_name.lower():
+                clean_model_name = model_name.split('---')[-1].split('/')[-1]
+            else:
+                clean_model_name = model_name
+
             # get embedding size
             if self._sql:
                 # for sql, the embeddings will be gathered in real time during training
-                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.db')
+                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{clean_model_name}_{self._full}.db')
                 input_dim = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
                 emb_dict = None
             else:
                 # for pth, the embeddings are loaded entirely into RAM and accessed during training
-                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.pth')
+                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{clean_model_name}_{self._full}.pth')
                 emb_dict = torch_load(save_path)
                 input_dim = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
 
@@ -433,11 +438,11 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 self.probe_args.task_type = label_type
                 ### TODO we currently need both, settings should probably be consolidated
                 self.trainer_args.task_type = label_type
-                self.logger.info(f'Training probe for {data_name} with {model_name}')
+                self.logger.info(f'Training probe for {data_name} with {clean_model_name}')
                 ### TODO eventually add options for optimizers and schedulers
                 ### TODO here is probably where we can differentiate between the different training schemes
                 _ = self._run_nn_probe(
-                    model_name=model_name,
+                    model_name=clean_model_name,
                     data_name=data_name,
                     train_set=train_set,
                     valid_set=valid_set,

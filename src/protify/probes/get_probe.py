@@ -23,7 +23,7 @@ class ProbeArguments:
             sim_type: str = 'dot',
             token_attention: bool = False,
             ### Transformer Probe
-            classifier_dim: int = 4096,
+            classifier_size: int = 4096,
             transformer_dropout: float = 0.1,
             classifier_dropout: float = 0.2,
             n_heads: int = 4,
@@ -50,7 +50,7 @@ class ProbeArguments:
         self.token_attention = token_attention
         self.task_type = task_type
         self.pre_ln = pre_ln
-        self.classifier_dim = classifier_dim
+        self.classifier_size = classifier_size
         self.transformer_dropout = transformer_dropout
         self.classifier_dropout = classifier_dropout
         self.n_heads = n_heads

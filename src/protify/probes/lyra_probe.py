@@ -5,8 +5,21 @@ from typing import Optional
 from einops import rearrange, repeat
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import SequenceClassifierOutput, TokenClassifierOutput
-from model_components.mlp import intermediate_correction_fn
-from pooler import Pooler
+try:
+    from ..model_components.mlp import intermediate_correction_fn
+except ImportError:
+    try:
+        from protify.model_components.mlp import intermediate_correction_fn
+    except ImportError:
+        from model_components.mlp import intermediate_correction_fn
+
+try:
+    from ..pooler import Pooler
+except ImportError:
+    try:
+        from protify.pooler import Pooler
+    except ImportError:
+        from pooler import Pooler
 from .losses import get_loss_fct
 
 
@@ -268,12 +281,12 @@ class LyraForSequenceClassification(PreTrainedModel):
         )
 
         self.pooler = Pooler(config.pooling_types)
-        classifier_dim = intermediate_correction_fn(2.0, config.num_labels)
+        classifier_size = intermediate_correction_fn(2.0, config.num_labels)
         self.classifier = nn.Sequential(
             nn.LayerNorm(config.hidden_size),
-            nn.Linear(config.hidden_size, classifier_dim),
+            nn.Linear(config.hidden_size, classifier_size),
             nn.GELU(),
-            nn.Linear(classifier_dim, config.num_labels),
+            nn.Linear(classifier_size, config.num_labels),
         )
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels
@@ -288,9 +301,13 @@ class LyraForSequenceClassification(PreTrainedModel):
         x = self.lyra(embeddings)
         x = self.pooler(x, attention_mask)
         logits = self.classifier(x)
+        if self.task_type == 'sigmoid_regression':
+            logits = logits.sigmoid()
         loss = None
         if labels is not None:
             if self.task_type == 'regression':
+                loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
+            elif self.task_type == 'sigmoid_regression':
                 loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
             elif self.task_type == 'multilabel':
                 loss = self.loss_fct(logits, labels.float())
@@ -317,12 +334,12 @@ class LyraForTokenClassification(PreTrainedModel):
             n_layers=config.n_layers,
         )
         self.loss_fct = get_loss_fct(config.task_type)
-        classifier_dim = intermediate_correction_fn(2.0, config.num_labels)
+        classifier_size = intermediate_correction_fn(2.0, config.num_labels)
         self.classifier = nn.Sequential(
             nn.LayerNorm(config.hidden_size),
-            nn.Linear(config.hidden_size, classifier_dim),
+            nn.Linear(config.hidden_size, classifier_size),
             nn.GELU(),
-            nn.Linear(classifier_dim, config.num_labels),
+            nn.Linear(classifier_size, config.num_labels),
         )
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels

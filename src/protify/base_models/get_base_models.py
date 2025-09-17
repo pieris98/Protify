@@ -81,7 +81,11 @@ class BaseModelArguments:
 
 
 def get_base_model(model_name: str):
-    if 'random' in model_name.lower():
+    if 'custom' in model_name.lower():
+        model_path = model_name.split('---')[-1]
+        from .custom_model import build_custom_model
+        return build_custom_model(model_path)
+    elif 'random' in model_name.lower():
         from .random import build_random_model
         return build_random_model(model_name)
     elif 'esm2' in model_name.lower() or 'dsm' in model_name.lower():
@@ -111,6 +115,10 @@ def get_base_model(model_name: str):
     elif 'onehot' in model_name.lower():
         from .one_hot import build_one_hot_model
         return build_one_hot_model(model_name)
+    elif 'custom' in model_name.lower():
+        model_path = model_name.split('---')[-1]
+        from .custom_model import build_custom_model
+        return build_custom_model(model_path)
     else:
         raise ValueError(f"Model {model_name} not supported")
 
@@ -145,6 +153,10 @@ def get_base_model_for_training(model_name: str, tokenwise: bool = False, num_la
 
 
 def get_tokenizer(model_name: str):
+    if 'custom' in model_name.lower():
+        model_path = model_name.split('---')[-1]
+        from .custom_model import build_custom_tokenizer
+        return build_custom_tokenizer(model_path)
     if 'esm2' in model_name.lower() or 'random' in model_name.lower() or 'dsm' in model_name.lower():
         from .esm2 import get_esm2_tokenizer
         return get_esm2_tokenizer(model_name)

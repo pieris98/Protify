@@ -253,19 +253,25 @@ class Embedder:
         return embeddings_dict
 
     def __call__(self, model_name: str):
+        if 'custom' in model_name.lower():
+            clean_model_name = model_name.split('---')[-1].split('/')[-1]
+        else:
+            clean_model_name = model_name
+
         if self.download_embeddings:
-            self._download_embeddings(model_name)
+            self._download_embeddings(clean_model_name)
 
         if self.device == 'cpu':
             warnings.warn("Downloading embeddings is recommended for CPU usage - Embedding on CPU will be extremely slow!")
-        to_embed, save_path, embeddings_dict = self._read_embeddings_from_disk(model_name)
+        to_embed, save_path, embeddings_dict = self._read_embeddings_from_disk(clean_model_name)
         
         if len(to_embed) > 0:
-            print_message(f"Embedding {len(to_embed)} sequences with {model_name}")
-            model, tokenizer = get_base_model(model_name)
+            print_message(f"Embedding {len(to_embed)} sequences with {clean_model_name}")
+            model, tokenizer = get_base_model(model_name) # get base model takes raw model name
+
             return self._embed_sequences(to_embed, save_path, model, tokenizer, embeddings_dict)
         else:
-            print_message(f"No sequences to embed with {model_name}")
+            print_message(f"No sequences to embed with {clean_model_name}")
             return None
 
 

@@ -25,7 +25,7 @@ class PairEmbedsLabelsDatasetFromDisk(TorchDataset):
             task_type='regression',
             **kwargs
         ):
-        self.seqs_a, self.seqs_b, self.labels = hf_dataset[col_a], hf_dataset[col_b], hf_dataset[label_col]
+        self.seqs_a, self.seqs_b, self.labels = list(hf_dataset[col_a]), list(hf_dataset[col_b]), list(hf_dataset[label_col])
         self.db_file = db_path
         self.batch_size = batch_size
         self.input_dim = input_dim
@@ -99,7 +99,7 @@ class PairEmbedsLabelsDatasetFromDisk(TorchDataset):
         if random.random() < 0.5:
             emb_a, emb_b = emb_b, emb_a
 
-        if self.task_type == 'multilabel' or self.task_type == 'regression':
+        if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
             label = torch.tensor(label, dtype=torch.float)
         else:
             label = torch.tensor(label, dtype=torch.long)
@@ -120,15 +120,15 @@ class PairEmbedsLabelsDataset(TorchDataset):
             task_type='regression',
             **kwargs
         ):
-        self.seqs_a = hf_dataset[col_a]
-        self.seqs_b = hf_dataset[col_b]
-        self.labels = hf_dataset[label_col]
+        self.seqs_a = list(hf_dataset[col_a])
+        self.seqs_b = list(hf_dataset[col_b])
+        self.labels = list(hf_dataset[label_col])
         self.input_dim = input_dim // 2 if not full else input_dim # already scaled if ppi
         self.task_type = task_type
         self.full = full
 
         # Combine seqs_a and seqs_b to find all unique sequences needed
-        needed_seqs = set(hf_dataset[col_a] + hf_dataset[col_b])
+        needed_seqs = set(list(hf_dataset[col_a]) + list(hf_dataset[col_b]))
         # Filter emb_dict to keep only the necessary embeddings
         self.emb_dict = {seq: emb_dict[seq] for seq in needed_seqs if seq in emb_dict}
         # Check for any missing embeddings
@@ -149,7 +149,7 @@ class PairEmbedsLabelsDataset(TorchDataset):
             emb_a, emb_b = emb_b, emb_a
 
         # Prepare the label
-        if self.task_type in ['multilabel', 'regression']:
+        if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
             label = torch.tensor(self.labels[idx], dtype=torch.float)
         else:
             label = torch.tensor(self.labels[idx], dtype=torch.long)
@@ -171,7 +171,7 @@ class EmbedsLabelsDatasetFromDisk(TorchDataset):
             task_type='singlelabel',
             **kwargs
         ): 
-        self.seqs, self.labels = hf_dataset[col_name], hf_dataset[label_col]
+        self.seqs, self.labels = list(hf_dataset[col_name]), list(hf_dataset[label_col])
         self.length = len(self.labels)
         self.max_length = len(max(self.seqs, key=len))
         print_message(f'Max length: {self.max_length}')
@@ -245,7 +245,7 @@ class EmbedsLabelsDatasetFromDisk(TorchDataset):
 
         self.index += 1
 
-        if self.task_type == 'multilabel' or self.task_type == 'regression':
+        if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
             label = torch.tensor(label, dtype=torch.float)
         else:
             label = torch.tensor(label, dtype=torch.long)
@@ -255,11 +255,11 @@ class EmbedsLabelsDatasetFromDisk(TorchDataset):
 
 class EmbedsLabelsDataset(TorchDataset):
     def __init__(self, hf_dataset, emb_dict, col_name='seqs', label_col='labels', task_type='singlelabel', full=False, **kwargs):
-        self.embeddings = self.get_embs(emb_dict, hf_dataset[col_name])
+        self.embeddings = self.get_embs(emb_dict, list(hf_dataset[col_name]))
         self.full = full
-        self.labels = hf_dataset[label_col]
+        self.labels = list(hf_dataset[label_col])
         self.task_type = task_type
-        self.max_length = len(max(hf_dataset[col_name], key=len))
+        self.max_length = len(max(list(hf_dataset[col_name]), key=len))
         print_message(f'Max length: {self.max_length}')
 
     def __len__(self):
@@ -273,7 +273,7 @@ class EmbedsLabelsDataset(TorchDataset):
         return embeddings
 
     def __getitem__(self, idx):
-        if self.task_type == 'multilabel' or self.task_type == 'regression':
+        if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
             label = torch.tensor(self.labels[idx], dtype=torch.float)
         else:
             label = torch.tensor(self.labels[idx], dtype=torch.long)
@@ -286,8 +286,8 @@ class EmbedsLabelsDataset(TorchDataset):
 
 class StringLabelDataset(TorchDataset):    
     def __init__(self, hf_dataset, col_name='seqs', label_col='labels', **kwargs):
-        self.seqs = hf_dataset[col_name]
-        self.labels = hf_dataset[label_col]
+        self.seqs = list(hf_dataset[col_name])
+        self.labels = list(hf_dataset[label_col])
         self.lengths = [len(seq) for seq in self.seqs]
 
     def avg(self):
@@ -304,8 +304,8 @@ class StringLabelDataset(TorchDataset):
 
 class PairStringLabelDataset(TorchDataset):
     def __init__(self, hf_dataset, col_a='SeqA', col_b='SeqB', label_col='labels', train=True, **kwargs):
-        self.seqs_a, self.seqs_b = hf_dataset[col_a], hf_dataset[col_b]
-        self.labels = hf_dataset[label_col]
+        self.seqs_a, self.seqs_b = list(hf_dataset[col_a]), list(hf_dataset[col_b])
+        self.labels = list(hf_dataset[label_col])
         self.train = train
 
     def avg(self):

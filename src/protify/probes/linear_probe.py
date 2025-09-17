@@ -3,7 +3,13 @@ from torch import nn
 from typing import Optional
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import SequenceClassifierOutput
-from model_components.mlp import intermediate_correction_fn
+try:
+    from ..model_components.mlp import intermediate_correction_fn
+except ImportError:
+    try:
+        from protify.model_components.mlp import intermediate_correction_fn
+    except ImportError:
+        from model_components.mlp import intermediate_correction_fn
 from .losses import get_loss_fct
 
 
@@ -60,9 +66,13 @@ class LinearProbe(PreTrainedModel):
 
     def forward(self, embeddings: torch.Tensor, labels: Optional[torch.Tensor] = None) -> SequenceClassifierOutput:
         logits = self.layers(embeddings)
+        if self.task_type == 'sigmoid_regression':
+            logits = logits.sigmoid()
         loss = None
         if labels is not None:
             if self.task_type == 'regression':
+                loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
+            elif self.task_type == 'sigmoid_regression':
                 loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
             elif self.task_type == 'multilabel':
                 loss = self.loss_fct(logits, labels.float())

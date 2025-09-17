@@ -98,6 +98,32 @@ class DataMixin:
             label_type = 'regression'
         return label_type
 
+    def _is_sigmoid_regression(self, labels) -> bool:
+        """Heuristic: labels within [0, 1] and cover the range approximately.
+        Uses 10-bin histogram coverage and span threshold.
+        """
+        arr = []
+        for label in labels:
+            try:
+                arr.extend(label)
+            except:
+                arr.append(label)
+        arr = np.array(arr, dtype=float).flatten()        
+
+        min_val, max_val = float(arr.min()), float(arr.max())
+        cond1 = min_val > 0.0 - 1e-6 and max_val < 1.0 + 1e-6
+
+        # Require substantial span across [0,1]
+        cond2 = (max_val - min_val) > 0.75
+
+        # Histogram coverage: at least 7 of 10 bins non-empty
+        hist, _ = np.histogram(arr, bins=10, range=(0.0, 1.0))
+        cond3 = int((hist > 0).sum()) >= 7
+
+        sigmoid_regression_status = cond1 and cond2 and cond3
+        print(f'Sigmoid regression status: {sigmoid_regression_status}, cond1: {cond1}, cond2: {cond2}, cond3: {cond3}')
+        return sigmoid_regression_status
+
     def _select_from_sql(self, c, seq, cast_to_torch=True):
         c.execute("SELECT embedding FROM embeddings WHERE sequence = ?", (seq,))
         embedding = np.frombuffer(c.fetchone()[0], dtype=np.float32).reshape(1, -1)
@@ -140,6 +166,51 @@ class DataMixin:
         ex['SeqB'] = trunc_b
         return ex
 
+    def _find_first_present_column(self, available_columns, candidates_ordered):
+        """Return the first column from candidates_ordered that exists in available_columns (case-insensitive)."""
+        lowercase_to_actual = {col.lower(): col for col in available_columns}
+        for candidate in candidates_ordered:
+            actual = lowercase_to_actual.get(candidate.lower())
+            if actual is not None:
+                return actual
+        raise KeyError(f"None of the candidate columns were found. Candidates: {candidates_ordered}. Available: {available_columns}")
+
+    def _is_ppi_from_columns(self, available_columns):
+        """Detect if dataset contains paired sequence inputs (SeqA/SeqB variants)."""
+        lowercase_columns = set(col.lower() for col in available_columns)
+        base_candidates = ['seqs', 'seq', 'sequence', 'sequences']
+        for base in base_candidates:
+            if (base + 'a') in lowercase_columns and (base + 'b') in lowercase_columns:
+                return True
+        return False
+
+    def _find_ppi_sequence_columns(self, available_columns):
+        """Return the actual column names for A and B sequences in PPI datasets based on priority."""
+        lowercase_to_actual = {col.lower(): col for col in available_columns}
+        # Try specific common pairs first (in order)
+        specific_pairs = [
+            ('SeqA', 'SeqB'),
+            ('seqa', 'seqb'),
+            ('SeqsA', 'SeqsB'),
+        ]
+        for cand_a, cand_b in specific_pairs:
+            a_actual = lowercase_to_actual.get(cand_a.lower())
+            b_actual = lowercase_to_actual.get(cand_b.lower())
+            if a_actual is not None and b_actual is not None:
+                return a_actual, b_actual
+
+        # Generalized search using base tokens
+        base_candidates = ['seqs', 'seq', 'sequence', 'sequences']
+        for base in base_candidates:
+            a_key = (base + 'a').lower()
+            b_key = (base + 'b').lower()
+            a_actual = lowercase_to_actual.get(a_key)
+            b_actual = lowercase_to_actual.get(b_key)
+            if a_actual is not None and b_actual is not None:
+                return a_actual, b_actual
+
+        raise KeyError(f"Could not find paired sequence columns for PPI. Available: {available_columns}")
+
     def process_datasets(
             self,
             hf_datasets: List[Tuple[Dataset, Dataset, Dataset, bool]],
@@ -179,24 +250,23 @@ class DataMixin:
                     test_set = test_set.map(lambda x: {'seqs': x['seqs'][:max_length]})
 
             # sanitize
-            # disabling sanitization for now
             if ppi:
-                #train_set = train_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
-                #                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
-                #valid_set = valid_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
-                #                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
-                #test_set = test_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
-                #                                    'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
-                all_seqs.update(train_set['SeqA'] + train_set['SeqB'])
-                all_seqs.update(valid_set['SeqA'] + valid_set['SeqB'])
-                all_seqs.update(test_set['SeqA'] + test_set['SeqB'])
+                train_set = train_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
+                                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
+                valid_set = valid_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
+                                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
+                test_set = test_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
+                                                    'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
+                all_seqs.update(list(train_set['SeqA']) + list(train_set['SeqB']))
+                all_seqs.update(list(valid_set['SeqA']) + list(valid_set['SeqB']))
+                all_seqs.update(list(test_set['SeqA']) + list(test_set['SeqB']))
             else:
-                #train_set = train_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
-                #valid_set = valid_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
-                #test_set = test_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
-                all_seqs.update(train_set['seqs'])
-                all_seqs.update(valid_set['seqs'])
-                all_seqs.update(test_set['seqs'])
+                train_set = train_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
+                valid_set = valid_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
+                test_set = test_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
+                all_seqs.update(list(train_set['seqs']))
+                all_seqs.update(list(valid_set['seqs']))
+                all_seqs.update(list(test_set['seqs']))
                 
             # confirm the type of labels
             check_labels = valid_set['labels']
@@ -227,6 +297,9 @@ class DataMixin:
                 num_labels = len(unique_tags)
             else:
                 if label_type == 'regression':
+                    # Detect sigmoid_regression (values in [0,1] covering the range)
+                    if self._is_sigmoid_regression(list(train_set['labels'])):
+                        label_type = 'sigmoid_regression'
                     num_labels = 1
                 else: # if classification, get the total number of leabels
                     try:
@@ -238,6 +311,9 @@ class DataMixin:
                         num_labels = len(full_list)
             datasets[data_name] = (train_set, valid_set, test_set, num_labels, label_type, ppi)
 
+        print(f'Label type: {label_type}')
+        print(f'Number of labels: {num_labels}')
+
         all_seqs = list(all_seqs)
         all_seqs = sorted(all_seqs, key=len, reverse=True) # longest first
         return datasets, all_seqs
@@ -248,6 +324,8 @@ class DataMixin:
         TODO fasta, fa, fna, etc.
         """
         datasets, data_names = [], []
+        label_candidates = ['labels', 'label', 'Labels', 'Label']
+        seq_candidates = ['seqs', 'Seqs', 'seq', 'Seq', 'sequence', 'Sequence', 'sequences', 'Sequences']
 
         for data_path in self.data_args.data_paths:
             data_name = data_path.split('/')[-1]
@@ -256,7 +334,10 @@ class DataMixin:
             if 'inverse' in data_name.lower():
                 dataset = dataset.rename_columns({'seqs': 'labels', 'labels': 'seqs'})
             ppi = 'SeqA' in dataset['train'].column_names
-            print_message(f'PPI: {ppi}')
+            # Fallback PPI detection based on available columns
+            if not ppi:
+                ppi = self._is_ppi_from_columns(dataset['train'].column_names)
+            print_message(f'PPI (or dual sequence input dataset): {ppi}')
             try:
                 train_set, valid_set, test_set = dataset['train'], dataset['valid'], dataset['test']
             except:
@@ -268,10 +349,53 @@ class DataMixin:
                 test_set = train_set.train_test_split(test_size=0.5, seed=seed + 2)
                 test_set = test_set['test']
 
-            if not ppi:
+            if ppi:
+                # Standardize PPI columns to 'SeqA', 'SeqB', and 'labels'
+                print('Standardizing PPI column names')
+                try:
+                    a_col, b_col = self._find_ppi_sequence_columns(train_set.column_names)
+                except KeyError:
+                    # Retry with validation/test in case train is empty or missing columns
+                    try:
+                        a_col, b_col = self._find_ppi_sequence_columns(valid_set.column_names)
+                    except KeyError:
+                        a_col, b_col = self._find_ppi_sequence_columns(test_set.column_names)
+
+                
+                try:
+                    lbl_col = self._find_first_present_column(train_set.column_names, label_candidates)
+                except KeyError:
+                    try:
+                        lbl_col = self._find_first_present_column(valid_set.column_names, label_candidates)
+                    except KeyError:
+                        lbl_col = self._find_first_present_column(test_set.column_names, label_candidates)
+
+                train_set = train_set.rename_columns({a_col: 'SeqA', b_col: 'SeqB', lbl_col: 'labels'})
+                valid_set = valid_set.rename_columns({a_col: 'SeqA', b_col: 'SeqB', lbl_col: 'labels'})
+                test_set = test_set.rename_columns({a_col: 'SeqA', b_col: 'SeqB', lbl_col: 'labels'})
+
+                print('Removing extras')
+                train_set = train_set.remove_columns([col for col in train_set.column_names if col not in ['SeqA', 'SeqB', 'labels']])
+                valid_set = valid_set.remove_columns([col for col in valid_set.column_names if col not in ['SeqA', 'SeqB', 'labels']])
+                test_set = test_set.remove_columns([col for col in test_set.column_names if col not in ['SeqA', 'SeqB', 'labels']])
+            else:
                 print('Standardizing column names')
-                seq_col = self.data_args.col_names[0]
-                label_col = self.data_args.col_names[1]
+                try:
+                    seq_col = self._find_first_present_column(train_set.column_names, seq_candidates)
+                except KeyError:
+                    try:
+                        seq_col = self._find_first_present_column(valid_set.column_names, seq_candidates)
+                    except KeyError:
+                        seq_col = self._find_first_present_column(test_set.column_names, seq_candidates)
+
+                try:
+                    label_col = self._find_first_present_column(train_set.column_names, label_candidates)
+                except KeyError:
+                    try:
+                        label_col = self._find_first_present_column(valid_set.column_names, label_candidates)
+                    except KeyError:
+                        label_col = self._find_first_present_column(test_set.column_names, label_candidates)
+
                 train_set = train_set.rename_columns({seq_col: 'seqs', label_col: 'labels'})
                 valid_set = valid_set.rename_columns({seq_col: 'seqs', label_col: 'labels'})
                 test_set = test_set.rename_columns({seq_col: 'seqs', label_col: 'labels'})
@@ -287,6 +411,7 @@ class DataMixin:
         for data_dir in self.data_args.data_dirs:
             # local_data/taxon
             data_name = data_dir.split ('/')[-1]
+            # Determine PPI by directory hint or columns
             ppi = 'ppi' in data_dir.lower()
             train_path = glob(os.path.join(data_dir, 'train.*'))[0]
             valid_path = glob(os.path.join(data_dir, 'valid.*'))[0]
@@ -304,10 +429,54 @@ class DataMixin:
             valid_set = Dataset.from_pandas(valid_set)
             test_set = Dataset.from_pandas(test_set)
 
+            # If not indicated by directory, infer from columns
             if not ppi:
+                ppi = self._is_ppi_from_columns(train_set.column_names)
+
+            if ppi:
+                print('Standardizing PPI column names')
+                try:
+                    a_col, b_col = self._find_ppi_sequence_columns(train_set.column_names)
+                except KeyError:
+                    try:
+                        a_col, b_col = self._find_ppi_sequence_columns(valid_set.column_names)
+                    except KeyError:
+                        a_col, b_col = self._find_ppi_sequence_columns(test_set.column_names)
+
+                try:
+                    lbl_col = self._find_first_present_column(train_set.column_names, label_candidates)
+                except KeyError:
+                    try:
+                        lbl_col = self._find_first_present_column(valid_set.column_names, label_candidates)
+                    except KeyError:
+                        lbl_col = self._find_first_present_column(test_set.column_names, label_candidates)
+
+                train_set = train_set.rename_columns({a_col: 'SeqA', b_col: 'SeqB', lbl_col: 'labels'})
+                valid_set = valid_set.rename_columns({a_col: 'SeqA', b_col: 'SeqB', lbl_col: 'labels'})
+                test_set = test_set.rename_columns({a_col: 'SeqA', b_col: 'SeqB', lbl_col: 'labels'})
+
+                print('Removing extras')
+                train_set = train_set.remove_columns([col for col in train_set.column_names if col not in ['SeqA', 'SeqB', 'labels']])
+                valid_set = valid_set.remove_columns([col for col in valid_set.column_names if col not in ['SeqA', 'SeqB', 'labels']])
+                test_set = test_set.remove_columns([col for col in test_set.column_names if col not in ['SeqA', 'SeqB', 'labels']])
+            else:
                 print('Standardizing column names')
-                seq_col = self.data_args.col_names[0]
-                label_col = self.data_args.col_names[1]
+                try:
+                    seq_col = self._find_first_present_column(train_set.column_names, seq_candidates)
+                except KeyError:
+                    try:
+                        seq_col = self._find_first_present_column(valid_set.column_names, seq_candidates)
+                    except KeyError:
+                        seq_col = self._find_first_present_column(test_set.column_names, seq_candidates)
+
+                try:
+                    label_col = self._find_first_present_column(train_set.column_names, label_candidates)
+                except KeyError:
+                    try:
+                        label_col = self._find_first_present_column(valid_set.column_names, label_candidates)
+                    except KeyError:
+                        label_col = self._find_first_present_column(test_set.column_names, label_candidates)
+
                 train_set = train_set.rename_columns({seq_col: 'seqs', label_col: 'labels'})
                 valid_set = valid_set.rename_columns({seq_col: 'seqs', label_col: 'labels'})
                 test_set = test_set.rename_columns({seq_col: 'seqs', label_col: 'labels'})

@@ -39,7 +39,7 @@ def expand_dms_ids_all(dms_ids, mode: str = None):
             from benchmarks.proteingym.dms_ids import ALL_INDELS_DMS_IDS
             dms_ids = list(ALL_INDELS_DMS_IDS)
         else:
-        from benchmarks.proteingym.dms_ids import ALL_SUBSTITUTION_DMS_IDS
+            from benchmarks.proteingym.dms_ids import ALL_SUBSTITUTION_DMS_IDS
             dms_ids = list(ALL_SUBSTITUTION_DMS_IDS)
     return dms_ids
 

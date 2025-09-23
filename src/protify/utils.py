@@ -36,8 +36,8 @@ def expand_dms_ids_all(dms_ids, mode: str = None):
     """
     if any(str(x).lower() == 'all' for x in dms_ids):
         if mode == 'indels':
-            from benchmarks.proteingym.dms_ids import ALL_INDELS_DMS_IDS
-            dms_ids = list(ALL_INDELS_DMS_IDS)
+            from benchmarks.proteingym.dms_ids import ALL_INDEL_DMS_IDS
+            dms_ids = list(ALL_INDEL_DMS_IDS)
         else:
             from benchmarks.proteingym.dms_ids import ALL_SUBSTITUTION_DMS_IDS
             dms_ids = list(ALL_SUBSTITUTION_DMS_IDS)

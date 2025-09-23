@@ -348,24 +348,30 @@ def run_zero_shot(
         if os.path.exists(per_dms_path):
             try:
                 existing = pd.read_csv(per_dms_path)
-                # Merge on 'mutant' if present; otherwise, align by row order
-                if 'mutant' in existing.columns and 'mutant' in results_to_save.columns:
+                # Merge priority: mutant -> mutated_seq -> row order
+                if 'mutant' in existing.columns:
                     merged = existing.merge(
                         results_to_save[['mutant', model_name]],
                         on='mutant',
                         how='outer',
                     )
-                # Ensure target_seq formatting: keep only in first row
-                if 'target_seq' not in merged.columns:
-                    # Create the column if missing
-                    insert_at = merged.columns.get_loc('mutant') if 'mutant' in merged.columns else 0
-                    merged.insert(insert_at, 'target_seq', '')
-                if len(merged) > 0 and first_target_seq is not None:
-                    merged.iloc[0, merged.columns.get_loc('target_seq')] = first_target_seq
-                if len(merged) > 1:
-                    merged.iloc[1:, merged.columns.get_loc('target_seq')] = ''
+                elif 'mutated_seq' in existing.columns:
+                    merged = existing.merge(
+                        results_to_save[['mutated_seq', model_name]],
+                        on='mutated_seq',
+                        how='outer',
+                    )
+                ## Ensure target_seq formatting: keep only in first row
+                #if 'target_seq' not in merged.columns:
+                #    insert_at = merged.columns.get_loc('mutant') if 'mutant' in merged.columns else 0
+                #    merged.insert(insert_at, 'target_seq', '')
+                #if len(merged) > 0 and first_target_seq is not None:
+                #    merged.iloc[0, merged.columns.get_loc('target_seq')] = first_target_seq
+                #if len(merged) > 1:
+                #    merged.iloc[1:, merged.columns.get_loc('target_seq')] = ''
                 merged.to_csv(per_dms_path, index=False)
-            except Exception:
+            except Exception as e:
+                print(f"Error merging results for {dms_id}: {e}")
                 # If anything goes wrong while merging, fall back to writing the current results
                 results_to_save.to_csv(per_dms_path, index=False)
         else:

@@ -51,13 +51,8 @@ class ModifiedEsmSelfAttention(EsmSelfAttention):
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
         output_attentions: Optional[bool] = False,
-        **kwargs,
     ) -> Tuple[torch.Tensor]:
-
-        if past_key_values is not None and past_key_value is None:
-            past_key_value = past_key_values
         mixed_query_layer = self.query(hidden_states)
 
         # If this is instantiated as a cross-attention module, the keys

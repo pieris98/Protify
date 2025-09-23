@@ -660,6 +660,33 @@ def main(args: SimpleNamespace):
             print_message(f"Scoring method comparison complete. Results saved to {output_csv}")
             return
 
+        # Determine if current experiment passed datasets
+        has_datasets = bool(getattr(args, 'data_names', []) or getattr(args, 'data_dirs', []))
+
+        # Run through datasets first (if any)
+        if has_datasets:
+            main.apply_current_settings()
+            main.get_datasets()
+            num_seqs = len(main.all_seqs) if hasattr(main, 'all_seqs') else 0
+            print_message(f"Number of sequences: {num_seqs}")
+
+            if main.full_args.full_finetuning:
+                main.run_full_finetuning()
+
+            elif main.full_args.hybrid_probe:
+                main.save_embeddings_to_disk()
+                main.run_hybrid_probes()
+
+            elif main.full_args.use_scikit:
+                main.save_embeddings_to_disk()
+                main.run_scikit_scheme()
+            
+            else:
+                main.save_embeddings_to_disk()
+                main.run_nn_probes()
+        else:
+            print_message("No datasets specified; proceeding with ProteinGym.")
+
         if getattr(args, 'proteingym', False):
             main.run_proteingym_zero_shot()
             try:
@@ -670,26 +697,7 @@ def main(args: SimpleNamespace):
             except Exception as e:
                 print_message(f"Failed to log ProteinGym metrics: {e}")
 
-        # Proceed with the standard workflow
-        main.apply_current_settings()
-        main.get_datasets()
-        num_seqs = len(main.all_seqs) if hasattr(main, 'all_seqs') else 0
-        print_message(f"Number of sequences: {num_seqs}")
-
-        if main.full_args.full_finetuning:
-            main.run_full_finetuning()
-
-        elif main.full_args.hybrid_probe:
-            main.save_embeddings_to_disk()
-            main.run_hybrid_probes()
-
-        elif main.full_args.use_scikit:
-            main.save_embeddings_to_disk()
-            main.run_scikit_scheme()
-        
-        else:
-            main.save_embeddings_to_disk()
-            main.run_nn_probes()
+        # Write results and generate plots
         main.write_results()
         main.generate_plots()
         main.end_log()

@@ -8,7 +8,7 @@ from typing import List, Optional, Dict
 from scipy.stats import spearmanr
 from .zero_shot import zero_shot_scores_for_assay
 from .data_loader import load_proteingym_dms
-from .dms_ids import ALL_DMS_IDS
+from .dms_ids import ALL_SUBSTITUTION_DMS_IDS
 
 def compare_scoring_methods(
     model_names: List[str],

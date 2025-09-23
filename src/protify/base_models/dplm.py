@@ -236,7 +236,7 @@ class ModifiedEsmModel(EsmModel):
             position_ids=position_ids,
             attention_mask=attention_mask,
             inputs_embeds=inputs_embeds,
-            past_key_values_length=past_key_values_length,
+            #past_key_values_length=past_key_values_length,  TODO: This causes an error when using any DPLM model
         )
         encoder_outputs = self.encoder(
             embedding_output,

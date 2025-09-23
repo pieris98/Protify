@@ -71,6 +71,11 @@ def zero_shot_scores_for_assay(
         mutant = row['mutant']
         mutated_seq = row['mutated_seq']
         muts = _parse_mutant_string(mutant)
+        # Assert positions align with lengths
+        for wt, pos, mt in muts:
+            assert 0 <= pos < len(target_seq), (
+                f"Mutation pos {pos} out of range for target_seq length {len(target_seq)}"
+            )
         
         # Get all sliced seqs for this mutant
         mutant_slices = grouped.get_group(mutant)
@@ -89,6 +94,9 @@ def zero_shot_scores_for_assay(
                     if window_start <= pos < window_end:
                         window_seq = slice_row['sliced_mutated_seq']
                         pos_rel = pos - window_start
+                        assert window_seq[pos_rel] == mutated_seq[pos], (
+                            f"masked_marginal: residue mismatch at pos {pos} (rel {pos_rel})"
+                        )
                         key_seq = window_seq[:pos_rel] + '<mask>' + window_seq[pos_rel+1:]
                         cache_key = (key_seq, pos_rel, scoring_method)
                         if cache_key not in log_prob_cache:
@@ -121,6 +129,9 @@ def zero_shot_scores_for_assay(
                     if window_start <= pos < window_end:
                         window_seq = slice_row['sliced_mutated_seq']
                         pos_rel = pos - window_start
+                        assert window_seq[pos_rel] == mutated_seq[pos], (
+                            f"mutant_marginal: residue mismatch at pos {pos} (rel {pos_rel})"
+                        )
                         
                         cache_key = (window_seq, pos_rel, scoring_method)
                         if cache_key not in log_prob_cache:
@@ -152,6 +163,9 @@ def zero_shot_scores_for_assay(
                     if window_start <= pos < window_end:
                         window_seq = slice_row['sliced_mutated_seq']
                         pos_rel = pos - window_start
+                        assert window_seq[pos_rel] == target_seq[pos], (
+                            f"wildtype_marginal: residue mismatch at pos {pos} (rel {pos_rel})"
+                        )
                         
                         cache_key = (window_seq, pos_rel, scoring_method)
                         if cache_key not in log_prob_cache:
@@ -175,6 +189,8 @@ def zero_shot_scores_for_assay(
             slice_scores = []
             for _, slice_row in wt_slices.iterrows():
                 window_seq = slice_row['sliced_mutated_seq']
+                ws, we = slice_row['window_start'], slice_row['window_end']
+                assert window_seq == target_seq[ws:we], "PLL: slice content mismatch with window bounds"
                 if window_seq not in pll_cache:
                     pll_cache[window_seq] = calculate_pll(window_seq, tokenizer, model, device)
                 _, pll = pll_cache[window_seq]
@@ -187,6 +203,8 @@ def zero_shot_scores_for_assay(
             # Calculate log prob for all slices and sum
             for _, slice_row in mt_slices.iterrows():
                 window_seq = slice_row['sliced_mutated_seq']
+                ws, we = slice_row['window_start'], slice_row['window_end']
+                assert window_seq == mutated_seq[ws:we], "global_log_prob: slice content mismatch with window bounds"
                 seq_log_prob = get_sequence_log_probability(window_seq, tokenizer, model, device)
                 total_score += seq_log_prob
         
@@ -197,10 +215,78 @@ def zero_shot_scores_for_assay(
     return out
 
 
+def zero_shot_scores_for_indels(
+    df: pd.DataFrame,
+    model_name: str,
+    device: Optional[str] = None,
+    progress: bool = True,
+    tqdm_position: int = 1,
+    scoring_window: str = "sliding"
+) -> pd.DataFrame:
+    if df is None or len(df) == 0:
+        raise ValueError("Input DataFrame is empty")
+
+    model, tokenizer = get_base_model(model_name, masked_lm=True)
+    device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    model = model.to(device).eval()
+
+    target_seq = df['target_seq'].iloc[0]
+    model_context_len = MODEL_CONTEXT_LENGTH.get(model_name, 1024)
+    if model_context_len is None:
+        model_context_len = len(target_seq)
+
+    sliced_df = get_sequence_slices(
+        df,
+        target_seq=target_seq,
+        model_context_len=model_context_len,
+        start_idx=1,
+        scoring_window='sliding',
+        indel_mode=True
+    )
+
+    # Group by mutated sequence
+    grouped = sliced_df.groupby('mutated_seq')
+
+    scores: List[float] = []
+    pll_cache: Dict[str, Tuple[float, float]] = {}
+
+    iterator = df.iterrows()
+    if progress:
+        iterator = tqdm(
+            iterator,
+            total=len(df),
+            desc="Assay variants (indels)",
+            unit="variant",
+            position=tqdm_position,
+            leave=False,
+        )
+
+    for _, row in iterator:
+        mutated_seq = row['mutated_seq']
+        if mutated_seq not in grouped.groups:
+            scores.append(0.0)
+            continue
+        mt_slices = grouped.get_group(mutated_seq)
+
+        slice_scores = []
+        for _, slice_row in mt_slices.iterrows():
+            window_seq = slice_row['sliced_mutated_seq']
+            if window_seq not in pll_cache:
+                pll_cache[window_seq] = calculate_pll(window_seq, tokenizer, model, device)
+            _, pll = pll_cache[window_seq]
+            slice_scores.append(pll)
+        total_score = sum(slice_scores) / len(slice_scores) if slice_scores else 0.0
+        scores.append(total_score)
+
+    out = df.copy()
+    out['delta_log_prob'] = scores
+    return out
+
+
 def run_zero_shot(
     dms_ids: List[str],
     model_name: str,
-    mode: Optional[str] = None,
+    mode: str = "benchmark",
     repo_id: str = "GleghornLab/ProteinGym_DMS",
     results_dir: str = os.path.join('src', 'protify', 'results'),
     device: Optional[str] = None,
@@ -218,17 +304,32 @@ def run_zero_shot(
             continue
         if show_progress and hasattr(assay_iterator, 'set_description_str'):
             assay_iterator.set_description_str(f"Assay {dms_id}")
-        results_df = zero_shot_scores_for_assay(
-            df,
-            model_name,
-            device=device,
-            progress=show_progress,
-            tqdm_position=1,
-            scoring_method=scoring_method,
-            scoring_window=scoring_window
-        )
+        if mode == 'indels':
+            # Prefer sliding windows if any sequence exceeds context
+            target_seq = df['target_seq'].iloc[0]
+            model_context_len = MODEL_CONTEXT_LENGTH.get(model_name, 1024)
+            max_len = max([len(target_seq)] + [len(s) for s in df['mutated_seq'].tolist()])
+            results_df = zero_shot_scores_for_indels(
+                df,
+                model_name,
+                device=device,
+                progress=show_progress,
+                tqdm_position=1,
+                scoring_window='sliding'
+            )
+            suffix = 'pll'  # for file naming consistency
+        else:
+            results_df = zero_shot_scores_for_assay(
+                df,
+                model_name,
+                device=device,
+                progress=show_progress,
+                tqdm_position=1,
+                scoring_method=scoring_method,
+                scoring_window=scoring_window
+            )
+            suffix = scoring_method
         # Aggregate per-assay predictions across models in a single CSV per DMS
-        suffix = scoring_method
         per_dms_path = os.path.join(results_dir, f"{dms_id}__zs_{suffix}.csv")
 
         # Prepare results for saving: rename score column to current model name to match config.json

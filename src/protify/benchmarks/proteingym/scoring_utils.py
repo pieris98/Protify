@@ -16,6 +16,9 @@ def label_row(wt: str, pos: int, mt: str, sequence: str, token_probs: torch.Tens
     - token_probs: log-probs over vocab, shape [1, len(sequence), vocab_size]
     """
     assert 0 <= pos < len(sequence), f"Index {pos} out of range for length {len(sequence)}"
+    assert token_probs.shape[1] == len(sequence), (
+        f"token_probs length {token_probs.shape[1]} must match sequence length {len(sequence)}"
+    )
 
     wt_id = tokenizer.convert_tokens_to_ids(wt)
     mt_id = tokenizer.convert_tokens_to_ids(mt)
@@ -75,6 +78,9 @@ def get_sequence_slices(df, target_seq, model_context_len, start_idx=1, scoring_
         df_wt['sliced_mutated_seq'] = [target_seq[df_wt['window_start'][index]:df_wt['window_end'][index]] for index in range(num_mutants)]
         df = pd.concat([df,df_wt], axis=0)
         df = df.drop_duplicates()
+        # Keep only cols needed downstream
+        keep_cols = [c for c in ['mutant', 'target_seq', 'mutated_seq','window_start','window_end','sliced_mutated_seq']]
+        df = df[keep_cols]
     elif scoring_window=="sliding":
         if model_context_len is None:
             model_context_len = len_target_seq
@@ -95,12 +101,16 @@ def get_sequence_slices(df, target_seq, model_context_len, start_idx=1, scoring_
             start = end
         df_final = pd.concat(df_list,axis=0)
         df = df_final.drop_duplicates()
+        # Keep only cols needed downstream
+        keep_cols = [c for c in ['mutant', 'target_seq', 'mutated_seq','window_start','window_end','sliced_mutated_seq']]
+        df = df[keep_cols]
     return df.reset_index(drop=True)
 
 def _apply_mutations_to_sequence(wt_seq: str, mutations: List[Tuple[str, int, str]]) -> str:
     """Apply mutations to wildtype sequence."""
     mutant_seq = list(wt_seq)
     for wt, pos, mt in mutations:
+        assert 0 <= pos < len(mutant_seq), f"Mutation position {pos} out of range [0, {len(mutant_seq)})"
         if mutant_seq[pos] != wt:
             raise ValueError(f"WT mismatch at pos {pos}: expected {wt}, found {mutant_seq[pos]}")
         mutant_seq[pos] = mt
@@ -136,41 +146,37 @@ def collect_proteingym_spearman(args: SimpleNamespace, model_names):
     
     Used in main.py to incorporate ProteinGym Spearman metrics into the main workflow.
     """
-    try:
-        results_root = getattr(args, 'results_dir', 'results')
-        perf_out_dir = os.path.join(results_root, 'proteingym', 'benchmark_performance')
-        spearman_dir = os.path.join(perf_out_dir, 'Spearman')
-        sub_csv = os.path.join(spearman_dir, 'Summary_performance_DMS_substitutions_Spearman.csv')
-        ind_csv = os.path.join(spearman_dir, 'Summary_performance_DMS_indels_Spearman.csv')
-        csv_path = sub_csv if os.path.exists(sub_csv) else ind_csv if os.path.exists(ind_csv) else None
-        if csv_path is None:
-            print(f"ProteinGym Spearman summary not found in {spearman_dir}")
-            return {}
-
-        df = pd.read_csv(csv_path)
-        if 'Model_name' not in df.columns or 'Average_Spearman' not in df.columns:
-            print("ProteinGym summary CSV missing required columns: 'Model_name' and 'Average_Spearman'")
-            return {}
-
-        # Build lookup from Model_name -> Average_Spearman
-        model_scores = {}
-        for _, row in df.iterrows():
-            try:
-                name = str(row['Model_name'])
-                score = float(row['Average_Spearman'])
-            except Exception:
-                continue
-            model_scores[name] = score
-
-        # Return scores for the requested model names
-        out = {}
-        for model_name in (model_names or []):
-            if model_name in model_scores:
-                out[model_name] = float(model_scores[model_name])
-        return out
-    except Exception as e:
-        print(f"Error collecting ProteinGym Spearman metrics: {e}")
+    results_root = getattr(args, 'results_dir', 'results')
+    perf_out_dir = os.path.join(results_root, 'proteingym', 'benchmark_performance')
+    spearman_dir = os.path.join(perf_out_dir, 'Spearman')
+    sub_csv = os.path.join(spearman_dir, 'Summary_performance_DMS_substitutions_Spearman.csv')
+    ind_csv = os.path.join(spearman_dir, 'Summary_performance_DMS_indels_Spearman.csv')
+    csv_path = sub_csv if os.path.exists(sub_csv) else ind_csv if os.path.exists(ind_csv) else None
+    if csv_path is None:
+        print(f"ProteinGym Spearman summary not found in {spearman_dir}")
         return {}
+
+    df = pd.read_csv(csv_path)
+    if 'Model_name' not in df.columns or 'Average_Spearman' not in df.columns:
+        print("ProteinGym summary CSV missing required columns: 'Model_name' and 'Average_Spearman'")
+        return {}
+
+    # Build lookup from Model_name -> Average_Spearman
+    model_scores = {}
+    for _, row in df.iterrows():
+        try:
+            name = str(row['Model_name'])
+            score = float(row['Average_Spearman'])
+        except Exception:
+            continue
+        model_scores[name] = score
+
+    # Return scores for the requested model names
+    out = {}
+    for model_name in (model_names or []):
+        if model_name in model_scores:
+            out[model_name] = float(model_scores[model_name])
+    return out
 
 
 '''
@@ -187,7 +193,9 @@ def _position_log_probs(model, tokenizer, scoring_method: str, sequence: str, po
     tokens = tokenizer(sequence, return_tensors='pt', add_special_tokens=True)
     input_ids = tokens['input_ids'][0].to(device)
     attention_mask = tokens['attention_mask'][0].to(device)
-
+    assert input_ids.shape[0] == len(sequence) + 2, (
+        f"Tokenized length {input_ids.shape[0]} must equal len(sequence)+2 ({len(sequence)+2})"
+    )
     token_idx = pos + 1
     
     # Bounds checking
@@ -206,6 +214,7 @@ def _position_log_probs(model, tokenizer, scoring_method: str, sequence: str, po
     else:
         outputs = model(input_ids.unsqueeze(0), attention_mask=attention_mask.unsqueeze(0))
     logits = outputs.logits[0, token_idx]
+    assert logits.dim() == 1, f"Expected 1D logits for a single position, got shape {tuple(logits.shape)}"
     return torch.log_softmax(logits, dim=-1).detach()
 
 
@@ -215,7 +224,9 @@ def get_sequence_log_probability(sequence, tokenizer, model, device: torch.devic
     tokens = tokenizer(sequence, return_tensors='pt', add_special_tokens=True)
     input_ids = tokens['input_ids'][0].to(device)
     attention_mask = tokens['attention_mask'][0].to(device)
-
+    assert input_ids.shape[0] == len(sequence) + 2, (
+        f"Tokenized length {input_ids.shape[0]} must equal len(sequence)+2 ({len(sequence)+2})"
+    )
     with torch.no_grad():
         output = model(input_ids.unsqueeze(0), attention_mask=attention_mask.unsqueeze(0))
         logits = output["logits"]
@@ -237,7 +248,11 @@ def calculate_pll(sequence: str, tokenizer, model, device: torch.device) -> Tupl
     mask_id = tokenizer.mask_token_id
     if mask_id is None:
         mask_id = tokenizer.convert_tokens_to_ids(getattr(tokenizer, 'mask_token', '<mask>'))
-
+    if mask_id is None:
+        raise ValueError("Tokenizer must provide a valid mask token id")
+    assert input_ids.shape[0] == len(sequence) + 2, (
+        f"Tokenized length {input_ids.shape[0]} must equal len(sequence)+2 ({len(sequence)+2})"
+    )
     L = input_ids.size(0) - 2  # Length of sequence excluding CLS and SEP tokens
     total_ll = 0.0
     with torch.no_grad():
@@ -253,23 +268,32 @@ def calculate_pll(sequence: str, tokenizer, model, device: torch.device) -> Tupl
 
 # dictionary of context lengths for supported models in Protify
 MODEL_CONTEXT_LENGTH = {
+    # currently supported models
     'ESM2-8': 2048,    # ESM Family models utilize huggingface.co/Synthyra/FastESM2_650
     'ESM2-35': 2048,   # style models, which have 2048 context window
     'ESM2-150': 2048,
     'ESM2-650': 2048,
     'ESM2-3B': 2048,
-    'Random': None,
-    'Random-Transformer': 1024,
-    'Random-ESM2-8': 2048,       
-    'Random-ESM2-35': 2048,      
-    'Random-ESM2-150': 2048,
-    'Random-ESM2-650': 2048,
     'ESMC-300': 2048,
     'ESMC-600': 2048,
-    'ESM2-diff-150': 1026,
-    'ESM2-diffAV-150': 1026,
     'ProtBert': 40000, 
     'ProtBert-BFD': 40000,
+    'GLM2-150': 4096,
+    'GLM2-650': 4096,
+    'DSM-150': 1024,
+    'DSM-650': 2048,
+    'DPLM-150': 1024,
+    'DPLM-650': 1024,
+    'DPLM-3B': 1024,
+    # currently unsupported models
+    'Random': None,
+    'Random-Transformer': 2048,
+    'Random-ESM2-8': 2048,
+    'Random-ESM2-35': 2048,
+    'Random-ESM2-150': 2048,
+    'Random-ESM2-650': 2048,
+    'ESM2-diff-150': 1026,
+    'ESM2-diffAV-150': 1026,
     'ProtT5': 512,
     'ProtT5-XL-UniRef50-full-prec': 512,
     'ProtT5-XXL-UniRef50': 512,
@@ -278,14 +302,7 @@ MODEL_CONTEXT_LENGTH = {
     'ANKH-Base': 512,
     'ANKH-Large': 512,
     'ANKH2-Large': 512,
-    'GLM2-150': 4096,
-    'GLM2-650': 4096,
     'GLM2-GAIA': 4096,
-    'DPLM-150': 1024,
-    'DPLM-650': 1024,
-    'DPLM-3B': 1024,
-    'DSM-150': 1024,
-    'DSM-650': 1024,
     'DSM-PPI': 1024,
     'ProtCLM-1b': 2048,
     'OneHot-Protein': None,

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from typing import Optional, Tuple, Union, List, Dict
-from transformers import AutoTokenizer, AutoModel, AutoModelForTokenClassification, AutoModelForSequenceClassification
+from transformers import AutoTokenizer, AutoModel, AutoModelForTokenClassification, AutoModelForSequenceClassification, AutoModelForMaskedLM
 
 from .base_tokenizer import BaseSequenceTokenizer
 
@@ -58,9 +58,12 @@ def get_glm2_tokenizer(preset: str):
     return GLMTokenizerWrapper(AutoTokenizer.from_pretrained(presets[preset], trust_remote_code=True))
 
 
-def build_glm2_model(preset: str) -> Tuple[gLM2ForEmbedding, AutoTokenizer]:
+def build_glm2_model(preset: str, masked_lm: bool = False):
     model_path = presets[preset]
-    model = gLM2ForEmbedding(model_path).eval()
+    if masked_lm:
+        model = AutoModelForMaskedLM.from_pretrained(model_path, trust_remote_code=True).eval()
+    else:
+        model = gLM2ForEmbedding(model_path).eval()
     tokenizer = get_glm2_tokenizer(preset)
     return model, tokenizer
 

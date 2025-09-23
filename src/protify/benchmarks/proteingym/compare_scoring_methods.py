@@ -56,7 +56,7 @@ def compare_scoring_methods(
                 print(f"\nProcessing DMS ID: {dms_id}")
                 df = load_proteingym_dms(
                     dms_id=dms_id,
-                    mode="zero_shot",
+                    mode="benchmark",
                     repo_id="GleghornLab/ProteinGym_DMS",
                 )
                     

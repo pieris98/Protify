@@ -30,16 +30,17 @@ def print_done():
     print(pyfiglet.figlet_format('== Done ==', font='js_stick_letters'))
 
 
-def expand_dms_ids_all(dms_ids):
+def expand_dms_ids_all(dms_ids, mode: str = None):
     """
     Expand 'all' to actual DMS IDs from benchmarks.proteingym.dms_ids.
     """
     if any(str(x).lower() == 'all' for x in dms_ids):
-        try:
-            from benchmarks.proteingym.dms_ids import ALL_DMS_IDS
-        except ImportError:
-            from .benchmarks.proteingym.dms_ids import ALL_DMS_IDS
-        dms_ids = list(ALL_DMS_IDS)
+        if mode == 'indels':
+            from benchmarks.proteingym.dms_ids import ALL_INDELS_DMS_IDS
+            dms_ids = list(ALL_INDELS_DMS_IDS)
+        else:
+        from benchmarks.proteingym.dms_ids import ALL_SUBSTITUTION_DMS_IDS
+            dms_ids = list(ALL_SUBSTITUTION_DMS_IDS)
     return dms_ids
 
 if __name__ == '__main__':

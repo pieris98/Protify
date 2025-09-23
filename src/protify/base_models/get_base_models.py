@@ -95,10 +95,10 @@ def get_base_model(model_name: str, masked_lm: bool = False):
         return build_protbert_model(model_name, masked_lm=masked_lm)
     elif 'prott5' in model_name.lower():
         from .prott5 import build_prott5_model
-        return build_prott5_model(model_name, masked_lm=masked_lm)
+        return build_prott5_model(model_name)
     elif 'ankh' in model_name.lower():
         from .ankh import build_ankh_model
-        return build_ankh_model(model_name, masked_lm=masked_lm)
+        return build_ankh_model(model_name)
     elif 'glm' in model_name.lower():
         from .glm import build_glm2_model
         return build_glm2_model(model_name, masked_lm=masked_lm)
@@ -107,7 +107,7 @@ def get_base_model(model_name: str, masked_lm: bool = False):
         return build_dplm_model(model_name, masked_lm=masked_lm)
     elif 'protclm' in model_name.lower():
         from .protCLM import build_protCLM
-        return build_protCLM(model_name, masked_lm=masked_lm)
+        return build_protCLM(model_name)
     elif 'onehot' in model_name.lower():
         from .one_hot import build_one_hot_model
         return build_one_hot_model(model_name)

@@ -556,9 +556,9 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
     def run_proteingym_zero_shot(self):
         """Run ProteinGym zero-shot for all specified models and DMS ids."""
         # Signal base model loader to use MaskedLM variants
-        os.environ['PROTIFY_PROTEINGYM'] = '1'
         dms_ids = getattr(args, 'dms_ids', []) or []
-        dms_ids = expand_dms_ids_all(dms_ids)
+        mode = getattr(args, 'mode', 'benchmark')
+        dms_ids = expand_dms_ids_all(dms_ids, mode=mode)
         if len(dms_ids) == 0:
             raise ValueError("--dms_ids is required when --proteingym is specified")
         model_names = getattr(args, 'model_names', []) or []
@@ -567,7 +567,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         # Where to write results
         results_root = getattr(args, 'results_dir', 'results')
         results_dir = os.path.join(results_root, 'proteingym')
-        mode = getattr(args, 'mode', None)
         scoring_method = getattr(args, 'scoring_method', 'masked_marginal')
         scoring_window = getattr(args, 'scoring_window', 'optimal')
         if isinstance(mode, str) and mode.lower() == 'indels':
@@ -640,7 +639,8 @@ def main(args: SimpleNamespace):
             # Run scoring method comparison
             print_message("Running scoring method comparison...")
             dms_ids = getattr(args, 'dms_ids', []) or []
-            dms_ids = expand_dms_ids_all(dms_ids)
+            mode = getattr(args, 'mode', 'benchmark')
+            dms_ids = expand_dms_ids_all(dms_ids, mode=mode)
             model_names = getattr(args, 'model_names', []) or []
             if len(model_names) == 0:
                 raise ValueError("--model_names must specify at least one model")
@@ -671,7 +671,6 @@ def main(args: SimpleNamespace):
                 print_message(f"Failed to log ProteinGym metrics: {e}")
 
         # Proceed with the standard workflow
-        os.environ['PROTIFY_PROTEINGYM'] = '0'
         main.apply_current_settings()
         main.get_datasets()
         num_seqs = len(main.all_seqs) if hasattr(main, 'all_seqs') else 0

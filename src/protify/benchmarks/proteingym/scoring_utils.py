@@ -79,7 +79,7 @@ def get_sequence_slices(df, target_seq, model_context_len, start_idx=1, scoring_
         df = pd.concat([df,df_wt], axis=0)
         df = df.drop_duplicates()
         # Keep only cols needed downstream
-        keep_cols = [c for c in ['mutant', 'target_seq', 'mutated_seq','window_start','window_end','sliced_mutated_seq']]
+        keep_cols = [c for c in ['mutant', 'target_seq', 'mutated_seq','window_start','window_end','sliced_mutated_seq'] if c in df.columns]
         df = df[keep_cols]
     elif scoring_window=="sliding":
         if model_context_len is None:
@@ -102,7 +102,7 @@ def get_sequence_slices(df, target_seq, model_context_len, start_idx=1, scoring_
         df_final = pd.concat(df_list,axis=0)
         df = df_final.drop_duplicates()
         # Keep only cols needed downstream
-        keep_cols = [c for c in ['mutant', 'target_seq', 'mutated_seq','window_start','window_end','sliced_mutated_seq']]
+        keep_cols = [c for c in ['mutant', 'target_seq', 'mutated_seq','window_start','window_end','sliced_mutated_seq'] if c in df.columns]
         df = df[keep_cols]
     return df.reset_index(drop=True)
 

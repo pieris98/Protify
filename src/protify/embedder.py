@@ -3,6 +3,7 @@ import torch
 import warnings
 import sqlite3
 import gzip
+import sys
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from dataclasses import dataclass
@@ -164,6 +165,7 @@ class Embedder:
                 print_message(f"No embeddings found in {save_path}")
                 return self.all_seqs, save_path, {}
 
+    @torch.inference_mode()
     def _embed_sequences(
             self,
             to_embed: List[str],
@@ -173,7 +175,11 @@ class Embedder:
             embeddings_dict: dict[str, torch.Tensor]) -> Optional[dict[str, torch.Tensor]]:
         os.makedirs(self.embedding_save_dir, exist_ok=True)
         model = embedding_model.to(self.device).eval()
-        torch.compile(model)
+        if sys.platform.lower() == 'linux':
+            try:
+                torch.compile(model)
+            except:
+                print_message("Model cannot be compiled")
         device = self.device
         collate_fn = build_collator(tokenizer)
         print_message(f'Pooling types: {self.pooling_types}')
@@ -210,36 +216,35 @@ class Embedder:
             c = conn.cursor()
             c.execute('CREATE TABLE IF NOT EXISTS embeddings (sequence text PRIMARY KEY, embedding blob)')
 
-        with torch.no_grad():
-            for i, batch in tqdm(enumerate(dataloader), total=len(dataloader), desc='Embedding batches'):
-                seqs = to_embed[i * self.batch_size:(i + 1) * self.batch_size]
-                input_ids, attention_mask = batch['input_ids'].to(device), batch['attention_mask'].to(device)
-                if 'parti' in self.pooling_types:
-                    try:
-                        residue_embeddings, attentions = model(input_ids, attention_mask, output_attentions=True)
-                        embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask, attentions=attentions).cpu()
-                    except Exception as e:
-                        print_message(f"Error in parti pooling: {e}\nDefaulting to mean pooling")
-                        self.pooling_types = ['mean']
-                        pooler = Pooler(self.pooling_types)
-                        residue_embeddings = model(input_ids, attention_mask)
-                        embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask).cpu()
-                else:
+        for i, batch in tqdm(enumerate(dataloader), total=len(dataloader), desc='Embedding batches'):
+            seqs = to_embed[i * self.batch_size:(i + 1) * self.batch_size]
+            input_ids, attention_mask = batch['input_ids'].to(device), batch['attention_mask'].to(device)
+            if 'parti' in self.pooling_types:
+                try:
+                    residue_embeddings, attentions = model(input_ids, attention_mask, output_attentions=True)
+                    embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask, attentions=attentions).cpu()
+                except Exception as e:
+                    print_message(f"Error in parti pooling: {e}\nDefaulting to mean pooling")
+                    self.pooling_types = ['mean']
+                    pooler = Pooler(self.pooling_types)
                     residue_embeddings = model(input_ids, attention_mask)
                     embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask).cpu()
+            else:
+                residue_embeddings = model(input_ids, attention_mask)
+                embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask).cpu()
 
-                for seq, emb, mask in zip(seqs, embeddings, attention_mask.cpu()):
-                    if self.matrix_embed:
-                        emb = emb[mask.bool()]
-                    
-                    if self.sql:
-                        c.execute("INSERT OR REPLACE INTO embeddings VALUES (?, ?)", 
-                                (seq, emb.numpy().tobytes())) # only supports float32
-                    else:
-                        embeddings_dict[seq] = emb.to(self.embed_dtype)
+            for seq, emb, mask in zip(seqs, embeddings, attention_mask.cpu()):
+                if self.matrix_embed:
+                    emb = emb[mask.bool()]
                 
-                if (i + 1) % 100 == 0 and self.sql:
-                    conn.commit()
+                if self.sql:
+                    c.execute("INSERT OR REPLACE INTO embeddings VALUES (?, ?)", 
+                            (seq, emb.numpy().tobytes())) # only supports float32
+                else:
+                    embeddings_dict[seq] = emb.to(self.embed_dtype)
+            
+            if (i + 1) % 100 == 0 and self.sql:
+                conn.commit()
 
         if self.sql:
             conn.commit()

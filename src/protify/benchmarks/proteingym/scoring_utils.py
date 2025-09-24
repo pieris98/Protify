@@ -279,15 +279,15 @@ def calculate_pll(sequence: str, tokenizer, model, device: torch.device, model_n
 # dictionary of context lengths for supported models in Protify
 MODEL_CONTEXT_LENGTH = {
     # currently supported models
-    'ESM2-8': 2048,    # ESM Family models utilize huggingface.co/Synthyra/FastESM2_650
-    'ESM2-35': 2048,   # style models, which have 2048 context window
-    'ESM2-150': 2048,
-    'ESM2-650': 2048,
-    'ESM2-3B': 2048,
+    'ESM2-8': 1024,    # ESM Family models utilize huggingface.co/Synthyra/FastESM2_650
+    'ESM2-35': 1024,   # style models, which have 2048 context window
+    'ESM2-150': 1024,
+    'ESM2-650': 1024,
+    'ESM2-3B': 1024,
     'ESMC-300': 2048,
     'ESMC-600': 2048,
-    'ProtBert': 40000, 
-    'ProtBert-BFD': 40000,
+    'ProtBert': 1024,
+    'ProtBert-BFD': 1024,
     'GLM2-150': 4096,
     'GLM2-650': 4096,
     'DSM-150': 1024,
@@ -295,13 +295,13 @@ MODEL_CONTEXT_LENGTH = {
     'DPLM-150': 1024,
     'DPLM-650': 1024,
     'DPLM-3B': 1024,
+    'Random-Transformer': 1024,
     # currently unsupported models
     'Random': None,
-    'Random-Transformer': 2048,
     'Random-ESM2-8': 2048,
-    'Random-ESM2-35': 2048,
-    'Random-ESM2-150': 2048,
-    'Random-ESM2-650': 2048,
+    'Random-ESM2-35': 1024,
+    'Random-ESM2-150': 1024,
+    'Random-ESM2-650': 1024,
     'ESM2-diff-150': 1026,
     'ESM2-diffAV-150': 1026,
     'ProtT5': 512,

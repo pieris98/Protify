@@ -184,7 +184,7 @@ Scoring Functions
 '''
 
 @torch.no_grad()
-def _position_log_probs(model, tokenizer, scoring_method: str, sequence: str, pos: int, device: torch.device) -> torch.Tensor:
+def _position_log_probs(model, tokenizer, scoring_method: str, sequence: str, pos: int, device: torch.device, model_name: str) -> torch.Tensor:
     """
     Return log-probs at the target position `pos`.
     We tokenize with special tokens and map to the corresponding token index (pos + 1).
@@ -193,12 +193,13 @@ def _position_log_probs(model, tokenizer, scoring_method: str, sequence: str, po
     tokens = tokenizer(sequence, return_tensors='pt', add_special_tokens=True)
     input_ids = tokens['input_ids'][0].to(device)
     attention_mask = tokens['attention_mask'][0].to(device)
-    assert input_ids.shape[0] == len(sequence) + 2, (
-        f"Tokenized length {input_ids.shape[0]} must equal len(sequence)+2 ({len(sequence)+2})"
+    extra_leading_special = 1 if model_name in ("GLM2-150", "GLM2-650") else 0
+    expected_len = len(sequence) + 2 + extra_leading_special
+    assert input_ids.shape[0] == expected_len, (
+        f"Tokenized length {input_ids.shape[0]} must equal len(sequence)+2+extra ({expected_len})"
     )
-    token_idx = pos + 1
+    token_idx = pos + 1 + extra_leading_special
     
-    # Bounds checking
     if token_idx <= 0 or token_idx >= input_ids.shape[0] - 1:
         raise IndexError(f"Position {token_idx} out of bounds for tokenized length {input_ids.shape[0]}")
     
@@ -215,31 +216,36 @@ def _position_log_probs(model, tokenizer, scoring_method: str, sequence: str, po
         outputs = model(input_ids.unsqueeze(0), attention_mask=attention_mask.unsqueeze(0))
     logits = outputs.logits[0, token_idx]
     assert logits.dim() == 1, f"Expected 1D logits for a single position, got shape {tuple(logits.shape)}"
-    return torch.log_softmax(logits, dim=-1).detach()
+    lps = torch.log_softmax(logits.float(), dim=-1)
+    return lps.detach().cpu()
 
 
 @torch.no_grad()
-def get_sequence_log_probability(sequence, tokenizer, model, device: torch.device):
+def get_sequence_log_probability(sequence, tokenizer, model, device: torch.device, model_name: str):
     """Compute the log probability of the entire, unmasked sequence."""
     tokens = tokenizer(sequence, return_tensors='pt', add_special_tokens=True)
     input_ids = tokens['input_ids'][0].to(device)
     attention_mask = tokens['attention_mask'][0].to(device)
-    assert input_ids.shape[0] == len(sequence) + 2, (
-        f"Tokenized length {input_ids.shape[0]} must equal len(sequence)+2 ({len(sequence)+2})"
+    extra_leading_special = 1 if model_name in ("GLM2-150", "GLM2-650") else 0
+    expected_len = len(sequence) + 2 + extra_leading_special
+    assert input_ids.shape[0] == expected_len, (
+        f"Tokenized length {input_ids.shape[0]} must equal len(sequence)+2 ({expected_len})"
     )
     with torch.no_grad():
         output = model(input_ids.unsqueeze(0), attention_mask=attention_mask.unsqueeze(0))
         logits = output["logits"]
-        probabilities = torch.nn.functional.softmax(logits, dim=-1)
+        probabilities = torch.nn.functional.softmax(logits.float(), dim=-1)
     seq_log_prob = 0.0
-    for pos in range(1, input_ids.size(0) - 1):
+    seq_start = 1 + extra_leading_special
+    seq_end = input_ids.size(0) - 1
+    for pos in range(seq_start, seq_end):
         token_id = input_ids[pos].item()
         token_prob = probabilities[0, pos, token_id]
         seq_log_prob += token_prob.log().item()
     return seq_log_prob
 
 @torch.no_grad()
-def calculate_pll(sequence: str, tokenizer, model, device: torch.device) -> Tuple[float, float]:
+def calculate_pll(sequence: str, tokenizer, model, device: torch.device, model_name: str) -> Tuple[float, float]:
     """Calculate pseudo-log-likelihood by masking each position iteratively."""
     tokens = tokenizer(sequence, return_tensors="pt", add_special_tokens=True)
     input_ids = tokens['input_ids'][0].to(device)
@@ -250,18 +256,22 @@ def calculate_pll(sequence: str, tokenizer, model, device: torch.device) -> Tupl
         mask_id = tokenizer.convert_tokens_to_ids(getattr(tokenizer, 'mask_token', '<mask>'))
     if mask_id is None:
         raise ValueError("Tokenizer must provide a valid mask token id")
-    assert input_ids.shape[0] == len(sequence) + 2, (
-        f"Tokenized length {input_ids.shape[0]} must equal len(sequence)+2 ({len(sequence)+2})"
+    extra_leading_special = 1 if model_name in ("GLM2-150", "GLM2-650") else 0
+    expected_len = len(sequence) + 2 + extra_leading_special
+    assert input_ids.shape[0] == expected_len, (
+        f"Tokenized length {input_ids.shape[0]} must equal len(sequence)+2+extra ({expected_len})"
     )
-    L = input_ids.size(0) - 2  # Length of sequence excluding CLS and SEP tokens
+    L = len(sequence)
     total_ll = 0.0
     with torch.no_grad():
-        for pos in range(1, input_ids.size(0) - 1):  # Skip CLS token at position 0
+        seq_start = 1 + extra_leading_special
+        seq_end = input_ids.size(0) - 1
+        for pos in range(seq_start, seq_end):
             masked = input_ids.clone()
             masked[pos] = mask_id
             outputs = model(masked.unsqueeze(0), attention_mask=attention_mask.unsqueeze(0))
             logits = outputs.logits[0, pos]
-            logp = torch.log_softmax(logits, -1)
+            logp = torch.log_softmax(logits.float(), -1)
             true_id = input_ids[pos].item()
             total_ll += logp[true_id].item()
     return total_ll, total_ll / L

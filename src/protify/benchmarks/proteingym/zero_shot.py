@@ -101,13 +101,13 @@ def zero_shot_scores_for_assay(
                         cache_key = (key_seq, pos_rel, scoring_method)
                         if cache_key not in log_prob_cache:
                             log_prob_cache[cache_key] = _position_log_probs(
-                                model, tokenizer, scoring_method, window_seq, pos_rel, device
-                            ).cpu()
+                                model, tokenizer, scoring_method, window_seq, pos_rel, device, model_name
+                            )
                         lps = log_prob_cache[cache_key]
                         
                         # Build token_probs for label_row at this position
                         vocab_size = lps.shape[-1]
-                        token_probs = torch.full((1, len(window_seq), vocab_size), fill_value=-1e9, dtype=lps.dtype)
+                        token_probs = torch.full((1, len(window_seq), vocab_size), fill_value=-1e9, dtype=lps.dtype, device=lps.device)
                         token_probs[0, pos_rel, :] = lps
                         
                         # Compute score at the position relative to window
@@ -136,12 +136,12 @@ def zero_shot_scores_for_assay(
                         cache_key = (window_seq, pos_rel, scoring_method)
                         if cache_key not in log_prob_cache:
                             log_prob_cache[cache_key] = _position_log_probs(
-                                model, tokenizer, scoring_method, window_seq, pos_rel, device
-                            ).cpu()
+                                model, tokenizer, scoring_method, window_seq, pos_rel, device, model_name
+                            )
                         lps = log_prob_cache[cache_key]
                         
                         vocab_size = lps.shape[-1]
-                        token_probs = torch.full((1, len(window_seq), vocab_size), fill_value=-1e9, dtype=lps.dtype)
+                        token_probs = torch.full((1, len(window_seq), vocab_size), fill_value=-1e9, dtype=lps.dtype, device=lps.device)
                         token_probs[0, pos_rel, :] = lps
                         
                         # For mutant marginal: score wt vs mt when we have mt at pos_rel
@@ -170,12 +170,12 @@ def zero_shot_scores_for_assay(
                         cache_key = (window_seq, pos_rel, scoring_method)
                         if cache_key not in log_prob_cache:
                             log_prob_cache[cache_key] = _position_log_probs(
-                                model, tokenizer, scoring_method, window_seq, pos_rel, device
-                            ).cpu()
+                                model, tokenizer, scoring_method, window_seq, pos_rel, device, model_name
+                            )
                         lps = log_prob_cache[cache_key]
                         
                         vocab_size = lps.shape[-1]
-                        token_probs = torch.full((1, len(window_seq), vocab_size), fill_value=-1e9, dtype=lps.dtype)
+                        token_probs = torch.full((1, len(window_seq), vocab_size), fill_value=-1e9, dtype=lps.dtype, device=lps.device)
                         token_probs[0, pos_rel, :] = lps
                         
                         score = label_row(wt, pos_rel, mt, window_seq, token_probs, tokenizer)
@@ -192,7 +192,7 @@ def zero_shot_scores_for_assay(
                 ws, we = slice_row['window_start'], slice_row['window_end']
                 assert window_seq == target_seq[ws:we], "PLL: slice content mismatch with window bounds"
                 if window_seq not in pll_cache:
-                    pll_cache[window_seq] = calculate_pll(window_seq, tokenizer, model, device)
+                    pll_cache[window_seq] = calculate_pll(window_seq, tokenizer, model, device, model_name)
                 _, pll = pll_cache[window_seq]
                 slice_scores.append(pll)
             total_score = sum(slice_scores) / len(slice_scores) if slice_scores else 0.0
@@ -205,7 +205,7 @@ def zero_shot_scores_for_assay(
                 window_seq = slice_row['sliced_mutated_seq']
                 ws, we = slice_row['window_start'], slice_row['window_end']
                 assert window_seq == mutated_seq[ws:we], "global_log_prob: slice content mismatch with window bounds"
-                seq_log_prob = get_sequence_log_probability(window_seq, tokenizer, model, device)
+                seq_log_prob = get_sequence_log_probability(window_seq, tokenizer, model, device, model_name)
                 total_score += seq_log_prob
         
         scores.append(total_score)
@@ -272,7 +272,7 @@ def zero_shot_scores_for_indels(
         for _, slice_row in mt_slices.iterrows():
             window_seq = slice_row['sliced_mutated_seq']
             if window_seq not in pll_cache:
-                pll_cache[window_seq] = calculate_pll(window_seq, tokenizer, model, device)
+                pll_cache[window_seq] = calculate_pll(window_seq, tokenizer, model, device, model_name)
             _, pll = pll_cache[window_seq]
             slice_scores.append(pll)
         total_score = sum(slice_scores) / len(slice_scores) if slice_scores else 0.0

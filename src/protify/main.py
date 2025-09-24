@@ -147,7 +147,7 @@ def parse_arguments():
         if not hasattr(yaml_args, 'mode'):
             yaml_args.mode = None
         if not hasattr(yaml_args, 'scoring_method'):
-            yaml_args.scoring_method = "masked"
+            yaml_args.scoring_method = "masked_marginal"
         return yaml_args
     else:
         return args

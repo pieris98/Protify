@@ -199,9 +199,9 @@ def _position_log_probs(model, tokenizer, scoring_method: str, sequence: str, po
             f"Tokenized length {input_ids.shape[0]} must equal len(sequence)+2 ({expected_len})"
         )
     token_idx = pos + 1
-    
-    if token_idx <= 0 or token_idx >= input_ids.shape[0] - 1:
-        raise IndexError(f"Position {token_idx} out of bounds for tokenized length {input_ids.shape[0]}")
+    if model_name not in ["GLM2-150", "GLM2-650"]:
+        if token_idx <= 0 or token_idx >= input_ids.shape[0] - 1:
+            raise IndexError(f"Position {token_idx} out of bounds for tokenized length {input_ids.shape[0]}")
     
     if scoring_method == "masked_marginal":
         mask_id = tokenizer.mask_token_id

@@ -52,6 +52,7 @@ def build_random_model(preset: str):
         config.n_heads = esm_config.num_attention_heads
         config.n_layers = esm_config.num_hidden_layers
         config.vocab_size = esm_config.vocab_size
+        config.attn_implementation = 'sdpa'
         model = RandomTransformer(config).eval()
     return model, tokenizer
 

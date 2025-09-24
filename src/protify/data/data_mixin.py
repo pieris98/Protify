@@ -244,32 +244,23 @@ class DataMixin:
             print(test_set)
             ### sanitize
             # 1) Drop rows with None or NaN in any sequence column(s) or labels
+            before_train, before_valid, before_test = len(train_set), len(valid_set), len(test_set)
             if ppi:
-                before_train, before_valid, before_test = len(train_set), len(valid_set), len(test_set)
                 train_set = train_set.filter(lambda x: not (self._is_missing_value(x['SeqA']) or self._is_missing_value(x['SeqB']) or self._is_missing_value(x['labels'])))
                 valid_set = valid_set.filter(lambda x: not (self._is_missing_value(x['SeqA']) or self._is_missing_value(x['SeqB']) or self._is_missing_value(x['labels'])))
                 test_set = test_set.filter(lambda x: not (self._is_missing_value(x['SeqA']) or self._is_missing_value(x['SeqB']) or self._is_missing_value(x['labels'])))
-                if any([
-                    len(train_set) != before_train,
-                    len(valid_set) != before_valid,
-                    len(test_set) != before_test,
-                ]):
-                    print_message(
-                        f"Removed missing rows - train: {before_train - len(train_set)}, valid: {before_valid - len(valid_set)}, test: {before_test - len(test_set)}"
-                    )
             else:
-                before_train, before_valid, before_test = len(train_set), len(valid_set), len(test_set)
                 train_set = train_set.filter(lambda x: not (self._is_missing_value(x['seqs']) or self._is_missing_value(x['labels'])))
                 valid_set = valid_set.filter(lambda x: not (self._is_missing_value(x['seqs']) or self._is_missing_value(x['labels'])))
                 test_set = test_set.filter(lambda x: not (self._is_missing_value(x['seqs']) or self._is_missing_value(x['labels'])))
-                if any([
-                    len(train_set) != before_train,
-                    len(valid_set) != before_valid,
-                    len(test_set) != before_test,
-                ]):
-                    print_message(
-                        f"Removed missing rows - train: {before_train - len(train_set)}, valid: {before_valid - len(valid_set)}, test: {before_test - len(test_set)}"
-                    )
+            if any([
+                len(train_set) != before_train,
+                len(valid_set) != before_valid,
+                len(test_set) != before_test,
+            ]):
+                print_message(
+                    f"Removed None / NaN rows - train: {before_train - len(train_set)}, valid: {before_valid - len(valid_set)}, test: {before_test - len(test_set)}"
+                )
 
             # 2) Remove non-amino acid characters
             if ppi:
@@ -291,6 +282,7 @@ class DataMixin:
                 all_seqs.update(list(test_set['seqs']))
 
             # 3) Remove any length 0 sequences
+            before_train, before_valid, before_test = len(train_set), len(valid_set), len(test_set)
             if ppi:
                 train_set = train_set.filter(lambda x: len(x['SeqA']) > 0 and len(x['SeqB']) > 0)
                 valid_set = valid_set.filter(lambda x: len(x['SeqA']) > 0 and len(x['SeqB']) > 0)
@@ -299,10 +291,19 @@ class DataMixin:
                 train_set = train_set.filter(lambda x: len(x['seqs']) > 0)
                 valid_set = valid_set.filter(lambda x: len(x['seqs']) > 0)
                 test_set = test_set.filter(lambda x: len(x['seqs']) > 0)
-            
+
+            if any([
+                len(train_set) != before_train,
+                len(valid_set) != before_valid,
+                len(test_set) != before_test,
+            ]):
+                print_message(
+                    f"Removed length 0 rows - train: {before_train - len(train_set)}, valid: {before_valid - len(valid_set)}, test: {before_test - len(test_set)}"
+                )
+
             # 4) Trim or truncate by length if necessary
+            before_train, before_valid, before_test = len(train_set), len(valid_set), len(test_set)
             if self._trim: # trim by length
-                original_train_size, original_valid_size, original_test_size = len(train_set), len(valid_set), len(test_set)
                 if ppi:
                     train_set = train_set.filter(lambda x: len(x['SeqA']) + len(x['SeqB']) <= max_length)
                     valid_set = valid_set.filter(lambda x: len(x['SeqA']) + len(x['SeqB']) <= max_length)
@@ -311,10 +312,16 @@ class DataMixin:
                     train_set = train_set.filter(lambda x: len(x['seqs']) <= max_length)
                     valid_set = valid_set.filter(lambda x: len(x['seqs']) <= max_length)
                     test_set = test_set.filter(lambda x: len(x['seqs']) <= max_length)
-            
-                print_message(f'Trimmed {100 * round((original_train_size-len(train_set)) / original_train_size, 2)}% from train')
-                print_message(f'Trimmed {100 * round((original_valid_size-len(valid_set)) / original_valid_size, 2)}% from valid')
-                print_message(f'Trimmed {100 * round((original_test_size-len(test_set)) / original_test_size, 2)}% from test')
+            if any([
+                len(train_set) != before_train,
+                len(valid_set) != before_valid,
+                len(test_set) != before_test,
+            ]):
+                print_message(
+                    f"Trimmed rows - train: {(before_train - len(train_set)) / before_train * 100:.2f}%, \
+                    valid: {(before_valid - len(valid_set)) / before_valid * 100:.2f}%, \
+                    test: {(before_test - len(test_set)) / before_test * 100:.2f}%"
+                )
 
             else: # truncate to max_length
                 if ppi:

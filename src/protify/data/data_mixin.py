@@ -211,6 +211,24 @@ class DataMixin:
 
         raise KeyError(f"Could not find paired sequence columns for PPI. Available: {available_columns}")
 
+    def _is_missing_value(self, v):
+        if v is None:
+            return True
+        # float/np.nan handling
+        try:
+            if isinstance(v, float) and np.isnan(v):
+                return True
+        except Exception:
+            pass
+        # list/array handling (check any element)
+        if isinstance(v, (list, tuple, np.ndarray)):
+            for el in v:
+                if el is None:
+                    return True
+                if isinstance(el, float) and np.isnan(el):
+                    return True
+        return False
+
     def process_datasets(
             self,
             hf_datasets: List[Tuple[Dataset, Dataset, Dataset, bool]],
@@ -224,8 +242,62 @@ class DataMixin:
             print(train_set)
             print(valid_set)
             print(test_set)
-            if self._trim: # trim by length if necessary
-                original_train_size, original_valid_size, original_test_size = len(train_set), len(valid_set), len(test_set)
+            ### sanitize
+            # 1) Drop rows with None or NaN in any sequence column(s) or labels
+            before_train, before_valid, before_test = len(train_set), len(valid_set), len(test_set)
+            if ppi:
+                train_set = train_set.filter(lambda x: not (self._is_missing_value(x['SeqA']) or self._is_missing_value(x['SeqB']) or self._is_missing_value(x['labels'])))
+                valid_set = valid_set.filter(lambda x: not (self._is_missing_value(x['SeqA']) or self._is_missing_value(x['SeqB']) or self._is_missing_value(x['labels'])))
+                test_set = test_set.filter(lambda x: not (self._is_missing_value(x['SeqA']) or self._is_missing_value(x['SeqB']) or self._is_missing_value(x['labels'])))
+            else:
+                train_set = train_set.filter(lambda x: not (self._is_missing_value(x['seqs']) or self._is_missing_value(x['labels'])))
+                valid_set = valid_set.filter(lambda x: not (self._is_missing_value(x['seqs']) or self._is_missing_value(x['labels'])))
+                test_set = test_set.filter(lambda x: not (self._is_missing_value(x['seqs']) or self._is_missing_value(x['labels'])))
+            if any([
+                len(train_set) != before_train,
+                len(valid_set) != before_valid,
+                len(test_set) != before_test,
+            ]):
+                print_message(
+                    f"Removed None / NaN rows - train: {before_train - len(train_set)}, valid: {before_valid - len(valid_set)}, test: {before_test - len(test_set)}"
+                )
+
+            # 2) Remove non-amino acid characters
+            if ppi:
+                train_set = train_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
+                                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
+                valid_set = valid_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
+                                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
+                test_set = test_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
+                                                    'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
+            else:
+                train_set = train_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
+                valid_set = valid_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
+                test_set = test_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
+
+            # 3) Remove any length 0 sequences
+            before_train, before_valid, before_test = len(train_set), len(valid_set), len(test_set)
+            if ppi:
+                train_set = train_set.filter(lambda x: len(x['SeqA']) > 0 and len(x['SeqB']) > 0)
+                valid_set = valid_set.filter(lambda x: len(x['SeqA']) > 0 and len(x['SeqB']) > 0)
+                test_set = test_set.filter(lambda x: len(x['SeqA']) > 0 and len(x['SeqB']) > 0)
+            else:
+                train_set = train_set.filter(lambda x: len(x['seqs']) > 0)
+                valid_set = valid_set.filter(lambda x: len(x['seqs']) > 0)
+                test_set = test_set.filter(lambda x: len(x['seqs']) > 0)
+
+            if any([
+                len(train_set) != before_train,
+                len(valid_set) != before_valid,
+                len(test_set) != before_test,
+            ]):
+                print_message(
+                    f"Removed length 0 rows - train: {before_train - len(train_set)}, valid: {before_valid - len(valid_set)}, test: {before_test - len(test_set)}"
+                )
+
+            # 4) Trim or truncate by length if necessary
+            before_train, before_valid, before_test = len(train_set), len(valid_set), len(test_set)
+            if self._trim: # trim by length
                 if ppi:
                     train_set = train_set.filter(lambda x: len(x['SeqA']) + len(x['SeqB']) <= max_length)
                     valid_set = valid_set.filter(lambda x: len(x['SeqA']) + len(x['SeqB']) <= max_length)
@@ -234,10 +306,6 @@ class DataMixin:
                     train_set = train_set.filter(lambda x: len(x['seqs']) <= max_length)
                     valid_set = valid_set.filter(lambda x: len(x['seqs']) <= max_length)
                     test_set = test_set.filter(lambda x: len(x['seqs']) <= max_length)
-            
-                print_message(f'Trimmed {100 * round((original_train_size-len(train_set)) / original_train_size, 2)}% from train')
-                print_message(f'Trimmed {100 * round((original_valid_size-len(valid_set)) / original_valid_size, 2)}% from valid')
-                print_message(f'Trimmed {100 * round((original_test_size-len(test_set)) / original_test_size, 2)}% from test')
 
             else: # truncate to max_length
                 if ppi:
@@ -249,25 +317,27 @@ class DataMixin:
                     valid_set = valid_set.map(lambda x: {'seqs': x['seqs'][:max_length]})
                     test_set = test_set.map(lambda x: {'seqs': x['seqs'][:max_length]})
 
-            # sanitize
+            if any([
+                len(train_set) != before_train,
+                len(valid_set) != before_valid,
+                len(test_set) != before_test,
+            ]):
+                print_message(
+                    f"Trimmed rows - train: {(before_train - len(train_set)) / before_train * 100:.2f}%, \
+                    valid: {(before_valid - len(valid_set)) / before_valid * 100:.2f}%, \
+                    test: {(before_test - len(test_set)) / before_test * 100:.2f}%"
+                )
+
+            # 5) Record all_seqs
             if ppi:
-                train_set = train_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
-                                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
-                valid_set = valid_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
-                                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
-                test_set = test_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
-                                                    'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
                 all_seqs.update(list(train_set['SeqA']) + list(train_set['SeqB']))
                 all_seqs.update(list(valid_set['SeqA']) + list(valid_set['SeqB']))
                 all_seqs.update(list(test_set['SeqA']) + list(test_set['SeqB']))
             else:
-                train_set = train_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
-                valid_set = valid_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
-                test_set = test_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
                 all_seqs.update(list(train_set['seqs']))
                 all_seqs.update(list(valid_set['seqs']))
                 all_seqs.update(list(test_set['seqs']))
-                
+
             # confirm the type of labels
             check_labels = valid_set['labels']
             label_type = self._label_type_checker(check_labels)

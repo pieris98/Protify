@@ -34,12 +34,16 @@ class RandomModel(nn.Module):
         self,
         input_ids: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-    ) -> RandomModelOutput:
+        return_logits: bool = False,
+    ):
         device = self.holder_param.device
         B, T = input_ids.shape
         last_hidden_state = torch.randn(B, T, self.hidden_size, device=device, dtype=self.holder_param.dtype)
-        logits = self.lm_head(last_hidden_state)  # (B, T, vocab)
-        return RandomModelOutput(last_hidden_state=last_hidden_state, logits=logits)
+        if return_logits:
+            logits = self.lm_head(last_hidden_state)  # (B, T, vocab)
+            return RandomModelOutput(last_hidden_state=last_hidden_state, logits=logits)
+        else:
+            return last_hidden_state
 
 
 class RandomTransformer(nn.Module):
@@ -56,7 +60,7 @@ class RandomTransformer(nn.Module):
             return self.transformer(input_ids, attention_mask).last_hidden_state
 
 
-def build_random_model(preset: str):
+def build_random_model(preset: str, masked_lm: bool = False):
     tokenizer = EsmTokenizer.from_pretrained('facebook/esm2_t12_35M_UR50D')
     if preset == 'Random':
         model = RandomModel(EsmConfig.from_pretrained('facebook/esm2_t12_35M_UR50D'))
@@ -67,6 +71,7 @@ def build_random_model(preset: str):
         config.n_heads = esm_config.num_attention_heads
         config.n_layers = esm_config.num_hidden_layers
         config.vocab_size = esm_config.vocab_size
+        config.attn_implementation = 'sdpa'
         model = RandomTransformer(config).eval()
     return model, tokenizer
 

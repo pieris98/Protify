@@ -118,6 +118,7 @@ class TransformerConfig(PretrainedConfig):
         expansion_ratio: float = 8 / 3,
         dropout: float = 0.1,
         rotary: bool = True,
+        attn_implementation: str = 'sdpa',
     ):
         self.hidden_size = hidden_size
         self.n_heads = n_heads
@@ -126,7 +127,7 @@ class TransformerConfig(PretrainedConfig):
         self.dropout = dropout
         self.rotary = rotary
         self.vocab_size = vocab_size
-
+        self.attn_implementation = attn_implementation
 
 @dataclass
 class TransformerOutput(ModelOutput):

@@ -270,16 +270,10 @@ class DataMixin:
                                                      'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
                 test_set = test_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
                                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
-                all_seqs.update(list(train_set['SeqA']) + list(train_set['SeqB']))
-                all_seqs.update(list(valid_set['SeqA']) + list(valid_set['SeqB']))
-                all_seqs.update(list(test_set['SeqA']) + list(test_set['SeqB']))
             else:
                 train_set = train_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
                 valid_set = valid_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
                 test_set = test_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
-                all_seqs.update(list(train_set['seqs']))
-                all_seqs.update(list(valid_set['seqs']))
-                all_seqs.update(list(test_set['seqs']))
 
             # 3) Remove any length 0 sequences
             before_train, before_valid, before_test = len(train_set), len(valid_set), len(test_set)
@@ -333,6 +327,16 @@ class DataMixin:
                     valid: {(before_valid - len(valid_set)) / before_valid * 100:.2f}%, \
                     test: {(before_test - len(test_set)) / before_test * 100:.2f}%"
                 )
+
+            # 5) Record all_seqs
+            if ppi:
+                all_seqs.update(list(train_set['SeqA']) + list(train_set['SeqB']))
+                all_seqs.update(list(valid_set['SeqA']) + list(valid_set['SeqB']))
+                all_seqs.update(list(test_set['SeqA']) + list(test_set['SeqB']))
+            else:
+                all_seqs.update(list(train_set['seqs']))
+                all_seqs.update(list(valid_set['seqs']))
+                all_seqs.update(list(test_set['seqs']))
 
             # confirm the type of labels
             check_labels = valid_set['labels']

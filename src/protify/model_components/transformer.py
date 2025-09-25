@@ -151,7 +151,6 @@ class TransformerForMaskedLM(PreTrainedModel):
             expansion_ratio=config.expansion_ratio,
             dropout=config.dropout,
             rotary=config.rotary,
-            attn_implementation=config.attn_implementation,
         )
         self.lm_head = nn.Sequential(
             nn.Linear(config.hidden_size, config.hidden_size),

@@ -4,6 +4,7 @@ from typing import Optional
 from transformers import EsmTokenizer, EsmConfig
 from model_components.transformer import TransformerForMaskedLM, TransformerConfig
 from transformers.utils import ModelOutput
+from dataclasses import dataclass
 
 
 presets = {

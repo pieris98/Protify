@@ -312,6 +312,17 @@ class DataMixin:
                     train_set = train_set.filter(lambda x: len(x['seqs']) <= max_length)
                     valid_set = valid_set.filter(lambda x: len(x['seqs']) <= max_length)
                     test_set = test_set.filter(lambda x: len(x['seqs']) <= max_length)
+
+            else: # truncate to max_length
+                if ppi:
+                    train_set = train_set.map(self._truncate_pairs)
+                    valid_set = valid_set.map(self._truncate_pairs)
+                    test_set = test_set.map(self._truncate_pairs)
+                else:
+                    train_set = train_set.map(lambda x: {'seqs': x['seqs'][:max_length]})
+                    valid_set = valid_set.map(lambda x: {'seqs': x['seqs'][:max_length]})
+                    test_set = test_set.map(lambda x: {'seqs': x['seqs'][:max_length]})
+
             if any([
                 len(train_set) != before_train,
                 len(valid_set) != before_valid,
@@ -323,16 +334,6 @@ class DataMixin:
                     test: {(before_test - len(test_set)) / before_test * 100:.2f}%"
                 )
 
-            else: # truncate to max_length
-                if ppi:
-                    train_set = train_set.map(self._truncate_pairs)
-                    valid_set = valid_set.map(self._truncate_pairs)
-                    test_set = test_set.map(self._truncate_pairs)
-                else:
-                    train_set = train_set.map(lambda x: {'seqs': x['seqs'][:max_length]})
-                    valid_set = valid_set.map(lambda x: {'seqs': x['seqs'][:max_length]})
-                    test_set = test_set.map(lambda x: {'seqs': x['seqs'][:max_length]})
-                
             # confirm the type of labels
             check_labels = valid_set['labels']
             label_type = self._label_type_checker(check_labels)

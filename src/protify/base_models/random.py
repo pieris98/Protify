@@ -3,6 +3,7 @@ import torch.nn as nn
 from typing import Optional
 from transformers import EsmTokenizer, EsmConfig
 from model_components.transformer import TransformerForMaskedLM, TransformerConfig
+from transformers.utils import ModelOutput
 
 
 presets = {
@@ -14,6 +15,9 @@ presets = {
     'Random-ESM2-650': 'facebook/esm2_t36_650M_UR50D',
 }
 
+class RandomModelOutput(ModelOutput):
+    last_hidden_state: torch.FloatTensor = None
+    logits: torch.FloatTensor = None
 
 class RandomModel(nn.Module):
     def __init__(self, config: EsmConfig):
@@ -25,14 +29,15 @@ class RandomModel(nn.Module):
         self.lm_head = nn.Linear(self.hidden_size, config.vocab_size)
 
     def forward(
-            self,
-            input_ids: torch.Tensor,
-            attention_mask: Optional[torch.Tensor] = None,
-        ) -> torch.Tensor:
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> RandomModelOutput:
         device = self.holder_param.device
-        last_hidden_state = torch.randn(input_ids.shape[0], input_ids.shape[1], self.hidden_size, device=device)
-        logits = self.lm_head(last_hidden_state)
-        return {"last_hidden_state": last_hidden_state, "logits": logits}
+        B, T = input_ids.shape
+        last_hidden_state = torch.randn(B, T, self.hidden_size, device=device, dtype=self.holder_param.dtype)
+        logits = self.lm_head(last_hidden_state)  # (B, T, vocab)
+        return RandomModelOutput(last_hidden_state=last_hidden_state, logits=logits)
 
 
 class RandomTransformer(nn.Module):

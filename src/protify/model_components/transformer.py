@@ -119,7 +119,9 @@ class TransformerConfig(PretrainedConfig):
         dropout: float = 0.1,
         rotary: bool = True,
         attn_implementation: str = 'sdpa',
+        **kwargs,
     ):
+        super().__init__(**kwargs)
         self.hidden_size = hidden_size
         self.n_heads = n_heads
         self.n_layers = n_layers
@@ -128,7 +130,7 @@ class TransformerConfig(PretrainedConfig):
         self.rotary = rotary
         self.vocab_size = vocab_size
         self.attn_implementation = attn_implementation
-
+        
 @dataclass
 class TransformerOutput(ModelOutput):
     """Output type for ESM++ models."""
@@ -149,6 +151,7 @@ class TransformerForMaskedLM(PreTrainedModel):
             expansion_ratio=config.expansion_ratio,
             dropout=config.dropout,
             rotary=config.rotary,
+            attn_implementation=config.attn_implementation,
         )
         self.lm_head = nn.Sequential(
             nn.Linear(config.hidden_size, config.hidden_size),

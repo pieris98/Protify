@@ -9,6 +9,7 @@ from scipy.stats import spearmanr
 from .zero_shot import zero_shot_scores_for_assay
 from .data_loader import load_proteingym_dms
 from .dms_ids import ALL_SUBSTITUTION_DMS_IDS
+from base_models.get_base_models import get_base_model
 
 def compare_scoring_methods(
     model_names: List[str],
@@ -36,7 +37,7 @@ def compare_scoring_methods(
         methods = ["masked_marginal", "mutant_marginal", "wildtype_marginal", "global_log_prob"]
     
     if dms_ids is None:
-        dms_ids = ALL_DMS_IDS
+        dms_ids = ALL_SUBSTITUTION_DMS_IDS
     
     all_summary_results = []
     device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -51,6 +52,9 @@ def compare_scoring_methods(
             assay_results = []
             spearman_results = []
             timing_results = []
+            # Load model once per model and reuse across methods/assays
+            model, tokenizer = get_base_model(model_name, masked_lm=True)
+            model = model.to(device).eval()
             
             for dms_id in dms_ids:
                 print(f"\nProcessing DMS ID: {dms_id}")
@@ -73,7 +77,9 @@ def compare_scoring_methods(
                         model_name=model_name,
                         device=device,
                         progress=progress,
-                        scoring_method=method
+                        scoring_method=method,
+                        model=model,
+                        tokenizer=tokenizer,
                     )
                     end_time = time.time()
                     method_duration = end_time - start_time

@@ -45,7 +45,7 @@ def load_proteingym_dms(dms_id: str, mode: str, repo_id: str = "GleghornLab/Prot
         df = df[df['is_indel'] == False]
         df = df[df['num_mutations'] == 1]
         df = df[["DMS_id", "mutated_seq", "target_seq", "DMS_score", "DMS_score_bin", "mutant"]]
-    elif mode in ('multiples'):
+    elif mode == 'multiples':
         # Multiple substitutions only
         df = df[df['is_indel'] == False]
         df = df[df['num_mutations'] > 1]

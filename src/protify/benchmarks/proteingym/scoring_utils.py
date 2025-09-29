@@ -194,7 +194,7 @@ def collect_proteingym_spearman(args: SimpleNamespace, model_names):
 Scoring Functions
 '''
 
-@torch.no_grad()
+@torch.inference_mode()
 def _position_log_probs(
     model,
     tokenizer,
@@ -289,7 +289,7 @@ def _position_log_probs(
     return torch.cat(all_log_probs, dim=0)
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def get_sequence_log_probability(sequence, tokenizer, model, device: torch.device, model_name: str):
     """Compute the log probability of the entire, unmasked sequence using vectorized operations."""
     tokens = tokenizer(sequence, return_tensors='pt', add_special_tokens=True)
@@ -319,54 +319,193 @@ def get_sequence_log_probability(sequence, tokenizer, model, device: torch.devic
     seq_log_prob = selected_log_probs.sum().item()
     return seq_log_prob
 
-@torch.no_grad()
-def calculate_pll(sequence: str, tokenizer, model, device: torch.device, model_name: str, batch_size: int = 32) -> Tuple[float, float]:
-    """Calculate pseudo-log-likelihood by masking each position, with batched processing."""
-    tokens = tokenizer(sequence, return_tensors="pt", add_special_tokens=True)
-    input_ids = tokens['input_ids'][0].to(device)
-    attention_mask = tokens['attention_mask'][0].to(device)
+@torch.inference_mode()
+def calculate_pll_batched(
+    sequences: List[str],
+    tokenizer,
+    model,
+    device: torch.device,
+    model_name: str,
+    batch_size: int = 32,
+) -> List[Tuple[float, float]]:
+    """Calculate pseudo-log-likelihood for multiple sequences with batched processing.
     
+    Returns
+    -------
+    List[Tuple[float, float]]
+        List of (total_ll, normalized_ll) tuples for each sequence
+    """
     mask_id = tokenizer.mask_token_id
     if mask_id is None:
         mask_id = tokenizer.convert_tokens_to_ids(getattr(tokenizer, 'mask_token', '<mask>'))
     if mask_id is None:
         raise ValueError("Tokenizer must provide a valid mask token id")
-    expected_len = len(sequence) + 2
-    if model_name not in ["GLM2-150", "GLM2-650"]:
-        assert input_ids.shape[0] == expected_len, (
-            f"Tokenized length {input_ids.shape[0]} must equal len(sequence)+2 ({expected_len})"
-        )
-    L = len(sequence)
-    total_ll = 0.0
+        
+    # Group sequences by length for efficient batching. Maybe useful for indels (variable length)
+    from collections import defaultdict
+    length_groups = defaultdict(list)
+    for idx, seq in enumerate(sequences):
+        length_groups[len(seq)].append((idx, seq))
     
-    seq_start = 1
-    seq_end = input_ids.size(0) - 1
-    positions = list(range(seq_start, seq_end))
+    # Process each length group
+    results = [None] * len(sequences)
     
-    # Process positions in batches
-    for batch_start_idx in range(0, len(positions), batch_size):
-        batch_end_idx = min(batch_start_idx + batch_size, len(positions))
-        batch_positions = positions[batch_start_idx:batch_end_idx]
-        batch_size_len = len(batch_positions)
+    for seq_len, indexed_seqs in length_groups.items():
+        indices = [idx for idx, _ in indexed_seqs]
+        seqs = [seq for _, seq in indexed_seqs]
         
-        # Create masked versions for this batch
-        masked_batch = input_ids.unsqueeze(0).expand(batch_size_len, -1).clone()
-        attention_mask_batch = attention_mask.unsqueeze(0).expand(batch_size_len, -1)
+        # Tokenize all sequences in this group at once
+        tokens = tokenizer(seqs, return_tensors="pt", add_special_tokens=True, padding=False)
+        input_ids = tokens['input_ids'].to(device)  # Shape: [num_seqs, seq_len+2]
+        attention_mask = tokens['attention_mask'].to(device)
         
-        for i, pos in enumerate(batch_positions):
-            masked_batch[i, pos] = mask_id
+        num_seqs = input_ids.size(0)
+        expected_len = seq_len + 2
+        if model_name not in ["GLM2-150", "GLM2-650"]:
+            assert input_ids.shape[1] == expected_len, (
+                f"Tokenized length {input_ids.shape[1]} must equal len(sequence)+2 ({expected_len})"
+            )
         
-        # Forward pass for the batch
-        outputs = model(masked_batch, attention_mask=attention_mask_batch)
-        logits = outputs.logits.float()
+        seq_start = 1
+        seq_end = input_ids.size(1) - 1
+        positions = list(range(seq_start, seq_end))
+        L = len(positions)
         
-        # Extract log probabilities for the masked positions
-        for i, pos in enumerate(batch_positions):
-            logp = torch.log_softmax(logits[i, pos], dim=-1)
-            true_id = input_ids[pos].item()
-            total_ll += logp[true_id].item()
+        # Initialize log-likelihoods for all sequences
+        total_lls = torch.zeros(num_seqs, device=device)
+        
+        # Process positions in batches, across all sequences
+        for batch_start_idx in range(0, len(positions), batch_size):
+            batch_end_idx = min(batch_start_idx + batch_size, len(positions))
+            batch_positions = positions[batch_start_idx:batch_end_idx]
+            num_positions = len(batch_positions)
+            
+            # Create a batch of all (sequence, position) pairs
+            # Shape: [num_seqs * num_positions, seq_len+2]
+            masked_batch = input_ids.unsqueeze(1).expand(-1, num_positions, -1).reshape(num_seqs * num_positions, -1).clone()
+            attention_mask_batch = attention_mask.unsqueeze(1).expand(-1, num_positions, -1).reshape(num_seqs * num_positions, -1)
+            
+            # Mask each position for each sequence
+            position_tensor = torch.tensor(batch_positions, device=device)
+            row_indices = torch.arange(num_seqs * num_positions, device=device)
+            pos_indices = position_tensor.repeat(num_seqs)
+            masked_batch[row_indices, pos_indices] = mask_id
+            
+            # Forward pass for the entire batch
+            outputs = model(masked_batch, attention_mask=attention_mask_batch)
+            logits = outputs.logits.float()
+            
+            # Vectorized log probability extraction
+            log_probs = torch.log_softmax(logits, dim=-1)
+            
+            # Get true token IDs - shape: [num_seqs, num_positions]
+            true_ids = input_ids[:, batch_positions]  # Shape: [num_seqs, num_positions]
+            true_ids_flat = true_ids.reshape(-1)  # Shape: [num_seqs * num_positions]
+            
+            # Extract log probabilities for true tokens
+            batch_indices = torch.arange(num_seqs * num_positions, device=device)
+            selected_log_probs = log_probs[batch_indices, pos_indices, true_ids_flat]
+            
+            # Reshape and sum across positions for each sequence
+            selected_log_probs = selected_log_probs.reshape(num_seqs, num_positions)
+            total_lls += selected_log_probs.sum(dim=1)
+        
+        # Store results in original order
+        for i, orig_idx in enumerate(indices):
+            total_ll = total_lls[i].item()
+            results[orig_idx] = (total_ll, total_ll / L)
     
-    return total_ll, total_ll / L
+    return results
+    
+@torch.inference_mode()
+def get_sequence_log_probability_batched(
+    sequences: List[str],
+    tokenizer,
+    model,
+    device: torch.device,
+    model_name: str,
+    batch_size: int = 32,
+) -> List[float]:
+    """Compute log probability for multiple sequences with batched processing.
+    
+    Optimized to vectorize extraction when sequences are same length (common in assays).
+    Groups sequences by length for efficient processing.
+    
+    Returns
+    -------
+    List[float]
+        Log probability for each sequence
+    """    
+    # Group sequences by length for efficient batching without padding. TODO: will support indels scoring in the future, so length grouping is fine for now.
+    from collections import defaultdict
+    length_groups = defaultdict(list)
+    for idx, seq in enumerate(sequences):
+        length_groups[len(seq)].append((idx, seq))
+    
+    # Process each length group
+    results = [None] * len(sequences)  # Maintain original order
+    
+    for seq_len, indexed_seqs in length_groups.items():
+        indices = [idx for idx, _ in indexed_seqs]
+        seqs = [seq for _, seq in indexed_seqs]
+        
+        # Process this length group in batches
+        for batch_start in range(0, len(seqs), batch_size):
+            batch_end = min(batch_start + batch_size, len(seqs))
+            batch_sequences = seqs[batch_start:batch_end]
+            batch_indices = indices[batch_start:batch_end]
+            
+            # Tokenize batch (no padding needed - same length)
+            tokens = tokenizer(
+                batch_sequences,
+                return_tensors='pt',
+                add_special_tokens=True,
+                padding=False,  # No padding needed for same-length sequences
+            )
+            input_ids = tokens['input_ids'].to(device)
+            attention_mask = tokens['attention_mask'].to(device)
+            
+            # Validate lengths
+            if model_name not in ["GLM2-150", "GLM2-650"]:
+                expected_len = seq_len + 2
+                if input_ids.shape[1] != expected_len:
+                    raise AssertionError(
+                        f"Tokenized length {input_ids.shape[1]} must equal len(sequence)+2 ({expected_len})"
+                    )
+            
+            # Forward pass
+            output = model(input_ids, attention_mask=attention_mask)
+            logits = output.logits.float()
+            log_probs = torch.log_softmax(logits, dim=-1)
+            
+            # Vectorized extraction for all sequences in batch
+            seq_start = 1
+            seq_end = seq_start + seq_len
+            num_seqs = input_ids.size(0)
+            
+            # Get token IDs for all sequences (excluding special tokens)
+            # Shape: [num_seqs, seq_len]
+            token_ids = input_ids[:, seq_start:seq_end]
+            
+            # Create indices for gathering
+            # batch_indices: [num_seqs, seq_len] with values [0, 1, ..., num_seqs-1] repeated
+            # position_indices: [num_seqs, seq_len] with values [seq_start, ..., seq_end-1] repeated
+            batch_idx_grid = torch.arange(num_seqs, device=device).unsqueeze(1).expand(-1, seq_len)
+            position_idx_grid = torch.arange(seq_start, seq_end, device=device).unsqueeze(0).expand(num_seqs, -1)
+            
+            # Extract log probabilities for all sequences at once
+            # Shape: [num_seqs, seq_len]
+            selected_log_probs = log_probs[batch_idx_grid, position_idx_grid, token_ids]
+            
+            # Sum across positions for each sequence
+            seq_log_probs = selected_log_probs.sum(dim=1)  # Shape: [num_seqs]
+            
+            # Store results in original order
+            for i, orig_idx in enumerate(batch_indices):
+                results[orig_idx] = seq_log_probs[i].item()
+    
+    return results
+
 
 # dictionary of context lengths for supported models in Protify
 MODEL_CONTEXT_LENGTH = {

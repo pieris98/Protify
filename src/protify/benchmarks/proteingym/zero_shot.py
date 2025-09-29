@@ -14,8 +14,9 @@ from .scoring_utils import (
     _parse_mutant_string,
     _apply_mutations_to_sequence,
     _position_log_probs,
-    get_sequence_log_probability,
-    calculate_pll,
+    get_sequence_log_probability_batched,
+    calculate_pll_batched,
+    _precompute_aa_token_ids,
 )
 from .scoring_utils import MODEL_CONTEXT_LENGTH
 
@@ -53,6 +54,10 @@ def zero_shot_scores_for_assay(
     grouped = sliced_df.groupby('mutant')
     
     if scoring_method in ["masked_marginal", "mutant_marginal", "wildtype_marginal"]:
+        # Precompute amino acid token IDs for lookup
+        aa_to_id = _precompute_aa_token_ids(tokenizer)
+        unk_id = getattr(tokenizer, "unk_token_id", None)
+        
         # Step 1: Collect all unique (sequence, position) pairs that need computation
         forwards = {}  # Maps (window_seq, pos_rel) -> list of (row_idx, mutation_info)
         variants = []  # List of (row_idx, mutant, mutated_seq, parsed_mutations)
@@ -137,9 +142,9 @@ def zero_shot_scores_for_assay(
                     raise KeyError(f"Missing precomputed slice for row {row_idx}, position {pos}")
                 lps = log_prob_cache[key]
 
-                wt_id = tokenizer.convert_tokens_to_ids(wt)
-                mt_id = tokenizer.convert_tokens_to_ids(mt)
-                unk_id = getattr(tokenizer, "unk_token_id", None)
+                # Use precomputed token IDs
+                wt_id = aa_to_id.get(wt)
+                mt_id = aa_to_id.get(mt)
 
                 if wt_id is None or mt_id is None or (unk_id is not None and (wt_id == unk_id or mt_id == unk_id)):
                     raise ValueError(f"WT or MT is not in vocab: {wt} or {mt}")
@@ -150,9 +155,34 @@ def zero_shot_scores_for_assay(
             scores[row_idx] = total_score
         
     elif scoring_method == "pll":
-        scores = []
-        pll_cache = {}
+        # Collect all unique sequences that need PLL computation
+        unique_sequences = set()
+        for _, row in df.iterrows():
+            mutant = row['mutant']
+            mutant_slices = grouped.get_group(mutant)
+            wt_slices = mutant_slices[mutant_slices['mutated_seq'] == target_seq]
+            
+            for _, slice_row in wt_slices.iterrows():
+                window_seq = slice_row['sliced_mutated_seq']
+                unique_sequences.add(window_seq)
         
+        # Batch compute PLL for all unique sequences
+        print(f"Computing PLL for {len(unique_sequences)} unique sequences...")
+        unique_seq_list = list(unique_sequences)
+        pll_results = calculate_pll_batched(
+            unique_seq_list,
+            tokenizer,
+            model,
+            device,
+            model_name,
+            batch_size=batch_size
+        )
+        
+        # Create cache
+        pll_cache = {seq: result for seq, result in zip(unique_seq_list, pll_results)}
+        
+        # Assign scores
+        scores = []
         iterator = df.iterrows()
         if progress:
             iterator = tqdm(
@@ -169,17 +199,9 @@ def zero_shot_scores_for_assay(
             mutant_slices = grouped.get_group(mutant)
             wt_slices = mutant_slices[mutant_slices['mutated_seq'] == target_seq]
             
-            # Calculate PLL for all slices and average
             slice_scores = []
             for _, slice_row in wt_slices.iterrows():
                 window_seq = slice_row['sliced_mutated_seq']
-                ws, we = slice_row['window_start'], slice_row['window_end']
-                assert window_seq == target_seq[ws:we], "PLL: slice content mismatch with window bounds"
-                
-                if window_seq not in pll_cache:
-                    pll_cache[window_seq] = calculate_pll(
-                        window_seq, tokenizer, model, device, model_name, batch_size=batch_size
-                    )
                 _, pll = pll_cache[window_seq]
                 slice_scores.append(pll)
             
@@ -187,8 +209,40 @@ def zero_shot_scores_for_assay(
             scores.append(total_score)
     
     else:  # scoring_method == "global_log_prob"
-        scores = []
+        # Collect all unique sequences that need log prob computation
+        unique_sequences = set()
+        sequence_to_rows = {}  # Map sequences to rows that use them
         
+        for row_idx, row in df.iterrows():
+            mutant = row['mutant']
+            mutated_seq = row['mutated_seq']
+            mutant_slices = grouped.get_group(mutant)
+            mt_slices = mutant_slices[mutant_slices['mutated_seq'] == mutated_seq]
+            
+            for _, slice_row in mt_slices.iterrows():
+                window_seq = slice_row['sliced_mutated_seq']
+                unique_sequences.add(window_seq)
+                if window_seq not in sequence_to_rows:
+                    sequence_to_rows[window_seq] = []
+                sequence_to_rows[window_seq].append(row_idx)
+        
+        # Batch compute log probabilities for all unique sequences
+        print(f"Computing global log prob for {len(unique_sequences)} unique sequences...")
+        unique_seq_list = list(unique_sequences)
+        log_prob_results = get_sequence_log_probability_batched(
+            unique_seq_list,
+            tokenizer,
+            model,
+            device,
+            model_name,
+            batch_size=batch_size
+        )
+        
+        # Create cache
+        log_prob_cache = {seq: result for seq, result in zip(unique_seq_list, log_prob_results)}
+        
+        # Assign scores
+        scores = [0.0] * len(df)
         iterator = df.iterrows()
         if progress:
             iterator = tqdm(
@@ -200,26 +254,24 @@ def zero_shot_scores_for_assay(
                 leave=False,
             )
         
-        for _, row in iterator:
+        for row_idx, row in iterator:
             mutant = row['mutant']
             mutated_seq = row['mutated_seq']
             mutant_slices = grouped.get_group(mutant)
             mt_slices = mutant_slices[mutant_slices['mutated_seq'] == mutated_seq]
             
             total_score = 0.0
-            # Calculate log prob for all slices and sum
             for _, slice_row in mt_slices.iterrows():
                 window_seq = slice_row['sliced_mutated_seq']
-                ws, we = slice_row['window_start'], slice_row['window_end']
-                assert window_seq == mutated_seq[ws:we], "global_log_prob: slice content mismatch with window bounds"
-                seq_log_prob = get_sequence_log_probability(window_seq, tokenizer, model, device, model_name)
+                seq_log_prob = log_prob_cache[window_seq]
                 total_score += seq_log_prob
             
-            scores.append(total_score)
+            scores[row_idx] = total_score
     
     out = df.copy()
     out['delta_log_prob'] = scores
     return out
+
 
 
 def zero_shot_scores_for_indels(
@@ -285,7 +337,7 @@ def zero_shot_scores_for_indels(
         for _, slice_row in mt_slices.iterrows():
             window_seq = slice_row['sliced_mutated_seq']
             if window_seq not in pll_cache:
-                pll_cache[window_seq] = calculate_pll(window_seq, tokenizer, model, device, model_name, batch_size=batch_size)
+                pll_cache[window_seq] = calculate_pll_batched(window_seq, tokenizer, model, device, model_name, batch_size=batch_size)
             _, pll = pll_cache[window_seq]
             slice_scores.append(pll)
         total_score = sum(slice_scores) / len(slice_scores) if slice_scores else 0.0

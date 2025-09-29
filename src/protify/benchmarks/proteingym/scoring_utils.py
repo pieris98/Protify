@@ -205,6 +205,7 @@ def _position_log_probs(
     model_name: str,
     mask_token_id: Optional[int] = None,
     batch_size: int = 32,
+    progress_bar = None,
 ) -> torch.Tensor:
     """Return batched log probabilities at the specified positions for each sequence.
 
@@ -226,6 +227,8 @@ def _position_log_probs(
         mask token id
     batch_size : int
         Number of sequences to process at once
+    progress_bar : iterable
+        Optional progress bar iterator
         
     Returns
     -------
@@ -237,7 +240,8 @@ def _position_log_probs(
     all_log_probs = []
     
     # Process in batches
-    for batch_start in range(0, len(sequences), batch_size):
+    batch_iterator = progress_bar if progress_bar is not None else range(0, len(sequences), batch_size)
+    for batch_start in batch_iterator:
         batch_end = min(batch_start + batch_size, len(sequences))
         batch_sequences = sequences[batch_start:batch_end]
         batch_positions = positions[batch_start:batch_end]
@@ -327,8 +331,26 @@ def calculate_pll_batched(
     device: torch.device,
     model_name: str,
     batch_size: int = 32,
+    progress_bar = None,
 ) -> List[Tuple[float, float]]:
     """Calculate pseudo-log-likelihood for multiple sequences with batched processing.
+    
+    Parameters
+    ----------
+    sequences : List[str]
+        List of sequences to compute PLL for
+    tokenizer : Tokenizer
+        Model's tokenizer
+    model : Model
+        Pretrained language model
+    device : torch.device
+        Device to run on
+    model_name : str
+        Model name for assertions
+    batch_size : int
+        Batch size for processing positions
+    progress_bar : iterable
+        Optional progress bar iterator for sequence batches
     
     Returns
     -------
@@ -349,6 +371,9 @@ def calculate_pll_batched(
     
     # Process each length group
     results = [None] * len(sequences)
+    
+    # Track progress if progress_bar is provided
+    seq_batches_processed = 0
     
     for seq_len, indexed_seqs in length_groups.items():
         indices = [idx for idx, _ in indexed_seqs]
@@ -376,6 +401,9 @@ def calculate_pll_batched(
         
         # Process positions in batches, across all sequences
         for batch_start_idx in range(0, len(positions), batch_size):
+            # Update progress bar if provided
+            if progress_bar is not None and hasattr(progress_bar, 'update'):
+                progress_bar.update(1)
             batch_end_idx = min(batch_start_idx + batch_size, len(positions))
             batch_positions = positions[batch_start_idx:batch_end_idx]
             num_positions = len(batch_positions)
@@ -425,11 +453,29 @@ def get_sequence_log_probability_batched(
     device: torch.device,
     model_name: str,
     batch_size: int = 32,
+    progress_bar = None,
 ) -> List[float]:
     """Compute log probability for multiple sequences with batched processing.
     
     Optimized to vectorize extraction when sequences are same length (common in assays).
     Groups sequences by length for efficient processing.
+    
+    Parameters
+    ----------
+    sequences : List[str]
+        List of sequences to compute log probability for
+    tokenizer : Tokenizer
+        Model's tokenizer
+    model : Model
+        Pretrained language model
+    device : torch.device
+        Device to run on
+    model_name : str
+        Model name for assertions
+    batch_size : int
+        Batch size for processing
+    progress_bar : iterable
+        Optional progress bar iterator
     
     Returns
     -------
@@ -450,7 +496,11 @@ def get_sequence_log_probability_batched(
         seqs = [seq for _, seq in indexed_seqs]
         
         # Process this length group in batches
-        for batch_start in range(0, len(seqs), batch_size):
+        batch_iterator = range(0, len(seqs), batch_size)
+        for batch_start in batch_iterator:
+            # Update progress bar if provided
+            if progress_bar is not None and hasattr(progress_bar, 'update'):
+                progress_bar.update(1)
             batch_end = min(batch_start + batch_size, len(seqs))
             batch_sequences = seqs[batch_start:batch_end]
             batch_indices = indices[batch_start:batch_end]

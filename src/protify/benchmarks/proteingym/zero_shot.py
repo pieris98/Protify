@@ -105,7 +105,16 @@ def zero_shot_scores_for_assay(
                                 f"wildtype_marginal: residue mismatch at pos {pos} (rel {pos_rel})"
                             )
                         
-                        key = (window_seq, pos_rel)
+                        # For masked_marginal, normalize the window_seq to enable deduplication
+                        # Since the position will be masked, different AAs at the same position
+                        # should produce identical results
+                        if scoring_method == "masked_marginal":
+                            # Replace the mutation position with a placeholder for consistent caching
+                            normalized_seq = window_seq[:pos_rel] + '<X>' + window_seq[pos_rel+1:]
+                            key = (normalized_seq, pos_rel)
+                        else:
+                            key = (window_seq, pos_rel)
+                        
                         if key not in forwards:
                             forwards[key] = []
                         forwards[key].append((row_idx, wt, pos, mt))
@@ -115,14 +124,44 @@ def zero_shot_scores_for_assay(
         
         # Step 2: Batch compute log probabilities for all unique (sequence, position) pairs
         unique_pairs = list(forwards.keys())
-        sequences = [pair[0] for pair in unique_pairs]
+        # For masked_marginal, we need to restore the actual sequences (remove placeholder)
+        if scoring_method == "masked_marginal":
+            # Get any actual sequence for each unique key (they're all equivalent when masked)
+            sequences = []
+            for key in unique_pairs:
+                normalized_seq, pos_rel = key
+                # Get the first variant that uses this key to retrieve the actual sequence
+                row_idx, wt, pos, mt = forwards[key][0]
+                # Find the actual window_seq for this variant
+                for var_row_idx, var_mutant, var_mutated_seq, var_muts in variants:
+                    if var_row_idx == row_idx:
+                        var_mutant_slices = grouped.get_group(var_mutant)
+                        var_slices = var_mutant_slices[var_mutant_slices['mutated_seq'] == var_mutated_seq]
+                        for _, var_slice_row in var_slices.iterrows():
+                            if var_slice_row['window_start'] <= pos < var_slice_row['window_end']:
+                                if pos - var_slice_row['window_start'] == pos_rel:
+                                    sequences.append(var_slice_row['sliced_mutated_seq'])
+                                    break
+                        break
+        else:
+            sequences = [pair[0] for pair in unique_pairs]
         positions = [pair[1] for pair in unique_pairs]
         
         print(f"Computing {len(unique_pairs)} unique sequence-position pairs in batches...")
+        iterator = range(0, len(sequences), batch_size)
+        if progress:
+            iterator = tqdm(
+                iterator,
+                total=(len(sequences) + batch_size - 1) // batch_size,
+                desc=f"Assay batches ({scoring_method})",
+                unit="batch",
+                position=tqdm_position,
+                leave=False,
+            )
         
         all_log_probs = _position_log_probs(
             model, tokenizer, scoring_method, sequences, positions, 
-            device, model_name, batch_size=batch_size
+            device, model_name, batch_size=batch_size, progress_bar=iterator if progress else None
         )
         
         # Create a mapping from (window_seq, pos_rel) to log_probs
@@ -169,13 +208,27 @@ def zero_shot_scores_for_assay(
         # Batch compute PLL for all unique sequences
         print(f"Computing PLL for {len(unique_sequences)} unique sequences...")
         unique_seq_list = list(unique_sequences)
+        
+        # Add progress bar for PLL computation
+        iterator = range(0, len(unique_seq_list), batch_size)
+        if progress:
+            iterator = tqdm(
+                iterator,
+                total=(len(unique_seq_list) + batch_size - 1) // batch_size,
+                desc="PLL batches",
+                unit="batch",
+                position=tqdm_position,
+                leave=False,
+            )
+        
         pll_results = calculate_pll_batched(
             unique_seq_list,
             tokenizer,
             model,
             device,
             model_name,
-            batch_size=batch_size
+            batch_size=batch_size,
+            progress_bar=iterator if progress else None
         )
         
         # Create cache
@@ -190,7 +243,7 @@ def zero_shot_scores_for_assay(
                 total=len(df),
                 desc="Assay variants (PLL)",
                 unit="variant",
-                position=tqdm_position,
+                position=tqdm_position + 1,
                 leave=False,
             )
         
@@ -229,13 +282,27 @@ def zero_shot_scores_for_assay(
         # Batch compute log probabilities for all unique sequences
         print(f"Computing global log prob for {len(unique_sequences)} unique sequences...")
         unique_seq_list = list(unique_sequences)
+        
+        # Add progress bar for global log prob computation
+        iterator = range(0, len(unique_seq_list), batch_size)
+        if progress:
+            iterator = tqdm(
+                iterator,
+                total=(len(unique_seq_list) + batch_size - 1) // batch_size,
+                desc="Global log prob batches",
+                unit="batch",
+                position=tqdm_position,
+                leave=False,
+            )
+        
         log_prob_results = get_sequence_log_probability_batched(
             unique_seq_list,
             tokenizer,
             model,
             device,
             model_name,
-            batch_size=batch_size
+            batch_size=batch_size,
+            progress_bar=iterator if progress else None
         )
         
         # Create cache
@@ -250,7 +317,7 @@ def zero_shot_scores_for_assay(
                 total=len(df),
                 desc="Assay variants (global_log_prob)",
                 unit="variant",
-                position=tqdm_position,
+                position=tqdm_position + 1,
                 leave=False,
             )
         
@@ -457,4 +524,5 @@ def run_zero_shot(
             # First model for this DMS: write a new aggregated file
             results_to_save.to_csv(per_dms_path, index=False)
         tqdm.write(f"[Assay {dms_id}] saved/updated: {per_dms_path}")
+    return None
     return None

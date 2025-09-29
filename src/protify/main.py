@@ -117,6 +117,8 @@ def parse_arguments():
                         help="Select a scoring method for ProteinGym zero-shot.")
     parser.add_argument("--scoring_window", choices=["optimal", "sliding"], default="optimal",
                         help="Select how to slice the sequence for ProteinGym zero-shot.")
+    parser.add_argument("--pg_batch_size", type=int, default=32,
+                        help="Batch size for ProteinGym zero-shot scoring (default: 32).")
     parser.add_argument("--compare_scoring_methods", action="store_true", default=False,
                         help="Compare different scoring methods across models and DMS assays (default: False).")
 
@@ -583,6 +585,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 device=None,
                 scoring_method=scoring_method,
                 scoring_window=scoring_window,
+                batch_size=getattr(args, 'pg_batch_size', 32),
             )
         print_message(f"ProteinGym zero-shot complete. Results in {results_dir}")
 

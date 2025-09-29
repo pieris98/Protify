@@ -337,7 +337,9 @@ def zero_shot_scores_for_indels(
         for _, slice_row in mt_slices.iterrows():
             window_seq = slice_row['sliced_mutated_seq']
             if window_seq not in pll_cache:
-                pll_cache[window_seq] = calculate_pll_batched(window_seq, tokenizer, model, device, model_name, batch_size=batch_size)
+                # calculate_pll_batched expects a list of sequences and returns a list of tuples
+                pll_list = calculate_pll_batched([window_seq], tokenizer, model, device, model_name, batch_size=batch_size)
+                pll_cache[window_seq] = pll_list[0]
             _, pll = pll_cache[window_seq]
             slice_scores.append(pll)
         total_score = sum(slice_scores) / len(slice_scores) if slice_scores else 0.0

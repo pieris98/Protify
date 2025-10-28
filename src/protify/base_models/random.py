@@ -32,7 +32,7 @@ class RandomModel(nn.Module):
         device = self.holder_param.device
         last_hidden_state = torch.randn(input_ids.shape[0], input_ids.shape[1], self.hidden_size, device=device)
         logits = self.lm_head(last_hidden_state)
-        return {"last_hidden_state": last_hidden_state, "logits": logits}
+        return last_hidden_state, logits
 
 
 class RandomTransformer(nn.Module):

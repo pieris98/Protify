@@ -216,7 +216,7 @@ From pip
 
 To get started locally
 ```console
-git clone https://@github.com/Gleghorn-Lab/Protify.git
+git clone https://github.com/Gleghorn-Lab/Protify.git
 cd Protify
 python -m pip install -r requirements.txt
 git submodule update --init --remote --recursive
@@ -224,7 +224,7 @@ cd src/protify
 ```
 With a Python VM (linux)
 ```console
-git clone https://@github.com/Gleghorn-Lab/Protify.git
+git clone https://github.com/Gleghorn-Lab/Protify.git
 cd Protify
 git submodule update --init --remote --recursive
 chmod +x setup_protify.sh

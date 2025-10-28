@@ -119,9 +119,11 @@ Protify is currently in beta. We're actively working to enhance features and doc
 <details>
   <summary>Click to expand dataset list</summary>
   
-  BC - Binary Classification | MCC - Multi-Class Classification | MLC - Multi-Label Classification | R - Regression | PPI - Protein-Protein Interaction
+  BC - Binary Classification | SLC - Single-Label Classification | MLC - Multi-Label Classification | R - Regression
 
-  | Dataset Name | Description | Type | Task | Tokenwise | Dual inputs |
+  TC - Tokenwise classification | TR - Tokenwise regression
+
+  | Dataset Name | Description | Type | Task | Tokenwise | Multiple inputs |
   |--------------|-------------|------|------|-----------|-------------|
   | EC | Enzyme Commission numbers dataset for predicting enzyme function classification. | MLC | Protein function prediction | No | No |
   | GO-CC | Gene Ontology Cellular Component dataset for predicting protein localization in cells. | MLC | Protein localization prediction | No | No |
@@ -146,18 +148,24 @@ Protify is currently in beta. We're actively working to enhance features and doc
   | SecondaryStructure-8 | Dataset for predicting protein secondary structure in 8 classes. | MCC | Protein structure prediction | Yes | No |
   | fluorescence-prediction | Dataset for predicting protein fluorescence properties. | R | Protein property prediction | Yes | No |
   | plastic | Dataset for predicting protein capability for plastic degradation. | BC | Enzyme function prediction | No | No |
-  | human-ppi | Dataset for predicting human protein-protein interactions. | PPI | PPI prediction | No | Yes |
-  | human-ppi-pinui | Human protein-protein interaction dataset from PiNUI. | PPI | PPI prediction | No | Yes |
-  | yeast-ppi-pinui | Yeast protein-protein interaction dataset from PiNUI. | PPI | PPI prediction | No | Yes |
-  | peptide-HLA-MHC-affinity | Dataset for predicting peptide binding affinity to HLA/MHC complexes. | PPI | Binding affinity prediction | No | Yes |
-  | gold-ppi | Gold standard dataset for protein-protein interaction prediction. | PPI | PPI prediction | No | Yes |
-  | shs27-ppi | SHS27k dataset containing 27,000 protein-protein interactions. | PPI | PPI prediction | No | Yes |
-  | shs148-ppi | SHS148k dataset containing 148,000 protein-protein interactions. | PPI | PPI prediction | No | Yes |
-  | PPA-ppi | Protein-Protein Affinity dataset for quantitative binding predictions. | PPI | PPI affinity prediction | No | Yes |
+  | gold-ppi | Gold standard dataset for protein-protein interaction prediction. | SLC | PPI prediction | No | Yes |
+  | human-ppi-saprot | Human protein-protein interaction dataset from SAProt paper. | SLC | PPI prediction | No | Yes |
+  | human-ppi-pinui | Human protein-protein interaction dataset from PiNUI. | SLC | PPI prediction | No | Yes |
+  | yeast-ppi-pinui | Yeast protein-protein interaction dataset from PiNUI. | SLC | PPI prediction | No | Yes |
+  | peptide-HLA-MHC-affinity | Dataset for predicting peptide binding affinity to HLA/MHC complexes. | SLC | Binding affinity prediction | No | Yes |
+  | shs27-ppi-raw | Raw SHS27k with single-label labels. | SLC | PPI type prediction | No | Yes |
+  | shs148-ppi-raw | Raw SHS148k with single-label labels. | SLC | PPI type prediction | No | Yes |
+  | shs27-ppi-random | SHS27k  | MLC | PPI prediction | No | Yes |
+  | shs148-ppi-random | SHS148k CD-Hit 40%, multi-label lables, randomized data splits. | MLC | PPI type prediction | No | Yes |
+  | shs27-ppi-dfs | SHS27k CD-Hit 40%, multi-label lables, data splits via depth first search. | MLC | PPI type prediction | No | Yes |
+  | shs148-ppi-dfs | SHS148k CD-Hit 40%, multi-label lables, data splits via depth first search. | MLC | PPI type prediction | No | Yes |
+  | shs27-ppi-bfs | SHS27k CD-Hit 40%, multi-label lables, data splits via breadth first search. | MLC | PPI type prediction | No | Yes |
+  | shs148-ppi-bfs | SHS148k CD-Hit 40%, multi-label lables, data splits via breadth first search. | MLC | PPI type prediction | No | Yes |
+  | ppi-mutation-effect | Compare wild type, mutated, and target sequence to determine if PPI is stronger or not. | SLC | PPI effect prediction | No | Yes |
+  | PPA-ppi | Protein-Protein Affinity dataset from Bindwell. | R | protein-protein affinity prediction | No | Yes |
   | foldseek-fold | Dataset for protein fold classification using Foldseek. | MCC | Protein structure prediction | No | No |
   | foldseek-inverse | Inverse protein fold prediction dataset. | MCC | Protein structure prediction | No | No |
   | ec-active | Dataset for predicting active enzyme classes. | MCC | Enzyme function prediction | No | No |
-  | bernett_processed | Processed Bernett dataset for protein analysis. | Various | Protein analysis | No | No |
   | taxon_domain | Taxonomic classification at domain level. | MCC | Taxonomic prediction | No | No |
   | taxon_kingdom | Taxonomic classification at kingdom level. | MCC | Taxonomic prediction | No | No |
   | taxon_phylum | Taxonomic classification at phylum level. | MCC | Taxonomic prediction | No | No |
@@ -166,6 +174,10 @@ Protify is currently in beta. We're actively working to enhance features and doc
   | taxon_family | Taxonomic classification at family level. | MCC | Taxonomic prediction | No | No |
   | taxon_genus | Taxonomic classification at genus level. | MCC | Taxonomic prediction | No | No |
   | taxon_species | Taxonomic classification at species level. | MCC | Taxonomic prediction | No | No |
+  | diff_phylogeny | Differential phylogeny dataset. | Various | Phylogeny prediction | No | No |
+  | plddt | AlphaFold pLDDT confidence score prediction. | TR | Confidence prediction | Yes | No |
+  | realness | Protein realness dataset. | BC | Authenticity prediction | No | No |
+  | million_full | Large-scale enzyme variant dataset, from Millionfull preprint October 2025 | R | Protein fitness prediction | No | No |
 </details>
 
 For more details about supported models and datasets, including programmatic access and command-line utilities, see the [Resource Listing Documentation](docs/resource_listing.md).

@@ -35,7 +35,8 @@ supported_datasets = {
     'shs27-ppi-dfs': 'GleghornLab/ppi_SHS27k_dfs_2025',
     'shs148-ppi-dfs': 'GleghornLab/ppi_SHS148k_dfs_2025',
     'shs27-ppi-bfs': 'GleghornLab/ppi_SHS27k_bfs_2025',
-    'shs148-ppi-bfs': 'GleghornLab/ppi_SHS148k_bfs_2025', 
+    'shs148-ppi-bfs': 'GleghornLab/ppi_SHS148k_bfs_2025',
+    'ppi-mutation-effect': 'GleghornLab/ppi_mutation_effect', # requires multi_column
     'PPA-ppi': 'Synthyra/ProteinProteinAffinity',
     'foldseek-fold': 'lhallee/foldseek_dataset',
     'foldseek-inverse': 'lhallee/foldseek_dataset',

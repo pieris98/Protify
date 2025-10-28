@@ -36,7 +36,7 @@ currently_supported_models = [
     'DSM-150',
     'DSM-650',
     'DSM-PPI',
-    'ProtCLM-1b'
+    'ProtCLM-1b',
     'OneHot-Protein',
     'OneHot-DNA',
     'OneHot-RNA',
@@ -61,7 +61,7 @@ standard_models = [
     'DPLM-650',
     'DSM-150',
     'DSM-650',
-    'DSM-PPI'
+    'DSM-PPI',
     'Random',
     'Random-Transformer',
 ]

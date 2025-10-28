@@ -301,6 +301,54 @@ cd src/protify
 </details>
 
 
+### ProteinGym Benchmarking
+
+Protify includes a zero-shot pipeline for the ProteinGym DMS benchmark and a standardized performance summary.
+
+- Run zero-shot scoring on ProteinGym substitutions
+  ```console
+  python -m main --proteingym \
+    --model_names ESM2-8 ESM2-35 ProtBert \
+    --dms_ids all \
+    --scoring_method masked_marginal \
+    --scoring_window optimal \
+    --results_dir results
+  ```
+  - Outputs per-assay CSVs at `results/proteingym/*__zs_masked_marginal.csv`
+  - After scoring, a standardized performance summary is written to `results/proteingym/benchmark_performance/`
+
+- Compare scoring methods for one or more models
+  ```console
+  python -m main --proteingym --compare_scoring_methods \
+    --model_names ESM2-650 \
+    --dms_ids AACC1_PSEAI_Dandage_2018 A4_HUMAN_Seuma_2022 \
+    --results_dir results
+  ```
+  - Saves a summary CSV to `results/scoring_methods_comparison.csv`
+
+- Score indels assays (PLL is currently supported for indels)
+  ```console
+  python -m main --proteingym \
+    --mode indels \
+    --model_names ESM2-650 \
+    --dms_ids A4_HUMAN_Seuma_2022_indels \
+    --scoring_method pll \
+    --results_dir results
+  ```
+
+Performance notes (GPU utilization)
+- Protify reuses the loaded model across assays and caches tokenization and per-window computations to reduce overhead.
+- Pseudo-log-likelihood (PLL) masking is batched internally to improve GPU utilization while preserving the exact logits produced by the model.
+- For long sequences, `--scoring_window sliding` can reduce padding and improve effective throughput.
+- Monitor utilization with `watch -n 1 nvidia-smi` (Linux/macOS) or `nvidia-smi -l 1` (Windows).
+
+Potential future improvements
+- Batch masked-marginal positions per unique window to further increase GPU utilization without changing logits.
+- Optional mixed-precision inference for faster throughput where numerically appropriate.
+- Asynchronous prefetching of slices and tokenization to overlap CPU prep with GPU compute.
+- Configurable micro-batch size for PLL and per-window computations.
+
+
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

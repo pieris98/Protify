@@ -1,24 +1,20 @@
 import os
-import numpy as np
 import pandas as pd
 import torch
-from typing import List, Dict, Optional, Tuple, Union, Any
-from dataclasses import dataclass
+from typing import List, Optional, Tuple, Any
 from tqdm.auto import tqdm
 from base_models.get_base_models import get_base_model
 from .data_loader import load_proteingym_dms
 from .scoring_utils import (
-    label_row,
-    get_optimal_window,
     get_sequence_slices,
     _parse_mutant_string,
-    _apply_mutations_to_sequence,
     _position_log_probs,
     get_sequence_log_probability_batched,
     calculate_pll_batched,
-    _precompute_aa_token_ids,
+    _aa_to_token_ids,
 )
 from .scoring_utils import MODEL_CONTEXT_LENGTH
+from collections import defaultdict
 
 
 def zero_shot_scores_for_assay(
@@ -52,169 +48,202 @@ def zero_shot_scores_for_assay(
     
     # Group sliced_df by mutant to process each variant
     grouped = sliced_df.groupby('mutant')
+    mutant_groups = {mutant: group for mutant, group in grouped}
     
     if scoring_method in ["masked_marginal", "mutant_marginal", "wildtype_marginal"]:
         # Precompute amino acid token IDs for lookup
-        aa_to_id = _precompute_aa_token_ids(tokenizer)
+        aa_to_id = _aa_to_token_ids(tokenizer)
         unk_id = getattr(tokenizer, "unk_token_id", None)
-        
-        # Step 1: Collect all unique (sequence, position) pairs that need computation
-        forwards = {}  # Maps (window_seq, pos_rel) -> list of (row_idx, mutation_info)
-        variants = []  # List of (row_idx, mutant, mutated_seq, parsed_mutations)
-        mutation_locs = {}  # Maps (row_idx, pos) -> (window_seq, pos_rel)
-        
-        for row_idx, row in df.iterrows():
-            mutant = row['mutant']
-            mutated_seq = row['mutated_seq']
-            muts = _parse_mutant_string(mutant)
+
+        if scoring_method in ["masked_marginal", "wildtype_marginal"]: # Group variants by mutation positions            
+            position_groups = defaultdict(list)  # key: (window_start, window_end, tuple(positions)), value: list of (row_idx, muts)
             
-            # Assert positions align with lengths
-            for wt, pos, mt in muts:
-                assert 0 <= pos < len(target_seq), (
-                    f"Mutation pos {pos} out of range for target_seq length {len(target_seq)}"
-                )
-            
-            variants.append((row_idx, mutant, mutated_seq, muts))
-            
-            # Get all sliced seqs for this mutant
-            mutant_slices = grouped.get_group(mutant)
-            
-            # Determine which slices to use based on scoring method
-            if scoring_method in ["masked_marginal", "mutant_marginal"]:
-                slices_to_use = mutant_slices[mutant_slices['mutated_seq'] == mutated_seq]
-            else:  # wildtype_marginal
+            for row_idx, row in enumerate(df.itertuples(index=False)):
+                mutant = row.mutant
+                mutated_seq = row.mutated_seq
+                muts = _parse_mutant_string(mutant)
+
+                # Sanity check
+                for wt, pos, mt in muts:
+                    assert 0 <= pos < len(target_seq), (
+                        f"Mutation pos {pos} out of range for target_seq length {len(target_seq)}"
+                    )
+
+                mutant_slices = mutant_groups.get(mutant)
+                if mutant_slices is None:
+                    raise ValueError(f"No slices available for mutant {mutant}")
                 slices_to_use = mutant_slices[mutant_slices['mutated_seq'] == target_seq]
+
+                # Use first available slice (for optimal, just first row)
+                if len(slices_to_use) == 0:
+                    raise ValueError(f"No available slice for mutant {mutant} and method {scoring_method}")
+                slice_row = slices_to_use.iloc[0]
+
+                window_start = int(slice_row['window_start'])
+                window_end = int(slice_row['window_end'])
+                window_seq = slice_row['sliced_mutated_seq']
+
+                # Ensure window contains ALL mutated positions (sanity check)
+                min_pos = min(p for _, p, _ in muts)
+                max_pos = max(p for _, p, _ in muts)
+                if not (window_start <= min_pos and max_pos < window_end):
+                    raise ValueError(
+                        f"Window {window_start}-{window_end} does not contain all positions for variant {mutant}"
+                    )
+
+                # Build list of relative positions for each mutation based on window start
+                pos_rels: List[int] = []
+                for wt, pos, mt in muts:
+                    rel = pos - window_start
+                    assert window_seq[rel] == target_seq[pos], (
+                        f"{scoring_method}: residue mismatch at abs {pos} (rel {rel})"
+                    )
+                    pos_rels.append(rel)
+
+                # Group by window and positions to prevent duplicate computations
+                key = (window_start, window_end, tuple(pos_rels), window_seq)
+                position_groups[key].append((row_idx, muts))
             
-            # For each mutation, find the window that contains it
-            for wt, pos, mt in muts:
-                for _, slice_row in slices_to_use.iterrows():
-                    window_start = slice_row['window_start']
-                    window_end = slice_row['window_end']
-                    
-                    if window_start <= pos < window_end:
-                        window_seq = slice_row['sliced_mutated_seq']
-                        pos_rel = pos - window_start
-                        
-                        # Verify sequence consistency
-                        if scoring_method in ["masked_marginal", "mutant_marginal"]:
-                            assert window_seq[pos_rel] == mutated_seq[pos], (
-                                f"{scoring_method}: residue mismatch at pos {pos} (rel {pos_rel})"
-                            )
-                        else:  # wildtype_marginal
-                            assert window_seq[pos_rel] == target_seq[pos], (
-                                f"wildtype_marginal: residue mismatch at pos {pos} (rel {pos_rel})"
-                            )
-                        
-                        # For masked_marginal, normalize the window_seq to enable deduplication
-                        # Since the position will be masked, different AAs at the same position
-                        # should produce identical results
-                        if scoring_method == "masked_marginal":
-                            # Replace the mutation position with a placeholder for consistent caching
-                            normalized_seq = window_seq[:pos_rel] + '<X>' + window_seq[pos_rel+1:]
-                            key = (normalized_seq, pos_rel)
-                        else:
-                            key = (window_seq, pos_rel)
-                        
-                        if key not in forwards:
-                            forwards[key] = []
-                        forwards[key].append((row_idx, wt, pos, mt))
-                        # Store mapping for reuse when assigning scores
-                        mutation_locs[(row_idx, pos)] = key
-                        break
+            # Process each unique position group
+            sequences: List[str] = [] # sequences to score
+            positions_list: List[List[int]] = [] # List of positions to score/mask for each sequence
+            variant_info: List[List[Tuple[int, List[Tuple[str, int, str]]]]] = []  # List of row indices and mutations for each variant
+            
+            for (window_start, window_end, pos_tuple, window_seq), variants in position_groups.items():
+                sequences.append(window_seq)
+                positions_list.append(list(pos_tuple))
+                variant_info.append(variants)
+                
+        else:  # mutant_marginal - each variant needs to be processed independently
+            sequences: List[str] = [] # sequences to score
+            positions_list: List[List[int]] = [] # List of positions to score for each sequence
+            variant_info: List[Tuple[int, List[Tuple[str, int, str]]]] = []  # List of row indices and mutations for each variant
+
+            for row_idx, row in enumerate(df.itertuples(index=False)):
+                mutant = row.mutant
+                mutated_seq = row.mutated_seq
+                muts = _parse_mutant_string(mutant)
+
+                # Validate positions
+                for wt, pos, mt in muts:
+                    assert 0 <= pos < len(target_seq), (
+                        f"Mutation pos {pos} out of range for target_seq length {len(target_seq)}"
+                    )
+
+                mutant_slices = mutant_groups.get(mutant)
+                if mutant_slices is None:
+                    raise ValueError(f"No slices available for mutant {mutant}")
+                slices_to_use = mutant_slices[mutant_slices['mutated_seq'] == mutated_seq]
+
+                # Use the first available slice (for optimal, there should be exactly one)
+                if len(slices_to_use) == 0:
+                    raise ValueError(f"No available slice for mutant {mutant} and method {scoring_method}")
+                slice_row = slices_to_use.iloc[0]
+
+                window_start = int(slice_row['window_start'])
+                window_end = int(slice_row['window_end'])
+                window_seq = slice_row['sliced_mutated_seq']
+
+                # Ensure the window contains ALL mutated positions
+                min_pos = min(p for _, p, _ in muts)
+                max_pos = max(p for _, p, _ in muts)
+                if not (window_start <= min_pos and max_pos < window_end):
+                    raise ValueError(
+                        f"Window {window_start}-{window_end} does not contain all positions for variant {mutant}"
+                    )
+
+                # Build a list of relative positions for each mutation based on the window start
+                pos_rels: List[int] = []
+                for wt, pos, mt in muts:
+                    rel = pos - window_start
+                    assert window_seq[rel] == mutated_seq[pos], (
+                        f"mutant_marginal: residue mismatch at abs {pos} (rel {rel})"
+                    )
+                    pos_rels.append(rel)
+
+                sequences.append(window_seq)
+                positions_list.append(pos_rels)
+                variant_info.append((row_idx, muts))
+
+        # Compute logits for ALL positions per sequence
+        print(f"Computing scores for {len(sequences)} variants ...")
         
-        # Step 2: Batch compute log probabilities for all unique (sequence, position) pairs
-        unique_pairs = list(forwards.keys())
-        # For masked_marginal, we need to restore the actual sequences (remove placeholder)
-        if scoring_method == "masked_marginal":
-            # Get any actual sequence for each unique key (they're all equivalent when masked)
-            sequences = []
-            for key in unique_pairs:
-                normalized_seq, pos_rel = key
-                # Get the first variant that uses this key to retrieve the actual sequence
-                row_idx, wt, pos, mt = forwards[key][0]
-                # Find the actual window_seq for this variant
-                for var_row_idx, var_mutant, var_mutated_seq, var_muts in variants:
-                    if var_row_idx == row_idx:
-                        var_mutant_slices = grouped.get_group(var_mutant)
-                        var_slices = var_mutant_slices[var_mutant_slices['mutated_seq'] == var_mutated_seq]
-                        for _, var_slice_row in var_slices.iterrows():
-                            if var_slice_row['window_start'] <= pos < var_slice_row['window_end']:
-                                if pos - var_slice_row['window_start'] == pos_rel:
-                                    sequences.append(var_slice_row['sliced_mutated_seq'])
-                                    break
-                        break
-        else:
-            sequences = [pair[0] for pair in unique_pairs]
-        positions = [pair[1] for pair in unique_pairs]
-        
-        print(f"Computing {len(unique_pairs)} unique sequence-position pairs in batches...")
         iterator = range(0, len(sequences), batch_size)
         if progress:
             iterator = tqdm(
                 iterator,
                 total=(len(sequences) + batch_size - 1) // batch_size,
-                desc=f"Assay batches ({scoring_method})",
+                desc=f"Assay batches ({scoring_method} multi-pos)",
                 unit="batch",
                 position=tqdm_position,
                 leave=False,
             )
-        
-        all_log_probs = _position_log_probs(
-            model, tokenizer, scoring_method, sequences, positions, 
-            device, model_name, batch_size=batch_size, progress_bar=iterator if progress else None
+
+        per_variant_log_probs = _position_log_probs(
+            model,
+            tokenizer,
+            scoring_method,
+            sequences,
+            positions_list,
+            device,
+            model_name,
+            batch_size=batch_size,
+            progress_bar=iterator if progress else None,
         )
-        
-        # Create a mapping from (window_seq, pos_rel) to log_probs
-        log_prob_cache = {}
-        for i, key in enumerate(unique_pairs):
-            log_prob_cache[key] = all_log_probs[i]
-        
-        # Step 3: Assign scores to all variants
+
+        # Assign scores per variant
         scores = [0.0] * len(df)
         
-        for row_idx, mutant, mutated_seq, muts in variants:
-            total_score = 0.0
-                        
-            for wt, pos, mt in muts:
-                key = mutation_locs.get((row_idx, pos))
-                if key is None:
-                    raise KeyError(f"Missing precomputed slice for row {row_idx}, position {pos}")
-                lps = log_prob_cache[key]
+        if scoring_method in ["masked_marginal", "wildtype_marginal"]:
+            for variants_in_group, score in zip(variant_info, per_variant_log_probs): # score shape: [num_mutations, vocab]
+                for row_idx, muts in variants_in_group:
+                    assert score.size(0) == len(muts), "Mismatch between mutations and gathered logits"
+                    wt_ids, mt_ids = [], []
+                    for wt, _pos, mt in muts:
+                        wt_id = aa_to_id.get(wt)
+                        mt_id = aa_to_id.get(mt)
+                        if wt_id is None or mt_id is None or (unk_id is not None and (wt_id == unk_id or mt_id == unk_id)):
+                            raise ValueError(f"WT or MT is not in vocab: {wt} or {mt}")
+                        wt_ids.append(wt_id)
+                        mt_ids.append(mt_id)
 
-                # Use precomputed token IDs
-                wt_id = aa_to_id.get(wt)
-                mt_id = aa_to_id.get(mt)
+                    wt_tensor = torch.as_tensor(wt_ids, device=score.device)
+                    mt_tensor = torch.as_tensor(mt_ids, device=score.device)
+                    indices = torch.arange(len(wt_ids), device=score.device)
+                    deltas = score[indices, mt_tensor] - score[indices, wt_tensor]
+                    scores[row_idx] = deltas.sum().item()
+        else:
+            for (row_idx, muts), score in zip(variant_info, per_variant_log_probs): # score shape: [num_mutations, vocab]
+                assert score.size(0) == len(muts), "Mismatch between mutations and gathered logits"
+                wt_ids, mt_ids = [], []
+                for wt, _pos, mt in muts:
+                    wt_id = aa_to_id.get(wt)
+                    mt_id = aa_to_id.get(mt)
+                    if wt_id is None or mt_id is None or (unk_id is not None and (wt_id == unk_id or mt_id == unk_id)):
+                        raise ValueError(f"WT or MT is not in vocab: {wt} or {mt}")
+                    wt_ids.append(wt_id)
+                    mt_ids.append(mt_id)
 
-                if wt_id is None or mt_id is None or (unk_id is not None and (wt_id == unk_id or mt_id == unk_id)):
-                    raise ValueError(f"WT or MT is not in vocab: {wt} or {mt}")
-
-                score = (lps[mt_id] - lps[wt_id]).item()
-                total_score += float(score)
-            
-            scores[row_idx] = total_score
+                wt_tensor = torch.as_tensor(wt_ids, device=score.device)
+                mt_tensor = torch.as_tensor(mt_ids, device=score.device)
+                indices = torch.arange(len(wt_ids), device=score.device)
+                deltas = score[indices, mt_tensor] - score[indices, wt_tensor]
+                scores[row_idx] = deltas.sum().item()
         
     elif scoring_method == "pll":
-        # Collect all unique sequences that need PLL computation
-        unique_sequences = set()
-        for _, row in df.iterrows():
-            mutant = row['mutant']
-            mutant_slices = grouped.get_group(mutant)
-            wt_slices = mutant_slices[mutant_slices['mutated_seq'] == target_seq]
-            
-            for _, slice_row in wt_slices.iterrows():
-                window_seq = slice_row['sliced_mutated_seq']
-                unique_sequences.add(window_seq)
+        wt_slices = sliced_df[sliced_df['mutated_seq'] == target_seq].copy()
         
-        # Batch compute PLL for all unique sequences
-        print(f"Computing PLL for {len(unique_sequences)} unique sequences...")
-        unique_seq_list = list(unique_sequences)
+        # Collect seqs
+        seqs_to_score = wt_slices['sliced_mutated_seq']
         
-        # Add progress bar for PLL computation
-        iterator = range(0, len(unique_seq_list), batch_size)
+        # Batch compute PLL for all seqs
+        print(f"Computing PLL for {len(seqs_to_score)} unique sequences...")
+        
+        iterator = range(0, len(seqs_to_score), batch_size)
         if progress:
             iterator = tqdm(
                 iterator,
-                total=(len(unique_seq_list) + batch_size - 1) // batch_size,
+                total=(len(seqs_to_score) + batch_size - 1) // batch_size,
                 desc="PLL batches",
                 unit="batch",
                 position=tqdm_position,
@@ -222,7 +251,7 @@ def zero_shot_scores_for_assay(
             )
         
         pll_results = calculate_pll_batched(
-            unique_seq_list,
+            seqs_to_score,
             tokenizer,
             model,
             device,
@@ -231,64 +260,31 @@ def zero_shot_scores_for_assay(
             progress_bar=iterator if progress else None
         )
         
-        # Create cache
-        pll_cache = {seq: result for seq, result in zip(unique_seq_list, pll_results)}
+        # Append per-sequence PLL (total) directly, aligned by row order
+        wt_slices = wt_slices.copy()
+        wt_slices['sequence_pll'] = [res[0] for res in pll_results]
         
-        # Assign scores
-        scores = []
-        iterator = df.iterrows()
-        if progress:
-            iterator = tqdm(
-                iterator,
-                total=len(df),
-                desc="Assay variants (PLL)",
-                unit="variant",
-                position=tqdm_position + 1,
-                leave=False,
-            )
+        # One score per variant; do not average across windows
+        scores_by_variant = (
+            wt_slices.groupby('mutant')['sequence_pll']
+              .first()
+              .to_dict()
+        )
         
-        for _, row in iterator:
-            mutant = row['mutant']
-            mutant_slices = grouped.get_group(mutant)
-            wt_slices = mutant_slices[mutant_slices['mutated_seq'] == target_seq]
-            
-            slice_scores = []
-            for _, slice_row in wt_slices.iterrows():
-                window_seq = slice_row['sliced_mutated_seq']
-                _, pll = pll_cache[window_seq]
-                slice_scores.append(pll)
-            
-            total_score = sum(slice_scores) / len(slice_scores) if slice_scores else 0.0
-            scores.append(total_score)
     
     else:  # scoring_method == "global_log_prob"
-        # Collect all unique sequences that need log prob computation
-        unique_sequences = set()
-        sequence_to_rows = {}  # Map sequences to rows that use them
+        # Score only mutated sequence slices
+        mutated_slices = sliced_df[sliced_df['mutated_seq'] != target_seq].copy()
+        seqs_to_score = mutated_slices['sliced_mutated_seq'].tolist()
         
-        for row_idx, row in df.iterrows():
-            mutant = row['mutant']
-            mutated_seq = row['mutated_seq']
-            mutant_slices = grouped.get_group(mutant)
-            mt_slices = mutant_slices[mutant_slices['mutated_seq'] == mutated_seq]
-            
-            for _, slice_row in mt_slices.iterrows():
-                window_seq = slice_row['sliced_mutated_seq']
-                unique_sequences.add(window_seq)
-                if window_seq not in sequence_to_rows:
-                    sequence_to_rows[window_seq] = []
-                sequence_to_rows[window_seq].append(row_idx)
+        # Batch compute log probabilities for all seqs
+        print(f"Computing global log prob for {len(seqs_to_score)} unique sequences...")
         
-        # Batch compute log probabilities for all unique sequences
-        print(f"Computing global log prob for {len(unique_sequences)} unique sequences...")
-        unique_seq_list = list(unique_sequences)
-        
-        # Add progress bar for global log prob computation
-        iterator = range(0, len(unique_seq_list), batch_size)
+        iterator = range(0, len(seqs_to_score), batch_size)
         if progress:
             iterator = tqdm(
                 iterator,
-                total=(len(unique_seq_list) + batch_size - 1) // batch_size,
+                total=(len(seqs_to_score) + batch_size - 1) // batch_size,
                 desc="Global log prob batches",
                 unit="batch",
                 position=tqdm_position,
@@ -296,7 +292,7 @@ def zero_shot_scores_for_assay(
             )
         
         log_prob_results = get_sequence_log_probability_batched(
-            unique_seq_list,
+            seqs_to_score,
             tokenizer,
             model,
             device,
@@ -305,38 +301,22 @@ def zero_shot_scores_for_assay(
             progress_bar=iterator if progress else None
         )
         
-        # Create cache
-        log_prob_cache = {seq: result for seq, result in zip(unique_seq_list, log_prob_results)}
+        # Append per-sequence log prob directly, aligned by row order
+        mutated_slices['sequence_log_prob'] = log_prob_results
         
-        # Assign scores
-        scores = [0.0] * len(df)
-        iterator = df.iterrows()
-        if progress:
-            iterator = tqdm(
-                iterator,
-                total=len(df),
-                desc="Assay variants (global_log_prob)",
-                unit="variant",
-                position=tqdm_position + 1,
-                leave=False,
-            )
+        # One score per variant; do not aggregate across windows
+        scores_by_variant = (
+            mutated_slices.groupby('mutant')['sequence_log_prob']
+              .first()
+              .to_dict()
+        )
         
-        for row_idx, row in iterator:
-            mutant = row['mutant']
-            mutated_seq = row['mutated_seq']
-            mutant_slices = grouped.get_group(mutant)
-            mt_slices = mutant_slices[mutant_slices['mutated_seq'] == mutated_seq]
-            
-            total_score = 0.0
-            for _, slice_row in mt_slices.iterrows():
-                window_seq = slice_row['sliced_mutated_seq']
-                seq_log_prob = log_prob_cache[window_seq]
-                total_score += seq_log_prob
-            
-            scores[row_idx] = total_score
     
     out = df.copy()
-    out['delta_log_prob'] = scores
+    if scoring_method in ["masked_marginal", "mutant_marginal", "wildtype_marginal"]:
+        out['delta_log_prob'] = scores
+    else:
+        out['delta_log_prob'] = out['mutant'].map(scores_by_variant)
     return out
 
 
@@ -376,44 +356,47 @@ def zero_shot_scores_for_indels(
         indel_mode=True
     )
 
-    # Group by mutated sequence
-    grouped = sliced_df.groupby('mutated_seq')
-
-    scores: List[float] = []
-    pll_cache: Dict[str, Tuple[float, float]] = {}
-
-    iterator = df.iterrows()
+    seqs_to_score = sliced_df['sliced_mutated_seq'].to_list()
+    
+    # Batch compute PLL for all unique sequences
+    print(f"Computing PLL for {len(seqs_to_score)} unique sequences (indels)...")
+            
+    # Add progress bar for PLL computation
+    iterator = range(0, len(seqs_to_score), batch_size)
     if progress:
         iterator = tqdm(
             iterator,
-            total=len(df),
-            desc="Assay variants (indels)",
-            unit="variant",
+            total=(len(seqs_to_score) + batch_size - 1) // batch_size,
+            desc="PLL batches (indels)",
+            unit="batch",
             position=tqdm_position,
             leave=False,
         )
-
-    for _, row in iterator:
-        mutated_seq = row['mutated_seq']
-        if mutated_seq not in grouped.groups:
-            scores.append(0.0)
-            continue
-        mt_slices = grouped.get_group(mutated_seq)
-
-        slice_scores = []
-        for _, slice_row in mt_slices.iterrows():
-            window_seq = slice_row['sliced_mutated_seq']
-            if window_seq not in pll_cache:
-                # calculate_pll_batched expects a list of sequences and returns a list of tuples
-                pll_list = calculate_pll_batched([window_seq], tokenizer, model, device, model_name, batch_size=batch_size)
-                pll_cache[window_seq] = pll_list[0]
-            _, pll = pll_cache[window_seq]
-            slice_scores.append(pll)
-        total_score = sum(slice_scores) / len(slice_scores) if slice_scores else 0.0
-        scores.append(total_score)
+    
+    pll_results = calculate_pll_batched(
+        seqs_to_score,
+        tokenizer,
+        model,
+        device,
+        model_name,
+        batch_size=batch_size,
+        progress_bar=iterator if progress else None
+    )
+    
+    # Grab normalized PLL for indels
+    pll_cache = {seq: result[1] for seq, result in zip(seqs_to_score, pll_results)}
+    
+    # Add a mapped column of per-window scores, then average by mutated_seq
+    sliced_df['window_score'] = sliced_df['sliced_mutated_seq'].map(pll_cache)
+    scores_by_variant = (
+        sliced_df.groupby('mutated_seq')['window_score']
+          .mean()
+          .to_dict()
+    )
+    
 
     out = df.copy()
-    out['delta_log_prob'] = scores
+    out['delta_log_prob'] = out['mutated_seq'].map(scores_by_variant)
     return out
 
 
@@ -507,14 +490,6 @@ def run_zero_shot(
                         on='mutated_seq',
                         how='outer',
                     )
-                ## Ensure target_seq formatting: keep only in first row
-                #if 'target_seq' not in merged.columns:
-                #    insert_at = merged.columns.get_loc('mutant') if 'mutant' in merged.columns else 0
-                #    merged.insert(insert_at, 'target_seq', '')
-                #if len(merged) > 0 and first_target_seq is not None:
-                #    merged.iloc[0, merged.columns.get_loc('target_seq')] = first_target_seq
-                #if len(merged) > 1:
-                #    merged.iloc[1:, merged.columns.get_loc('target_seq')] = ''
                 merged.to_csv(per_dms_path, index=False)
             except Exception as e:
                 print(f"Error merging results for {dms_id}: {e}")
@@ -524,5 +499,4 @@ def run_zero_shot(
             # First model for this DMS: write a new aggregated file
             results_to_save.to_csv(per_dms_path, index=False)
         tqdm.write(f"[Assay {dms_id}] saved/updated: {per_dms_path}")
-    return None
     return None

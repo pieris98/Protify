@@ -161,6 +161,9 @@ Protify is currently in beta. We're actively working to enhance features and doc
   | shs148-ppi-dfs | SHS148k CD-Hit 40%, multi-label lables, data splits via depth first search. | MLC | PPI type prediction | No | Yes |
   | shs27-ppi-bfs | SHS27k CD-Hit 40%, multi-label lables, data splits via breadth first search. | MLC | PPI type prediction | No | Yes |
   | shs148-ppi-bfs | SHS148k CD-Hit 40%, multi-label lables, data splits via breadth first search. | MLC | PPI type prediction | No | Yes |
+  | string-ppi-random | STRING CD-Hit 40%, multi-label lables, randomized data splits. | MLC | PPI type prediction | No | Yes |
+  | string-ppi-dfs | STRING CD-Hit 40%, multi-label lables, data splits via depth first search. | MLC | PPI type prediction | No | Yes |
+  | string-ppi-bfs | STRING CD-Hit 40%, multi-label lables, data splits via breadth first search. | MLC | PPI type prediction | No | Yes |
   | ppi-mutation-effect | Compare wild type, mutated, and target sequence to determine if PPI is stronger or not. | SLC | PPI effect prediction | No | Yes |
   | PPA-ppi | Protein-Protein Affinity dataset from Bindwell. | R | protein-protein affinity prediction | No | Yes |
   | foldseek-fold | Dataset for protein fold classification using Foldseek. | MCC | Protein structure prediction | No | No |

@@ -85,6 +85,9 @@ def parse_arguments():
     parser.add_argument("--embed_dtype", default="float32", help="Data type for embeddings.")
     parser.add_argument("--sql", action="store_true", default=False, help="Whether to use SQL storage (default: False).")
     parser.add_argument("--read_scaler", type=int, default=100, help="Read scaler for SQL storage.")
+    
+    # ----------------- Multi-Column Sequences ----------------- #
+    parser.add_argument("--multi_column", nargs="+", default=None, help="If set, list of sequence column names to combine per sample.")
 
     # ----------------- TrainerArguments ----------------- #
     parser.add_argument("--num_epochs", type=int, default=200, help="Number of epochs to train for.")
@@ -211,6 +214,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         self._trim = self.full_args.trim
         self._delimiter = self.full_args.delimiter
         self._col_names = self.full_args.col_names
+        self._multi_column = getattr(self.full_args, 'multi_column', None)
 
     @log_method_calls
     def get_datasets(self):
@@ -353,22 +357,26 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             if self._sql:
                 # for sql, the embeddings will be gathered in real time during training
                 save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.db')
-                input_dim = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
+                input_size = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
                 emb_dict = None
             else:
                 # for pth, the embeddings are loaded entirely into RAM and accessed during training
                 save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.pth')
                 emb_dict = torch_load(save_path)
-                input_dim = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
+                input_size = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
+
+            # Adjust input dim for multi-column vector embeddings
+            if (not self._full) and getattr(self.full_args, 'multi_column', None):
+                input_size = input_size * len(self.full_args.multi_column)
 
             # for each dataset, gather the settings and train the probe
             for data_name, dataset in self.datasets.items():
                 self.logger.info(f"Processing dataset: {data_name}")
                 train_set, valid_set, test_set, num_labels, label_type, ppi = dataset
                 if ppi and not self._full:
-                    probe_args.input_dim = input_dim * 2
+                    probe_args.input_size = input_size * 2
                 else:
-                    probe_args.input_dim = input_dim
+                    probe_args.input_size = input_size
             
                 self.probe_args.num_labels = num_labels
                 self.probe_args.task_type = label_type
@@ -415,24 +423,28 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             if self._sql:
                 # for sql, the embeddings will be gathered in real time during training
                 save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{clean_model_name}_{self._full}.db')
-                input_dim = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
+                input_size = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
                 emb_dict = None
             else:
                 # for pth, the embeddings are loaded entirely into RAM and accessed during training
                 save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{clean_model_name}_{self._full}.pth')
                 emb_dict = torch_load(save_path)
-                input_dim = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
+                input_size = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
 
-            print(f'Input dim: {input_dim}')
+            # Adjust input dim for multi-column vector embeddings
+            if (not self._full) and getattr(self.full_args, 'multi_column', None):
+                input_size = input_size * len(self.full_args.multi_column)
+
+            print(f'Input dim: {input_size}')
 
             # for each dataset, gather the settings and train the probe
             for data_name, dataset in self.datasets.items():
                 self.logger.info(f"Processing dataset: {data_name}")
                 train_set, valid_set, test_set, num_labels, label_type, ppi = dataset
                 if ppi and not self._full:
-                    probe_args.input_dim = input_dim * 2
+                    probe_args.input_size = input_size * 2
                 else:
-                    probe_args.input_dim = input_dim
+                    probe_args.input_size = input_size
             
                 self.probe_args.num_labels = num_labels
                 self.probe_args.task_type = label_type

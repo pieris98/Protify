@@ -249,7 +249,7 @@ class LyraConfig(PretrainedConfig):
     model_type = "lyra"
     def __init__(
         self,
-        input_dim: int = 29, # protein vocab
+        input_size: int = 29, # protein vocab
         hidden_size: int = 64,
         num_labels: int = 2,
         dropout: float = 0.2,
@@ -259,7 +259,7 @@ class LyraConfig(PretrainedConfig):
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.input_dim = input_dim
+        self.input_size = input_size
         self.hidden_size = hidden_size
         self.dropout = dropout
         self.num_labels = num_labels
@@ -273,7 +273,7 @@ class LyraForSequenceClassification(PreTrainedModel):
     def __init__(self, config: LyraConfig):
         super().__init__(config)
         self.lyra = Lyra(
-            d_input=config.input_dim,
+            d_input=config.input_size,
             d_output=config.num_labels,
             d_model=config.hidden_size,
             dropout=config.dropout,
@@ -327,7 +327,7 @@ class LyraForTokenClassification(PreTrainedModel):
     def __init__(self, config: LyraConfig):
         super().__init__(config)
         self.lyra = Lyra(
-            d_input=config.input_dim,
+            d_input=config.input_size,
             d_output=config.num_labels,
             d_model=config.hidden_size,
             dropout=config.dropout,

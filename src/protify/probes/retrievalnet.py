@@ -26,7 +26,7 @@ class RetrievalNetConfig(PretrainedConfig):
     model_type = "retrievalnet"
     def __init__(
             self,
-            input_dim: int = 768,
+            input_size: int = 768,
             hidden_size: int = 512,
             dropout: float = 0.2,
             num_labels: int = 2,
@@ -40,7 +40,7 @@ class RetrievalNetConfig(PretrainedConfig):
     ):
         super().__init__(**kwargs)
         assert task_type != 'regression' or num_labels == 1, "Regression task must have exactly one label"
-        self.input_dim = input_dim
+        self.input_size = input_size
         self.hidden_size = hidden_size
         self.dropout = dropout
         self.task_type = task_type
@@ -58,7 +58,7 @@ class RetrievalNetForSequenceClassification(PreTrainedModel):
         super().__init__(config)
         # If n_layers == 0, only learn how to distribute labels over the raw embeddings
         if config.n_layers > 0:
-            self.input_proj = nn.Linear(config.input_dim, config.hidden_size)
+            self.input_proj = nn.Linear(config.input_size, config.hidden_size)
         
             transformer_class = TokenFormer if config.token_attention else Transformer
             self.transformer = transformer_class(
@@ -71,7 +71,7 @@ class RetrievalNetForSequenceClassification(PreTrainedModel):
             )
             
         self.get_logits = AttentionLogitsSequence(
-            hidden_size=config.hidden_size if config.n_layers > 0 else config.input_dim,
+            hidden_size=config.hidden_size if config.n_layers > 0 else config.input_size,
             num_labels=config.num_labels,
             sim_type=config.sim_type,
         )
@@ -122,7 +122,7 @@ class RetrievalNetForTokenClassification(PreTrainedModel):
     def __init__(self, config: RetrievalNetConfig):
         super().__init__(config)
         if config.n_layers > 0:
-            self.input_proj = nn.Linear(config.input_dim, config.hidden_size)
+            self.input_proj = nn.Linear(config.input_size, config.hidden_size)
             self.transformer = TokenFormer(
                 hidden_size=config.hidden_size,
                 n_heads=config.n_heads,
@@ -133,7 +133,7 @@ class RetrievalNetForTokenClassification(PreTrainedModel):
             )
 
         self.get_logits = AttentionLogitsToken(
-            hidden_size=config.hidden_size if config.n_layers > 0 else config.input_dim,
+            hidden_size=config.hidden_size if config.n_layers > 0 else config.input_size,
             num_labels=config.num_labels,
             sim_type=config.sim_type,
         )

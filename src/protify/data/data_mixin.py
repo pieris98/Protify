@@ -38,6 +38,7 @@ class DataArguments:
             max_length: int = 1024,
             trim: bool = False,
             data_dirs: Optional[List[str]] = [],
+            multi_column: Optional[List[str]] = None,
             **kwargs
         ):
         self.data_names = data_names
@@ -46,6 +47,7 @@ class DataArguments:
         self.col_names = col_names
         self.max_length = max_length
         self.trim = trim
+        self.multi_column = multi_column
 
         if len(data_names) > 0:
             if data_names[0] == 'standard_benchmark':
@@ -78,15 +80,29 @@ class DataMixin:
         self._delimiter = ','
         self._col_names = ['seqs', 'labels']
         self.data_args = data_args
+        self._multi_column = None if data_args is None else getattr(data_args, 'multi_column', None)
 
     def _not_regression(self, labels): # not a great assumption but works most of the time
-        return all(isinstance(label, (int, float)) and label == int(label) for label in labels)
+        if isinstance(labels, list):
+            # Check if first element is itself a list (multilabel case)
+            if isinstance(labels[0], list):
+                # For multilabel: check all elements in all sublists
+                return all(isinstance(element, (int, float)) and element == int(element) 
+                          for label in labels for element in label)
+            else:
+                # For single label: check all elements in the list
+                return all(isinstance(label, (int, float)) and label == int(label) 
+                          for label in labels)
+        else:
+            # Fallback for non-list input
+            return all(isinstance(label, (int, float)) and label == int(label) for label in labels)
 
     def _encode_labels(self, labels, tag2id):
         return [torch.tensor([tag2id[tag] for tag in doc], dtype=torch.long) for doc in labels]
 
     def _label_type_checker(self, labels):
         ex = labels[0]
+        assert len(labels) > 0, f'Labels is empty: {labels}'
         if self._not_regression(labels):
             if isinstance(ex, list):
                 label_type = 'multilabel'
@@ -249,6 +265,18 @@ class DataMixin:
                 train_set = train_set.filter(lambda x: not (self._is_missing_value(x['SeqA']) or self._is_missing_value(x['SeqB']) or self._is_missing_value(x['labels'])))
                 valid_set = valid_set.filter(lambda x: not (self._is_missing_value(x['SeqA']) or self._is_missing_value(x['SeqB']) or self._is_missing_value(x['labels'])))
                 test_set = test_set.filter(lambda x: not (self._is_missing_value(x['SeqA']) or self._is_missing_value(x['SeqB']) or self._is_missing_value(x['labels'])))
+            elif self.data_args.multi_column:
+                cols = self.data_args.multi_column
+                # assert columns exist
+                for col in cols:
+                    assert col in train_set.column_names or col in valid_set.column_names or col in test_set.column_names, f"Column {col} not found in dataset {data_name}"
+
+                def _filter_row(x):
+                    return (not self._is_missing_value(x['labels'])) and all(not self._is_missing_value(x[col]) for col in cols)
+
+                train_set = train_set.filter(_filter_row)
+                valid_set = valid_set.filter(_filter_row)
+                test_set = test_set.filter(_filter_row)
             else:
                 train_set = train_set.filter(lambda x: not (self._is_missing_value(x['seqs']) or self._is_missing_value(x['labels'])))
                 valid_set = valid_set.filter(lambda x: not (self._is_missing_value(x['seqs']) or self._is_missing_value(x['labels'])))
@@ -270,6 +298,12 @@ class DataMixin:
                                                      'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
                 test_set = test_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
                                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
+            elif self.data_args.multi_column:
+                cols = self.data_args.multi_column
+                for col in cols:
+                    train_set = train_set.map(lambda x, _col=col: { _col: ''.join(aa for aa in x[_col] if aa in AMINO_ACIDS) })
+                    valid_set = valid_set.map(lambda x, _col=col: { _col: ''.join(aa for aa in x[_col] if aa in AMINO_ACIDS) })
+                    test_set = test_set.map(lambda x, _col=col: { _col: ''.join(aa for aa in x[_col] if aa in AMINO_ACIDS) })
             else:
                 train_set = train_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
                 valid_set = valid_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
@@ -281,6 +315,11 @@ class DataMixin:
                 train_set = train_set.filter(lambda x: len(x['SeqA']) > 0 and len(x['SeqB']) > 0)
                 valid_set = valid_set.filter(lambda x: len(x['SeqA']) > 0 and len(x['SeqB']) > 0)
                 test_set = test_set.filter(lambda x: len(x['SeqA']) > 0 and len(x['SeqB']) > 0)
+            elif self.data_args.multi_column:
+                cols = self.data_args.multi_column
+                train_set = train_set.filter(lambda x: all(len(x[col]) > 0 for col in cols))
+                valid_set = valid_set.filter(lambda x: all(len(x[col]) > 0 for col in cols))
+                test_set = test_set.filter(lambda x: all(len(x[col]) > 0 for col in cols))
             else:
                 train_set = train_set.filter(lambda x: len(x['seqs']) > 0)
                 valid_set = valid_set.filter(lambda x: len(x['seqs']) > 0)
@@ -290,7 +329,7 @@ class DataMixin:
                 len(train_set) != before_train,
                 len(valid_set) != before_valid,
                 len(test_set) != before_test,
-            ]):
+            ]): 
                 print_message(
                     f"Removed length 0 rows - train: {before_train - len(train_set)}, valid: {before_valid - len(valid_set)}, test: {before_test - len(test_set)}"
                 )
@@ -302,6 +341,11 @@ class DataMixin:
                     train_set = train_set.filter(lambda x: len(x['SeqA']) + len(x['SeqB']) <= max_length)
                     valid_set = valid_set.filter(lambda x: len(x['SeqA']) + len(x['SeqB']) <= max_length)
                     test_set = test_set.filter(lambda x: len(x['SeqA']) + len(x['SeqB']) <= max_length)
+                elif self.data_args.multi_column:
+                    cols = self.data_args.multi_column
+                    train_set = train_set.filter(lambda x: all(len(x[col]) <= max_length for col in cols))
+                    valid_set = valid_set.filter(lambda x: all(len(x[col]) <= max_length for col in cols))
+                    test_set = test_set.filter(lambda x: all(len(x[col]) <= max_length for col in cols))
                 else:
                     train_set = train_set.filter(lambda x: len(x['seqs']) <= max_length)
                     valid_set = valid_set.filter(lambda x: len(x['seqs']) <= max_length)
@@ -312,6 +356,12 @@ class DataMixin:
                     train_set = train_set.map(self._truncate_pairs)
                     valid_set = valid_set.map(self._truncate_pairs)
                     test_set = test_set.map(self._truncate_pairs)
+                elif self.data_args.multi_column:
+                    cols = self.data_args.multi_column
+                    for col in cols:
+                        train_set = train_set.map(lambda x, _col=col: { _col: x[_col][:max_length] })
+                        valid_set = valid_set.map(lambda x, _col=col: { _col: x[_col][:max_length] })
+                        test_set = test_set.map(lambda x, _col=col: { _col: x[_col][:max_length] })
                 else:
                     train_set = train_set.map(lambda x: {'seqs': x['seqs'][:max_length]})
                     valid_set = valid_set.map(lambda x: {'seqs': x['seqs'][:max_length]})
@@ -333,6 +383,12 @@ class DataMixin:
                 all_seqs.update(list(train_set['SeqA']) + list(train_set['SeqB']))
                 all_seqs.update(list(valid_set['SeqA']) + list(valid_set['SeqB']))
                 all_seqs.update(list(test_set['SeqA']) + list(test_set['SeqB']))
+            elif self.data_args.multi_column:
+                cols = self.data_args.multi_column
+                for col in cols:
+                    all_seqs.update(list(train_set[col]))
+                    all_seqs.update(list(valid_set[col]))
+                    all_seqs.update(list(test_set[col]))
             else:
                 all_seqs.update(list(train_set['seqs']))
                 all_seqs.update(list(valid_set['seqs']))
@@ -430,7 +486,6 @@ class DataMixin:
                         a_col, b_col = self._find_ppi_sequence_columns(valid_set.column_names)
                     except KeyError:
                         a_col, b_col = self._find_ppi_sequence_columns(test_set.column_names)
-
                 
                 try:
                     lbl_col = self._find_first_present_column(train_set.column_names, label_candidates)
@@ -450,13 +505,15 @@ class DataMixin:
                 test_set = test_set.remove_columns([col for col in test_set.column_names if col not in ['SeqA', 'SeqB', 'labels']])
             else:
                 print('Standardizing column names')
-                try:
-                    seq_col = self._find_first_present_column(train_set.column_names, seq_candidates)
-                except KeyError:
+                use_multi = self.data_args.multi_column is not None
+                if not use_multi:
                     try:
-                        seq_col = self._find_first_present_column(valid_set.column_names, seq_candidates)
+                        seq_col = self._find_first_present_column(train_set.column_names, seq_candidates)
                     except KeyError:
-                        seq_col = self._find_first_present_column(test_set.column_names, seq_candidates)
+                        try:
+                            seq_col = self._find_first_present_column(valid_set.column_names, seq_candidates)
+                        except KeyError:
+                            seq_col = self._find_first_present_column(test_set.column_names, seq_candidates)
 
                 try:
                     label_col = self._find_first_present_column(train_set.column_names, label_candidates)
@@ -466,14 +523,29 @@ class DataMixin:
                     except KeyError:
                         label_col = self._find_first_present_column(test_set.column_names, label_candidates)
 
-                train_set = train_set.rename_columns({seq_col: 'seqs', label_col: 'labels'})
-                valid_set = valid_set.rename_columns({seq_col: 'seqs', label_col: 'labels'})
-                test_set = test_set.rename_columns({seq_col: 'seqs', label_col: 'labels'})
-                # drop everything else
-                print('Removing extras')
-                train_set = train_set.remove_columns([col for col in train_set.column_names if col not in ['seqs', 'labels']])
-                valid_set = valid_set.remove_columns([col for col in valid_set.column_names if col not in ['seqs', 'labels']])
-                test_set = test_set.remove_columns([col for col in test_set.column_names if col not in ['seqs', 'labels']])
+                # Always standardize label column to 'labels'
+                train_set = train_set.rename_columns({label_col: 'labels'})
+                valid_set = valid_set.rename_columns({label_col: 'labels'})
+                test_set = test_set.rename_columns({label_col: 'labels'})
+
+                if not use_multi:
+                    train_set = train_set.rename_columns({seq_col: 'seqs'})
+                    valid_set = valid_set.rename_columns({seq_col: 'seqs'})
+                    test_set = test_set.rename_columns({seq_col: 'seqs'})
+                    # drop everything else
+                    print('Removing extras')
+                    train_set = train_set.remove_columns([col for col in train_set.column_names if col not in ['seqs', 'labels']])
+                    valid_set = valid_set.remove_columns([col for col in valid_set.column_names if col not in ['seqs', 'labels']])
+                    test_set = test_set.remove_columns([col for col in test_set.column_names if col not in ['seqs', 'labels']])
+                else:
+                    # Validate requested multi columns exist (assert exact match)
+                    for col in self.data_args.multi_column:
+                        assert col in train_set.column_names or col in valid_set.column_names or col in test_set.column_names, f"Column {col} not found in dataset {data_name}"
+                    # Keep only requested columns and labels
+                    keep_cols = set(self.data_args.multi_column + ['labels'])
+                    train_set = train_set.remove_columns([col for col in train_set.column_names if col not in keep_cols])
+                    valid_set = valid_set.remove_columns([col for col in valid_set.column_names if col not in keep_cols])
+                    test_set = test_set.remove_columns([col for col in test_set.column_names if col not in keep_cols])
 
             datasets.append((train_set, valid_set, test_set, ppi))
             data_names.append(data_name)
@@ -531,13 +603,15 @@ class DataMixin:
                 test_set = test_set.remove_columns([col for col in test_set.column_names if col not in ['SeqA', 'SeqB', 'labels']])
             else:
                 print('Standardizing column names')
-                try:
-                    seq_col = self._find_first_present_column(train_set.column_names, seq_candidates)
-                except KeyError:
+                use_multi = self.data_args.multi_column is not None
+                if not use_multi:
                     try:
-                        seq_col = self._find_first_present_column(valid_set.column_names, seq_candidates)
+                        seq_col = self._find_first_present_column(train_set.column_names, seq_candidates)
                     except KeyError:
-                        seq_col = self._find_first_present_column(test_set.column_names, seq_candidates)
+                        try:
+                            seq_col = self._find_first_present_column(valid_set.column_names, seq_candidates)
+                        except KeyError:
+                            seq_col = self._find_first_present_column(test_set.column_names, seq_candidates)
 
                 try:
                     label_col = self._find_first_present_column(train_set.column_names, label_candidates)
@@ -547,14 +621,29 @@ class DataMixin:
                     except KeyError:
                         label_col = self._find_first_present_column(test_set.column_names, label_candidates)
 
-                train_set = train_set.rename_columns({seq_col: 'seqs', label_col: 'labels'})
-                valid_set = valid_set.rename_columns({seq_col: 'seqs', label_col: 'labels'})
-                test_set = test_set.rename_columns({seq_col: 'seqs', label_col: 'labels'})
-                # drop everything else
-                print('Removing extras')
-                train_set = train_set.remove_columns([col for col in train_set.column_names if col not in ['seqs', 'labels']])
-                valid_set = valid_set.remove_columns([col for col in valid_set.column_names if col not in ['seqs', 'labels']])
-                test_set = test_set.remove_columns([col for col in test_set.column_names if col not in ['seqs', 'labels']])
+                # Always standardize label column to 'labels'
+                train_set = train_set.rename_columns({label_col: 'labels'})
+                valid_set = valid_set.rename_columns({label_col: 'labels'})
+                test_set = test_set.rename_columns({label_col: 'labels'})
+
+                if not use_multi:
+                    train_set = train_set.rename_columns({seq_col: 'seqs'})
+                    valid_set = valid_set.rename_columns({seq_col: 'seqs'})
+                    test_set = test_set.rename_columns({seq_col: 'seqs'})
+                    # drop everything else
+                    print('Removing extras')
+                    train_set = train_set.remove_columns([col for col in train_set.column_names if col not in ['seqs', 'labels']])
+                    valid_set = valid_set.remove_columns([col for col in valid_set.column_names if col not in ['seqs', 'labels']])
+                    test_set = test_set.remove_columns([col for col in test_set.column_names if col not in ['seqs', 'labels']])
+                else:
+                    # Validate requested multi columns exist
+                    for col in self.data_args.multi_column:
+                        assert col in train_set.column_names or col in valid_set.column_names or col in test_set.column_names, f"Column {col} not found in dataset {data_name}"
+                    # Keep only requested columns and labels
+                    keep_cols = set(self.data_args.multi_column + ['labels'])
+                    train_set = train_set.remove_columns([col for col in train_set.column_names if col not in keep_cols])
+                    valid_set = valid_set.remove_columns([col for col in valid_set.column_names if col not in keep_cols])
+                    test_set = test_set.remove_columns([col for col in test_set.column_names if col not in keep_cols])
 
             datasets.append((train_set, valid_set, test_set, ppi))
             data_names.append(data_name)

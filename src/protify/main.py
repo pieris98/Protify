@@ -348,7 +348,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             with open(sweep_config_path, 'r') as f:
                 sweep_config = yaml.safe_load(f)
         else:
-            self.logger.warning(f"Sweep config file not found: {sweep_config_path}")
+            raise ValueError(f"Sweep config file not found: {sweep_config_path}")
 
         params_to_hyperopt = sweep_config.get("parameters", {})
 
@@ -362,18 +362,14 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
 
         total_combinations = len(self.model_args.model_names) * len(self.datasets)
         self.logger.info(f"Hyperopt over {total_combinations} model/dataset combinations")
-
         for model_name in self.model_args.model_names:
             tokenizer = get_tokenizer(model_name)
             test_seq = self.all_seqs[0]
 
             if model_name in ["Random", "Random-Transformer"]:
-                message = f"Skipping hyperparameter optimization for {model_name}."
-                self.logger.info(message)
-                print_message(message)
+                print_message(f"Skipping hyperparameter optimization for {model_name}.")
 
                 for data_name, dataset in self.datasets.items():
-                    self.logger.info(f"Obtaining results for {data_name} with {model_name}")
                     train_set, valid_set, test_set, num_labels, label_type, ppi = dataset
                     self.probe_args.num_labels = num_labels
                     self.probe_args.task_type = label_type
@@ -399,8 +395,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 continue
 
             for data_name, dataset in self.datasets.items():
-                self.logger.info(f"Starting W&B sweep for {data_name} with {model_name}")
-                print_message(f"Starting W&B sweep for {data_name} with {model_name}")
+                print_message(f"Sweeping over {data_name} with {model_name}")
                 train_set, valid_set, test_set, num_labels, label_type, ppi = dataset
                 self.probe_args.num_labels = num_labels
                 self.probe_args.task_type = label_type
@@ -475,16 +470,10 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
 
                 # Log best hyperparameters
                 best = results_list[0] if results_list else None
-                if best is None:
-                    self.logger.info("No sweep results found; skipping final training for this combo")
-                    continue
                 best_score = best[self.full_args.sweep_metric]
                 best_config = best['config']
-                self.logger.info(f"Best sweep result - {self.full_args.sweep_metric}: {best_score}")
-                self.logger.info(f"Best hyperparameters: {json.dumps(best_config, indent=2)}")
-                print_message(f"Best sweep result for {data_name} with {model_name}:\n"
-                           f"Metric: {self.full_args.sweep_metric} = {best_score}\n"
-                           f"Hyperparameters: {json.dumps(best_config, indent=2)}")
+                print_message(f"Best sweep result - {self.full_args.sweep_metric}: {best_score}")
+                print_message(f"Best hyperparameters: {json.dumps(best_config, indent=2)}")
 
                 # Restore base args then apply best
                 self.probe_args.__dict__.update(copy.deepcopy(base_probe))
@@ -492,11 +481,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 apply_config(best_config, self.probe_args, self.trainer_args, probe_keys, trainer_keys)
                 self.trainer_args.make_plots = True
 
-                self.logger.info(
-                    f"Training {'probe' if not self.full_args.full_finetuning else 'model'}"
-                    f"for {data_name} with {model_name} with best hyperparameters found by the W&B sweep."
-                    f"Sweep details saved under {self.full_args.log_dir}/"
-)
                 if self.full_args.full_finetuning:
                     _ = self._run_full_finetuning(model_name, data_name, train_set, valid_set, test_set, ppi, sweep_mode=False)
                 elif self.full_args.hybrid_probe:

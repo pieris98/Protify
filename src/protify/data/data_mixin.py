@@ -137,7 +137,6 @@ class DataMixin:
         cond3 = int((hist > 0).sum()) >= 7
 
         sigmoid_regression_status = cond1 and cond2 and cond3
-        print(f'Sigmoid regression status: {sigmoid_regression_status}, cond1: {cond1}, cond2: {cond2}, cond3: {cond3}')
         return sigmoid_regression_status
 
     def _select_from_sql(self, c, seq, cast_to_torch=True):

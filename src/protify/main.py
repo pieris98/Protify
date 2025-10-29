@@ -143,7 +143,6 @@ def parse_arguments():
         yaml_args.sweep_config_path = args.sweep_config_path
         yaml_args.sweep_count = args.sweep_count
         yaml_args.sweep_method = args.sweep_method
-        yaml_args.sweep_metric = args.sweep_metric
         yaml_args.sweep_metric_cls = args.sweep_metric_cls
         yaml_args.sweep_metric_reg = args.sweep_metric_reg
         yaml_args.sweep_goal = args.sweep_goal
@@ -457,6 +456,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     sweep_config=sweep_config,
                     probe_keys=probe_keys,
                     trainer_keys=trainer_keys,
+                    dataset_metric=dataset_metric,
                     emb_dict=emb_dict,
                     ppi=ppi,
                     random_id=self.random_id,
@@ -479,18 +479,18 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
 
                 # Sort, write, and save sweep results
                 reverse_flag = True if self.full_args.sweep_goal == "maximize" else False
-                results_list.sort(key=lambda x: x[self.full_args.sweep_metric], reverse=reverse_flag)
+                results_list.sort(key=lambda x: x[dataset_metric], reverse=reverse_flag)
                 sweep_log_path = os.path.join(self.full_args.log_dir, f"{self.random_id}_sweep_{data_name}_{model_name}.csv")
                 with open(sweep_log_path, 'w', newline='', encoding='utf-8') as f:
                     writer = csv.writer(f, delimiter=',')
                     # Columns
-                    columns = ["rank","wandb_run_id",self.full_args.sweep_metric,"config","valid_metrics","test_metrics"]
+                    columns = ["rank","wandb_run_id",dataset_metric,"config","valid_metrics","test_metrics"]
                     writer.writerow(columns)
                     for idx, res in enumerate(results_list, start=1):
                         writer.writerow([
                             idx,
                             res['wandb_run_id'],
-                            res[self.full_args.sweep_metric],
+                            res[dataset_metric],
                             json.dumps(res['config']),
                             json.dumps(res['valid_metrics']),
                             json.dumps(res['test_metrics']),
@@ -498,9 +498,9 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
 
                 # Log best hyperparameters
                 best = results_list[0] if results_list else None
-                best_score = best[self.full_args.sweep_metric]
+                best_score = best[dataset_metric]
                 best_config = best['config']
-                print_message(f"Best sweep result - {self.full_args.sweep_metric}: {best_score}")
+                print_message(f"Best sweep result - {dataset_metric}: {best_score}")
                 print_message(f"Best hyperparameters: {json.dumps(best_config, indent=2)}")
 
                 # Restore base args then apply best

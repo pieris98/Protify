@@ -191,7 +191,7 @@ For more details about supported models and datasets, including programmatic acc
   - Coming soon: Full model fine-tuning, hybrid probing, and LoRA
 - **Automated model selection**: Find optimal scikit-learn models for your data with LazyPredict, enhanced by automatic hyperparameter optimization
   - Coming soon: GPU acceleration
-- **Hyperparameter optimization**: Integrated Weights & Biases sweeps with support for Bayesian, grid, and random search methods across all training modes
+- **Hyperparameter optimization**: Integrated Weights & Biases sweeps that conducts a hyperparameter search and trains the final version based on the best hyperparameters
 - **Complete reproducibility**: Every session generates a detailed log that can be used to reproduce your entire workflow
 - **Publication-ready visualizations**: Generate cross-model and dataset comparisons with radar and bar plots, embedding analysis with PCA, t-SNE, and UMAP, and statistically sound confidence interval plots
 - **Extensive dataset support**: Access 46+ protein datasets by default, or easily integrate your own local or private datasets
@@ -317,7 +317,7 @@ cd src/protify
 
 Protify integrates Weights & Biases (W&B) sweeps for automated hyperparameter optimization across all training modes (neural network probes, full fine-tuning, and hybrid probes). This feature allows you to systematically search for optimal hyperparameters to maximize model performance.
 
-### Key Features
+### Overview
 
 - **Multiple search methods**: Choose from Bayesian optimization, grid search, or random search
 - **Flexible configuration**: Customize which hyperparameters to optimize via the YAML file
@@ -327,55 +327,97 @@ Protify integrates Weights & Biases (W&B) sweeps for automated hyperparameter op
 
 ### Quick Start
 
-1. **Set up W&B credentials**:
-```bash
-export WANDB_API_KEY=your_api_key_here
-```
+To use W&B hyperparameter optimization, simply add the `--use_wandb_hyperopt` flag to any run:
 
-2. **Run hyperparameter optimization from CLI**:
 ```bash
 python -m main \
   --use_wandb_hyperopt \
   --model_names ESM2-8 ESM2-35 \
-  --data_names DeepLoc-2 MB \
-  --sweep_count 20 \
-  --sweep_method bayes \
-  --sweep_metric mcc \
-  --sweep_goal maximize \
-  --wandb_project "Protify-Sweeps"
+  --data_names DeepLoc-2 MB
 ```
 
-3. **Or use a YAML configuration file**:
-```bash
-python -m main --yaml_path yamls/your_sweep_config.yaml --use_wandb_hyperopt
-```
+That's it! The sweep will use default settings (Bayesian optimization, 10 trials, minimize validation loss). To customize these defaults, see the Configuration section below.
 
 ### Configuration
-
-Hyperparameter sweeps are configured via the `sweep.yaml` file (located in `src/protify/yamls/sweep.yaml`). Here's an example configuration:
+ 
+Hyperparameter sweeps are configured via the `sweep.yaml` file (located in `src/protify/yamls/sweep.yaml`), as well as the CLI. Here's the default configuration:
 
 ```yaml
-method: bayes  # bayes, grid, or random
-metric: {name: mcc, goal: maximize}  # metric to optimize
-early_terminate: {type: hyperband, min_iter: 10}  # early stopping
+early_terminate: {type: hyperband, min_iter: 10}  # early stopping (stops underperforming trials)
 
-
+parameters:
+  # Common parameters for all training modes
+  lr:
+    distribution: log_uniform_values
+    min: 0.000001
+    max: 0.01
+  weight_decay:
+    distribution: log_uniform_values
+    min: 0.000001
+    max: 0.1
+  
+  # Full finetuning specific parameters
+  base_batch_size:
+    values: [4, 8, 16]
+  base_grad_accum:
+    values: [4, 8, 16]
+  
+  # Probe specific parameters
+  probe_batch_size:
+    values: [16, 32, 64, 128]
+  dropout:
+    distribution: uniform
+    min: 0.0
+    max: 0.5
+  hidden_size:
+    values: [512, 1024, 2048, 4096, 8192]
+  n_layers:
+    values: [1, 2, 3]
+  probe_pooling_types:
+    values: ["cls", "mean"]
+  
+  # Transformer probe specific parameters
+  transformer_dropout:
+    distribution: uniform
+    min: 0.0
+    max: 0.5
+  classifier_dropout:
+    distribution: uniform
+    min: 0.0
+    max: 0.5
+  pre_ln:
+    values: [True, False]
+  classifier_dim:
+    values: [4096, 8192]
+  n_heads:  # number of attention heads
+    values: [2, 4, 8]
+  
+  # LoRA parameters
+  lora_r:
+    values: [8, 16, 32]
+  lora_alpha:
+    values: [16, 32, 64]
+  lora_dropout:
+    values: [0.0, 0.01, 0.05]
+```    
 ### CLI Arguments
 
 The following arguments control hyperparameter optimization:
 
 - `--use_wandb_hyperopt`: Enable W&B hyperparameter optimization (flag)
-- `--wandb_api_key`: Your Weights & Biases API key (alternatively set via environment variable)
+- `--wandb_api_key`: Your Weights & Biases API key (alternatively set via environment variable, or the terminal when prompted)
 - `--wandb_project`: W&B project name (default: "Protify")
 - `--wandb_entity`: W&B team/user entity (optional)
 - `--sweep_config_path`: Path to sweep configuration YAML (default: "yamls/sweep.yaml")
 - `--sweep_count`: Number of trials to run (default: 10)
 - `--sweep_method`: Search method - "bayes", "grid", or "random" (default: "bayes")
-- `--sweep_metric`: Metric to optimize (default: "eval_loss")
+- `--sweep_metric_cls`: Classification metric to optimize during sweep (default: "eval_loss")
+- `--sweep_metric_reg`: Regression metric to optimize during sweep (default: "eval_loss")
 - `--sweep_goal`: Optimization goal - "maximize" or "minimize" (default: "minimize")
 
+- **NOTE**: The default optimization strategy is to minimize the eval_loss. If you would like to choose a different metric via the `--sweep_metric_cls` and `--sweep_metric_reg` arguments, make sure you ALSO change `--sweep_goal` to **maximize**.
 
-Common metrics you can optimize for (Remember to set `--sweep_method` to maximize!):
+Common metrics you can optimize for:
 
 - **Classification**: `eval_accuracy`, `eval_mcc`, `eval_f1`, `eval_precision`, `eval_recall`
 - **Regression**: `eval_r_squared`, `eval_pearson_rho`, `eval_spearman_rho`
@@ -388,48 +430,18 @@ Common metrics you can optimize for (Remember to set `--sweep_method` to maximiz
 4. **Evaluation**: Validation metrics are computed and reported to W&B
 5. **Selection**: After all trials, the best configuration is automatically selected
 6. **Final training**: The model is retrained with the best hyperparameters and evaluated on the test set
-7. **Results**: All trials are saved to a CSV file in the `logs` directory (e.g., `logs/YOUR_ID_sweep_DATASET_MODEL.csv`)
+7. **Results**: All results and plots are reported based on final test set performance. Top 5 W&B trials are saved to a CSV file (`logs/YOUR_ID_sweep_DATASET_MODEL.csv`) 
 
-### Results Format
+### W&B Sweep Results Format
 
 Sweep results are saved as CSV files with the following columns:
-- `rank`: Trial ranking based on the optimization metric
+- `rank`: Trial ranking based on the optimization metric (1 is best)
 - `wandb_run_id`: W&B run identifier
 - `metric_value`: Value of the optimization metric
-- `config`: Complete hyperparameter configuration (JSON)
-- `valid_metrics`: All validation metrics (JSON)
-- `test_metrics`: All test metrics (JSON)
+- `config`: Complete hyperparameter configuration
+- `valid_metrics`: All validation metrics
+- `test_metrics`: All test metrics
 
-### Best Practices
-
-1. **Start small**: Begin with 10-20 trials to get a feel for the hyperparameter space
-2. **Use Bayesian optimization**: Generally more efficient than grid or random search
-3. **Choose the right metric**: Match your optimization metric to your task (e.g., MCC for imbalanced classification, AUROC for ranking)
-4. **Enable early termination**: Use Hyperband to stop unpromising trials early
-5. **Monitor W&B dashboard**: View real-time progress and parallel coordinate plots at wandb.ai
-6. **Review logs**: Check the generated CSV files for detailed comparison of all trials
-
-### Example: Optimizing a Probe for Binary Classification
-
-```bash
-python -m main \
-  --use_wandb_hyperopt \
-  --model_names ESM2-150 \
-  --data_names solubility \
-  --probe_type linear \
-  --sweep_count 30 \
-  --sweep_method bayes \
-  --sweep_metric auroc \
-  --sweep_goal maximize \
-  --wandb_project "Protein-Solubility-Optimization"
-```
-
-This command will:
-1. Generate embeddings for the solubility dataset using ESM2-150
-2. Run 30 Bayesian optimization trials to find optimal hyperparameters
-3. Optimize for maximum AUROC
-4. Train a final model with the best configuration
-5. Save all results and generate visualization plots
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

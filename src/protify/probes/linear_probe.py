@@ -17,7 +17,7 @@ class LinearProbeConfig(PretrainedConfig):
     model_type = "linear_probe"
     def __init__(
             self,
-            input_dim: int = 768,
+            input_size: int = 768,
             hidden_size: int = 8192,
             dropout: float = 0.2,
             num_labels: int = 2,
@@ -27,7 +27,7 @@ class LinearProbeConfig(PretrainedConfig):
             **kwargs,
     ):
         super().__init__(**kwargs)
-        self.input_dim = input_dim
+        self.input_size = input_size
         self.hidden_size = hidden_size
         self.dropout = dropout
         self.task_type = task_type
@@ -46,8 +46,8 @@ class LinearProbe(PreTrainedModel):
         self.num_labels = config.num_labels
         layers = []
         if config.pre_ln:
-            layers.append(nn.LayerNorm(config.input_dim))
-        layers.append(nn.Linear(config.input_dim, config.hidden_size))
+            layers.append(nn.LayerNorm(config.input_size))
+        layers.append(nn.Linear(config.input_size, config.hidden_size))
         layers.append(nn.ReLU())
         layers.append(nn.Dropout(config.dropout))
         
@@ -70,12 +70,13 @@ class LinearProbe(PreTrainedModel):
             logits = logits.sigmoid()
         loss = None
         if labels is not None:
+            bs = logits.size(0)
             if self.task_type == 'regression':
                 loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
             elif self.task_type == 'sigmoid_regression':
                 loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
             elif self.task_type == 'multilabel':
-                loss = self.loss_fct(logits, labels.float())
+                loss = self.loss_fct(logits.view(bs, -1), labels.view(bs, -1).float())
             else:
                 loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1).long())
 

@@ -33,7 +33,7 @@ class TransformerProbeConfig(PretrainedConfig):
     model_type = "probe"
     def __init__(
             self,
-            input_dim: int = 768,
+            input_size: int = 768,
             hidden_size: int = 512,
             classifier_size: int = 4096,
             transformer_dropout: float = 0.1,
@@ -49,7 +49,7 @@ class TransformerProbeConfig(PretrainedConfig):
             **kwargs,
     ):
         super().__init__(**kwargs)
-        self.input_dim = input_dim
+        self.input_size = input_size
         self.hidden_size = hidden_size
         self.classifier_size = classifier_size
         self.transformer_dropout = transformer_dropout
@@ -72,15 +72,15 @@ class TransformerForSequenceClassification(PreTrainedModel):
         self.task_type = config.task_type
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels
-        self.input_dim = config.input_dim
+        self.input_size = config.input_size
 
         if config.pre_ln:
             self.input_layer = nn.Sequential(
-                nn.LayerNorm(config.input_dim),
-                nn.Linear(config.input_dim, config.hidden_size)
+                nn.LayerNorm(config.input_size),
+                nn.Linear(config.input_size, config.hidden_size)
             )
         else:
-            self.input_layer = nn.Linear(config.input_dim, config.hidden_size)
+            self.input_layer = nn.Linear(config.input_size, config.hidden_size)
 
         transformer_class = TokenFormer if config.token_attention else Transformer
         self.transformer = transformer_class(
@@ -92,11 +92,11 @@ class TransformerForSequenceClassification(PreTrainedModel):
             rotary=True,
         )
 
-        classifier_input_dim = config.hidden_size * len(config.pooling_types)
+        classifier_input_size = config.hidden_size * len(config.pooling_types)
         proj_dim = intermediate_correction_fn(expansion_ratio=2, hidden_size=config.num_labels)
         self.classifier = nn.Sequential(
-            nn.LayerNorm(classifier_input_dim),
-            nn.Linear(classifier_input_dim, config.classifier_size),
+            nn.LayerNorm(classifier_input_size),
+            nn.Linear(classifier_input_size, config.classifier_size),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
             nn.Linear(config.classifier_size, proj_dim),
@@ -146,8 +146,8 @@ class TransformerForTokenClassification(PreTrainedModel):
         self.task_type = config.task_type
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels
-        self.input_dim = config.input_dim
-        self.input_layer = nn.Linear(config.input_dim, config.hidden_size)
+        self.input_size = config.input_size
+        self.input_layer = nn.Linear(config.input_size, config.hidden_size)
 
         transformer_class = TokenFormer if config.token_attention else Transformer
         self.transformer = transformer_class(

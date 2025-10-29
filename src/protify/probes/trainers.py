@@ -12,6 +12,8 @@ from data.dataset_classes import (
     PairEmbedsLabelsDataset,
     StringLabelDataset,
     PairStringLabelDataset,
+    MultiEmbedsLabelsDatasetFromDisk,
+    MultiEmbedsLabelsDataset,
 )
 from data.data_collators import (
     EmbedsLabelsCollator,
@@ -199,13 +201,14 @@ class TrainerMixin:
         ):
         batch_size = self.trainer_args.probe_batch_size
         read_scaler = self.trainer_args.read_scaler
-        input_dim = self.probe_args.input_dim
+        input_size = self.probe_args.input_size
         task_type = self.probe_args.task_type
         tokenwise = self.probe_args.tokenwise
         print(f'task_type: {task_type}')
         full = self.embedding_args.matrix_embed
         db_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{full}.db')
 
+        use_multi = getattr(self.full_args, 'multi_column', None)
         if self.embedding_args.sql:
             print('SQL enabled')
             if ppi:
@@ -213,6 +216,9 @@ class TrainerMixin:
                     raise ValueError('Full matrix embeddings not currently supported for SQL and PPI') # TODO: Implement
                 DatasetClass = PairEmbedsLabelsDatasetFromDisk
                 CollatorClass = PairEmbedsLabelsCollator
+            elif use_multi:
+                DatasetClass = MultiEmbedsLabelsDatasetFromDisk
+                CollatorClass = EmbedsLabelsCollator
             else:
                 DatasetClass = EmbedsLabelsDatasetFromDisk
                 CollatorClass = EmbedsLabelsCollator
@@ -221,6 +227,9 @@ class TrainerMixin:
             if ppi:
                 DatasetClass = PairEmbedsLabelsDataset
                 CollatorClass = PairEmbedsLabelsCollator
+            elif use_multi:
+                DatasetClass = MultiEmbedsLabelsDataset
+                CollatorClass = EmbedsLabelsCollator
             else:
                 DatasetClass = EmbedsLabelsDataset
                 CollatorClass = EmbedsLabelsCollator
@@ -228,43 +237,34 @@ class TrainerMixin:
         """
         For collator need to pass tokenizer, full, task_type
         For dataset need to pass
-        hf_dataset, col_a, col_b, label_col, input_dim, task_type, db_path, emb_dict, batch_size, read_scaler, full, train
+        hf_dataset, col_a, col_b, label_col, input_size, task_type, db_path, emb_dict, batch_size, read_scaler, full, train
         """
 
         data_collator = CollatorClass(tokenizer=tokenizer, full=full, task_type=task_type, tokenwise=tokenwise)
-        train_dataset = DatasetClass(
+        common_kwargs = dict(
             hf_dataset=train_dataset,
-            input_dim=input_dim,
+            input_size=input_size,
             task_type=task_type,
             db_path=db_path,
             emb_dict=emb_dict,
             batch_size=batch_size,
             read_scaler=read_scaler,
             full=full,
-            train=True
+            train=True,
         )
-        valid_dataset = DatasetClass(
-            hf_dataset=valid_dataset,
-            input_dim=input_dim,
-            task_type=task_type,
-            db_path=db_path,
-            emb_dict=emb_dict,
-            batch_size=batch_size,
-            read_scaler=read_scaler,
-            full=full,
-            train=False
-        )
-        test_dataset = DatasetClass(
-            hf_dataset=test_dataset,
-            input_dim=input_dim,
-            task_type=task_type,
-            db_path=db_path,
-            emb_dict=emb_dict,
-            batch_size=batch_size,
-            read_scaler=read_scaler,
-            full=full,
-            train=False
-        )
+        if use_multi:
+            train_dataset = DatasetClass(seq_cols=use_multi, **common_kwargs)
+        else:
+            train_dataset = DatasetClass(**common_kwargs)
+        common_kwargs['train'] = False
+        if use_multi:
+            valid_dataset = DatasetClass(seq_cols=use_multi, **common_kwargs)
+        else:
+            valid_dataset = DatasetClass(**common_kwargs)
+        if use_multi:
+            test_dataset = DatasetClass(seq_cols=use_multi, **common_kwargs)
+        else:
+            test_dataset = DatasetClass(**common_kwargs)
         return self._train(
             model=model,
             train_dataset=train_dataset,

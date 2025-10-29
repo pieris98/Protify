@@ -20,7 +20,7 @@ supported_datasets = {
     'number-of-folds': 'GleghornLab/fold_prediction',
     'cloning-clf': 'GleghornLab/cloning_clf',
     'stability-prediction': 'GleghornLab/stability_prediction',
-    'human-ppi': 'GleghornLab/HPPI',
+    'human-ppi-saprot': 'GleghornLab/HPPI',
     'SecondaryStructure-3': 'GleghornLab/SS3',
     'SecondaryStructure-8': 'GleghornLab/SS8',
     'fluorescence-prediction': 'GleghornLab/fluorescence_prediction',
@@ -28,13 +28,22 @@ supported_datasets = {
     'gold-ppi': 'Synthyra/bernett_gold_ppi',
     'human-ppi-pinui': 'GleghornLab/HPPI_PiNUI',
     'yeast-ppi-pinui': 'GleghornLab/YPPI_PiNUI',
-    'shs27-ppi': 'Synthyra/SHS27k',
-    'shs148-ppi': 'Synthyra/SHS148k',
+    'shs27-ppi-raw': 'Synthyra/SHS27k',
+    'shs148-ppi-raw': 'Synthyra/SHS148k',
+    'shs27-ppi-random': 'GleghornLab/ppi_SHS27k_random_2025',
+    'shs148-ppi-random': 'GleghornLab/ppi_SHS148k_random_2025',
+    'shs27-ppi-dfs': 'GleghornLab/ppi_SHS27k_dfs_2025',
+    'shs148-ppi-dfs': 'GleghornLab/ppi_SHS148k_dfs_2025',
+    'shs27-ppi-bfs': 'GleghornLab/ppi_SHS27k_bfs_2025',
+    'shs148-ppi-bfs': 'GleghornLab/ppi_SHS148k_bfs_2025',
+    'string-ppi-random': 'GleghornLab/ppi_STRING_random_2025',
+    'string-ppi-dfs': 'GleghornLab/ppi_STRING_dfs_2025',
+    'string-ppi-bfs': 'GleghornLab/ppi_STRING_bfs_2025',
+    'ppi-mutation-effect': 'GleghornLab/ppi_mutation_effect', # requires multi_column
     'PPA-ppi': 'Synthyra/ProteinProteinAffinity',
     'foldseek-fold': 'lhallee/foldseek_dataset',
     'foldseek-inverse': 'lhallee/foldseek_dataset',
     'ec-active': 'lhallee/ec_active',
-    'bernett_processed': 'lhallee/bernett_processed',
     'taxon_domain': 'GleghornLab/taxonomy_domain_0.4_clusters',
     'taxon_kingdom': 'GleghornLab/taxonomy_kingdom_0.4_clusters',
     'taxon_phylum': 'GleghornLab/taxonomy_phylum_0.4_clusters',
@@ -43,15 +52,17 @@ supported_datasets = {
     'taxon_family': 'GleghornLab/taxonomy_family_0.4_clusters',
     'taxon_genus': 'GleghornLab/taxonomy_genus_0.4_clusters',
     'taxon_species': 'GleghornLab/taxonomy_species_0.4_clusters',
+    'diff_phylogeny': 'GleghornLab/diff_phylo',
     'plddt': 'GleghornLab/af2_plddt',
     'realness': 'GleghornLab/realness_dataset',
-    'diff_phylogeny': 'GleghornLab/diff_phylo',
+    'million_full': 'GleghornLab/millionfull_round_1_oct_2025',
 }
 
 internal_datasets = {
     'plastic': 'GleghornLab/plastic_degradation_benchmark',
 }
 
+# TODO update
 possible_with_vector_reps = [
     # multi-label
     'EC',
@@ -83,6 +94,7 @@ possible_with_vector_reps = [
     'peptide-HLA-MHC-affinity',
 ]
 
+# TODO update
 standard_data_benchmark = [
     'ec-active',
     'EC',
@@ -100,15 +112,10 @@ standard_data_benchmark = [
 
 testing = [
     'EC', # multilabel
-    'DeepLoc-2', # 
+    'DeepLoc-2', # singlelabel
     'DeepLoc-10', # multiclass
     'enzyme-kcat', # regression
     'human-ppi', # ppi
-]
-
-
-residue_wise_problems = [
-    'SecondaryStructure-3',
-    'SecondaryStructure-8',
-    'fluorescence-prediction',
+    'plddt', # tokenwise regression
+    'SecondaryStructure-3', # tokenwise classification
 ]

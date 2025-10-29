@@ -13,7 +13,7 @@ class ProbeArguments:
             probe_type: str = 'linear', # valid options: linear, transformer, retrievalnet
             tokenwise: bool = False,
             ### Linear Probe
-            input_dim: int = 960,
+            input_size: int = 960,
             hidden_size: int = 8192,
             dropout: float = 0.2,
             num_labels: int = 2,
@@ -41,7 +41,7 @@ class ProbeArguments:
     ):
         self.probe_type = probe_type
         self.tokenwise = tokenwise
-        self.input_dim = input_dim
+        self.input_size = input_size
         self.hidden_size = hidden_size
         self.dropout = dropout
         self.num_labels = num_labels

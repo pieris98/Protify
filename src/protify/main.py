@@ -111,7 +111,8 @@ def parse_arguments():
     parser.add_argument("--sweep_config_path", type=str, default="yamls/sweep.yaml", help="Path to W&B sweep config YAML.")
     parser.add_argument("--sweep_count", type=int, default=10, help="Number of hyperparameter trials to run in the sweep.")
     parser.add_argument("--sweep_method", type=str, default="bayes", choices=["bayes", "grid", "random"], help="Sweep method for hyperparameter optimization.")
-    parser.add_argument("--sweep_metric", type=str, default="eval_loss", help="Metric to optimize during sweep.")
+    parser.add_argument("--sweep_metric_cls",type=str,default="eval_loss", help="Classification metric to optimize during sweep (e.g., eval_f1, eval_accuracy, eval_mcc)")
+    parser.add_argument("--sweep_metric_reg",type=str,default="eval_loss", help="Regression metric to optimize during sweep (e.g., eval_r_squared, eval_spearman_rho, eval_pearson_rho)")
     parser.add_argument("--sweep_goal", type=str, default='minimize', choices=['maximize', 'minimize'], help="Goal for the sweep metric (maximize/minimize)")
     args = parser.parse_args()
 
@@ -143,6 +144,8 @@ def parse_arguments():
         yaml_args.sweep_count = args.sweep_count
         yaml_args.sweep_method = args.sweep_method
         yaml_args.sweep_metric = args.sweep_metric
+        yaml_args.sweep_metric_cls = args.sweep_metric_cls
+        yaml_args.sweep_metric_reg = args.sweep_metric_reg
         yaml_args.sweep_goal = args.sweep_goal
         yaml_args.yaml_path = args.yaml_path
         return yaml_args
@@ -308,6 +311,28 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             ppi=False,
             sweep_mode: bool = False,
         ):
+        # Random models don't have a trainable base model, so fall back to regular probe
+        if "random" in model_name.lower():
+            print_message(f"Model {model_name} does not support hybrid training. Training a linear probe instead.")
+            probe = get_probe(self.probe_args)
+            summary(probe)
+            probe, valid_metrics, test_metrics = self.trainer_probe(
+                model=probe,
+                tokenizer=tokenizer,
+                model_name=model_name,
+                data_name=data_name,
+                train_dataset=train_set,
+                valid_dataset=valid_set,
+                test_dataset=test_set,
+                emb_dict=emb_dict,
+                ppi=ppi,
+                log_id=self.random_id,
+            )
+            if not sweep_mode:
+                self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
+                self.log_metrics(data_name, model_name, test_metrics, split_name='test')
+            return probe
+        
         tokenwise = self.probe_args.tokenwise
         num_labels = self.probe_args.num_labels
         model, tokenizer = get_base_model_for_training(model_name, tokenwise=tokenwise, num_labels=num_labels, hybrid=True)
@@ -353,7 +378,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         params_to_hyperopt = sweep_config.get("parameters", {})
 
         method = self.full_args.sweep_method
-        metric = {"name": self.full_args.sweep_metric, "goal": self.full_args.sweep_goal}
         early_term = sweep_config.get("early_terminate", None)
 
         # Keys allowed to be set from sweeps
@@ -366,7 +390,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             tokenizer = get_tokenizer(model_name)
             test_seq = self.all_seqs[0]
 
-            if model_name in ["Random", "Random-Transformer"]:
+            if "random" in model_name.lower():
                 print_message(f"Skipping hyperparameter optimization for {model_name}.")
 
                 for data_name, dataset in self.datasets.items():
@@ -417,6 +441,10 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 base_trainer = copy.deepcopy(self.trainer_args.__dict__)
 
                 results_list = []
+                # Choose task-specific metric to optimize
+                metric_cls = getattr(self.full_args, 'sweep_metric_cls', None)
+                metric_reg = getattr(self.full_args, 'sweep_metric_reg', None)
+                dataset_metric = metric_cls if label_type in ["singlelabel", "multilabel"] else metric_reg
                 objective = create_objective_function(
                     model_name=model_name,
                     data_name=data_name,
@@ -442,7 +470,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 )
                 wb_sweep = {
                     "method": method,
-                    "metric": metric,
+                    "metric": {"name": dataset_metric, "goal": self.full_args.sweep_goal},
                     "early_terminate": early_term,
                     "parameters": params_to_hyperopt,
                 }

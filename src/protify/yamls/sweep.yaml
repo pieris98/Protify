@@ -1,5 +1,3 @@
-method: bayes
-metric: {name: mcc, goal: maximize}
 early_terminate: {type: hyperband, min_iter: 10}
 
 parameters:
@@ -18,10 +16,6 @@ parameters:
     values: [4, 8, 16]
   base_grad_accum:
     values: [1, 2, 4]
-  num_epochs:
-    values: [3, 5]
-  lora:
-    values: [True, False]
   
   # Probe specific parameters
   probe_batch_size:
@@ -54,6 +48,8 @@ parameters:
     values: [2, 4, 8]
   
   # LoRA parameters
+  lora:
+    values: [True, False]
   lora_r:
     values: [8, 16, 32]
   lora_alpha:

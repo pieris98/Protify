@@ -83,13 +83,13 @@ Protify is currently in beta. We're actively working to enhance features and doc
 
   | Model Name | Description | Size (parameters) | Type |
   |------------|-------------|------|------|
-  | ESM2-8 | Small pLM from Meta AI that learns evolutionary information from millions of protein sequences. | 8M | pLM |
-  | ESM2-35 | Medium-sized pLM trained on evolutionary data. | 35M | pLM |
-  | ESM2-150 | Large pLM with improved protein structure prediction capabilities. | 150M | pLM |
-  | ESM2-650 | Very large pLM offering state-of-the-art performance on many protein prediction tasks. | 650M | pLM |
+  | ESM2-8 | Very small pLM from Meta AI that learns evolutionary information from millions of protein sequences. | 8M | pLM |
+  | ESM2-35 | Small-sized pLM trained on evolutionary data. | 35M | pLM |
+  | ESM2-150 | Medium-sized pLM with improved protein structure prediction capabilities. | 150M | pLM |
+  | ESM2-650 | Large pLM offering state-of-the-art performance on many protein prediction tasks. | 650M | pLM |
   | ESM2-3B | Largest ESM2 pLM with exceptional capability for protein structure and function prediction. | 3B | pLM |
-  | ESMC-300 | pLM optimized for classification tasks. | 300M | pLM |
-  | ESMC-600 | Larger pLM for classification. | 600M | pLM |
+  | ESMC-300 | pLM optimized for representation learning. | 300M | pLM |
+  | ESMC-600 | Larger pLM for representations. | 600M | pLM |
   | ProtBert | BERT-based pLM trained on protein sequences from UniRef. | 420M | pLM |
   | ProtBert-BFD | BERT-based pLM trained on BFD database with improved performance. | 420M | pLM |
   | ProtT5 | T5-based pLM capable of both encoding and generation tasks. | 3B | pLM |
@@ -98,12 +98,12 @@ Protify is currently in beta. We're actively working to enhance features and doc
   | ANKH2-Large | Improved second generation ANKH pLM. | 1.2B | pLM |
   | GLM2-150 | Medium-sized general language model adapted for protein sequences. | 150M | pLM |
   | GLM2-650 | Large general language model adapted for protein sequences. | 650M | pLM |
-  | GLM2-GAIA | Specialized GLM pLM with GAIA architecture improvements. | 650M | pLM |
-  | DPLM-150 | Deep protein language model focused on protein structure. | 150M | pLM |
-  | DPLM-650 | Larger deep protein language model. | 650M | pLM |
+  | GLM2-GAIA | Specialized GLM pLM fine-tuned with contrastive learning. | 650M | pLM |
+  | DPLM-150 | Diffusion pLM focused on protein structure. | 150M | pLM |
+  | DPLM-650 | Larger diffusion pLM focused on protein structure. | 650M | pLM |
   | DPLM-3B | Largest deep protein language model in the DPLM family. | 3B | pLM |
-  | DSM-150 | Deep language model for proteins. | 150M | pLM |
-  | DSM-650 | Deep language model for proteins. | 650M | pLM |
+  | DSM-150 | Diffusion sequence model 150 parameter version. | 150M | pLM |
+  | DSM-650 | Diffusion sequence model 650 parameter version. | 650M | pLM |
   | DSM-PPI | DSM model optimized for protein-protein interactions. | Varies | pLM |
   | ProtCLM-1b | Causal (auto regressive) pLM. | 1B | pLM |
   | OneHot-Protein | One-hot encoding baseline for protein sequences. | N/A | Baseline |

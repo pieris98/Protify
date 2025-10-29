@@ -76,7 +76,7 @@ def parse_arguments():
     parser.add_argument("--n_jobs", type=int, default=1, help="Number of processes to use in scikit.") # TODO integrate with GUI and main
 
     # ----------------- EmbeddingArguments ----------------- #
-    parser.add_argument("--embedding_batch_size", type=int, default=4, help="Batch size for embedding generation.")
+    parser.add_argument("--embedding_batch_size", type=int, default=16, help="Batch size for embedding generation.")
     parser.add_argument("--num_workers", type=int, default=0, help="Number of worker processes for data loading.")
     parser.add_argument("--download_embeddings", action="store_true", default=False, help="Whether to download embeddings (default: False).")
     parser.add_argument("--matrix_embed", action="store_true", default=False, help="Use matrix embedding (default: False).")

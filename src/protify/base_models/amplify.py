@@ -321,14 +321,50 @@ class AmplifyForEmbedding(nn.Module):
             return out.hidden_states[-1]
 
 
+class AmplifyForMaskedLM(nn.Module):
+    """Wrapper for AMPLIFY model to use for Masked Language Modeling tasks."""
+    def __init__(self, model_path: str):
+        super().__init__()
+        # Load config from HuggingFace and instantiate AMPLIFY model
+        
+        # Download and load config.json manually since AutoConfig doesn't recognize AMPLIFY
+        config_file = hf_hub_download(repo_id=model_path, filename="config.json")
+        with open(config_file, 'r') as f:
+            config_dict = json.load(f)
+        
+        config = AMPLIFYConfig(**config_dict)
+        self.plm = AMPLIFY(config)
+
+        weight_file = hf_hub_download(repo_id=model_path, filename="model.safetensors")
+        state_dict = safetensors.torch.load_file(weight_file)
+        self.plm.load_state_dict(state_dict)
+        
+        self.config = config
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = False,
+    ) -> MaskedLMOutput:
+        
+        return self.plm(
+            src=input_ids,
+            pad_mask=attention_mask.float(),
+            output_attentions=output_attentions if output_attentions is not None else False,
+            output_hidden_states=output_hidden_states,
+        )
+
+
 def get_amplify_tokenizer(preset: str):
     return AmplifyTokenizerWrapper(AutoTokenizer.from_pretrained(presets[preset], trust_remote_code=True))
 
 
-def build_amplify_model(preset: str, masked_lm: bool = False) -> Tuple[AmplifyForEmbedding, AutoTokenizer]:
+def build_amplify_model(preset: str, masked_lm: bool = False) -> Tuple[nn.Module, AutoTokenizer]:
     model_path = presets[preset]
     if masked_lm:
-        model = AutoModelForMaskedLM.from_pretrained(model_path, trust_remote_code=True).eval()
+        model = AmplifyForMaskedLM(model_path).eval()
     else:
         model = AmplifyForEmbedding(model_path).eval()
     tokenizer = get_amplify_tokenizer(preset)

@@ -315,7 +315,7 @@ cd src/protify
 
 ## Hyperparameter Optimization
 
-Protify integrates Weights & Biases (W&B) sweeps for automated hyperparameter optimization across all training modes (neural network probes, full fine-tuning, and hybrid probes). This feature allows you to systematically search for optimal hyperparameters to maximize model performance.
+Protify uses Weights & Biases (W&B) for automated hyperparameter optimization across all training modes (neural network probes, full fine-tuning, and hybrid probes). This feature allows you to systematically search for optimal hyperparameters to maximize model performance.
 
 ### Overview
 

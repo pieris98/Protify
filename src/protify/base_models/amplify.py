@@ -10,6 +10,7 @@ from transformers import (
     AutoModel,
     AutoModelForTokenClassification,
     AutoModelForSequenceClassification,
+    AutoModelForMaskedLM
 )
 from transformers.modeling_outputs import MaskedLMOutput
 from .base_tokenizer import BaseSequenceTokenizer
@@ -324,9 +325,12 @@ def get_amplify_tokenizer(preset: str):
     return AmplifyTokenizerWrapper(AutoTokenizer.from_pretrained(presets[preset], trust_remote_code=True))
 
 
-def build_amplify_model(preset: str) -> Tuple[AmplifyForEmbedding, AutoTokenizer]:
+def build_amplify_model(preset: str, masked_lm: bool = False) -> Tuple[AmplifyForEmbedding, AutoTokenizer]:
     model_path = presets[preset]
-    model = AmplifyForEmbedding(model_path).eval()
+    if masked_lm:
+        model = AutoModelForMaskedLM.from_pretrained(model_path, trust_remote_code=True).eval()
+    else:
+        model = AmplifyForEmbedding(model_path).eval()
     tokenizer = get_amplify_tokenizer(preset)
     return model, tokenizer
 

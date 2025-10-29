@@ -111,6 +111,9 @@ def get_base_model(model_name: str, masked_lm: bool = False):
     elif 'onehot' in model_name.lower():
         from .one_hot import build_one_hot_model
         return build_one_hot_model(model_name)
+    elif 'amplify' in model_name.lower():
+        from .amplify import build_amplify_model
+        return build_amplify_model(model_name, masked_lm=masked_lm)
     else:
         raise ValueError(f"Model {model_name} not supported")
 
@@ -140,6 +143,9 @@ def get_base_model_for_training(model_name: str, tokenwise: bool = False, num_la
     elif 'protclm' in model_name.lower():
         from .protCLM import get_protCLM_for_training
         return get_protCLM_for_training(model_name, tokenwise, num_labels, hybrid)
+    elif 'amplify' in model_name.lower():
+        from .amplify import get_amplify_for_training
+        return get_amplify_for_training(model_name, tokenwise, num_labels, hybrid)
     else:
         raise ValueError(f"Model {model_name} not supported")
 

@@ -319,7 +319,7 @@ Protify uses Weights & Biases (W&B) for automated hyperparameter optimization ac
 
 ### Overview
 
-- **Multiple search methods**: Choose from Bayesian optimization, grid search, or random search
+- **Multiple search methods**: Choose from Bayesian, grid, or random search
 - **Flexible configuration**: Customize which hyperparameters to optimize via the YAML file
 - **Automatic best model selection**: After sweep completion, the best configuration is automatically applied and used for final training
 - **Comprehensive logging**: All trials are logged to W&B and saved locally as CSV files for later analysis
@@ -336,7 +336,7 @@ python -m main \
   --data_names DeepLoc-2 MB
 ```
 
-That's it! The sweep will use default settings (Bayesian optimization, 10 trials, minimize validation loss). To customize these defaults, see the Configuration section below.
+That's it! The sweep will use default settings (Bayesian search, 10 trials, minimize validation loss). To customize these defaults, see the Configuration section below.
 
 ### Configuration
  
@@ -431,17 +431,6 @@ Common metrics you can optimize for:
 5. **Selection**: After all trials, the best configuration is automatically selected
 6. **Final training**: The model is retrained with the best hyperparameters and evaluated on the test set
 7. **Results**: All results and plots are reported based on final test set performance. Top 5 W&B trials are saved to a CSV file (`logs/YOUR_ID_sweep_DATASET_MODEL.csv`) 
-
-### W&B Sweep Results Format
-
-Sweep results are saved as CSV files with the following columns:
-- `rank`: Trial ranking based on the optimization metric (1 is best)
-- `wandb_run_id`: W&B run identifier
-- `metric_value`: Value of the optimization metric
-- `config`: Complete hyperparameter configuration
-- `valid_metrics`: All validation metrics
-- `test_metrics`: All test metrics
-
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

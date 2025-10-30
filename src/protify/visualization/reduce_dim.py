@@ -214,8 +214,8 @@ if __name__ == "__main__":
     # Get sequences and labels from first dataset
     dataset_name = list(datasets.keys())[0]
     train_set = datasets[dataset_name][0]
-    sequences = train_set["seqs"]
-    labels = train_set["labels"]  # Could be single label, multi-label, etc.
+    sequences = list(train_set["seqs"])
+    labels = list(train_set["labels"])  # Could be single label, multi-label, etc.
     
     # If you know your dataset is multi-label, specify it here
     vis_args = VisualizationArguments(

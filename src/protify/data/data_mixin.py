@@ -396,11 +396,11 @@ class DataMixin:
                 all_seqs.update(list(test_set['seqs']))
 
             # confirm the type of labels
-            check_labels = valid_set['labels']
+            check_labels = list(valid_set['labels'])
             label_type = self._label_type_checker(check_labels)
 
             if label_type == 'string': # might be string or multilabel
-                example = valid_set['labels'][0]
+                example = list(valid_set['labels'])[0]
                 try:
                     import ast
                     new_ex = ast.literal_eval(example)
@@ -413,7 +413,7 @@ class DataMixin:
                     label_type = 'string' # if ast throws error it is actually string
 
             if label_type == 'string': # if still string, it's for tokenwise classification
-                train_labels = train_set['labels']
+                train_labels = list(train_set['labels'])
                 unique_tags = set(tag for doc in train_labels for tag in doc)
                 tag2id = {tag: id for id, tag in enumerate(sorted(unique_tags))}
                 # add cls token to labels
@@ -430,9 +430,10 @@ class DataMixin:
                     num_labels = 1
                 else: # if classification, get the total number of leabels
                     try:
-                        num_labels = len(train_set['labels'][0])
+                        train_labels_list = list(train_set['labels'])
+                        num_labels = len(train_labels_list[0])
                     except:
-                        unique = np.unique(train_set['labels'])
+                        unique = np.unique(list(train_set['labels']))
                         max_label = max(unique) # sometimes there are missing labels
                         full_list = np.arange(0, max_label+1)
                         num_labels = len(full_list)
@@ -805,24 +806,24 @@ class DataMixin:
         if ppi:
             X_train, X_valid, X_test = self.build_pair_vector_numpy_dataset_from_embeddings(
                 model_name,
-                train_set['SeqA'],
-                train_set['SeqB'],
-                valid_set['SeqA'],
-                valid_set['SeqB'],
-                test_set['SeqA'],
-                test_set['SeqB'],
+                list(train_set['SeqA']),
+                list(train_set['SeqB']),
+                list(valid_set['SeqA']),
+                list(valid_set['SeqB']),
+                list(test_set['SeqA']),
+                list(test_set['SeqB']),
             )
         else:
             X_train, X_valid, X_test = self.build_vector_numpy_dataset_from_embeddings(
                 model_name,
-                train_set['seqs'],
-                valid_set['seqs'],
-                test_set['seqs'],
+                list(train_set['seqs']),
+                list(valid_set['seqs']),
+                list(test_set['seqs']),
             )
 
-        y_train = self._labels_to_numpy(train_set['labels'])
-        y_valid = self._labels_to_numpy(valid_set['labels'])
-        y_test = self._labels_to_numpy(test_set['labels'])
+        y_train = self._labels_to_numpy(list(train_set['labels']))
+        y_valid = self._labels_to_numpy(list(valid_set['labels']))
+        y_test = self._labels_to_numpy(list(test_set['labels']))
 
         print_message('Numpy dataset shapes with labels')
         print_message(f'Train: {X_train.shape}, {y_train.shape}')

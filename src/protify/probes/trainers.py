@@ -162,6 +162,13 @@ class TrainerMixin:
             y_true = y_true[0]
 
         y_pred, y_true = y_pred.astype(np.float32), y_true.astype(np.float32)
+        
+        # Remove singleton dimension if present
+        if y_pred.ndim == 3 and y_pred.shape[1] == 1:
+            y_pred = y_pred.squeeze(1)
+        if y_true.ndim == 3 and y_true.shape[1] == 1:
+            y_true = y_true.squeeze(1)
+        
         print_message(f'y_pred: {y_pred.shape}\ny_true: {y_true.shape}\nFinal test metrics: \n{test_metrics}\n')
 
         output_dir = os.path.join(self.trainer_args.plots_dir, log_id)

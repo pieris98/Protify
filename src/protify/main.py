@@ -80,7 +80,7 @@ def parse_arguments():
     parser.add_argument("--num_workers", type=int, default=0, help="Number of worker processes for data loading.")
     parser.add_argument("--download_embeddings", action="store_true", default=False, help="Whether to download embeddings (default: False).")
     parser.add_argument("--matrix_embed", action="store_true", default=False, help="Use matrix embedding (default: False).")
-    parser.add_argument("--embedding_pooling_types", nargs="+", default=["mean"], help="Pooling types for embeddings.")
+    parser.add_argument("--embedding_pooling_types", nargs="+", default=["mean", "var"], help="Pooling types for embeddings.")
     parser.add_argument("--save_embeddings", action="store_true", default=False, help="Save computed embeddings (default: False).")
     parser.add_argument("--embed_dtype", default="float32", help="Data type for embeddings.")
     parser.add_argument("--sql", action="store_true", default=False, help="Whether to use SQL storage (default: False).")

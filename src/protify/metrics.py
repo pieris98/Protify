@@ -80,6 +80,7 @@ def calculate_max_metrics(ss: torch.Tensor, labels: torch.Tensor, cutoff: float)
 def max_metrics(ss: torch.Tensor, labels: torch.Tensor, increment: float = 0.01) -> tuple[float, float, float, float]:
     """
     Find optimal classification metrics by scanning different cutoff thresholds.
+    Optimized version that vectorizes calculations across all cutoffs.
 
     Args:
         ss: Prediction scores tensor, typically between -1 and 1
@@ -99,20 +100,59 @@ def max_metrics(ss: torch.Tensor, labels: torch.Tensor, increment: float = 0.01)
         - Scans cutoff values from min score to 1 in increments
         - Handles NaN F1 scores by replacing with -1 before finding max
         - Returns metrics at the threshold that maximizes F1 score
+        - Optimized to compute metrics for all cutoffs in parallel using vectorization
     """
     ss = torch.clamp(ss, -1.0, 1.0)
     min_val = ss.min().item()
     max_val = 1
     if min_val >= max_val:
         min_val = 0
-    cutoffs = torch.arange(min_val, max_val, increment)
-    metrics = [calculate_max_metrics(ss, labels, cutoff.item()) for cutoff in cutoffs]
-    f1s = torch.tensor([metric[0] for metric in metrics])
-    precs = torch.tensor([metric[1] for metric in metrics])
-    recalls = torch.tensor([metric[2] for metric in metrics])
-    valid_f1s = torch.where(torch.isnan(f1s), torch.tensor(-1.0), f1s)  # Replace NaN with -1 to ignore them in argmax
+    
+    # Convert to float and ensure labels are binary
+    ss = ss.float()
+    labels = labels.float()
+    
+    # Create cutoff tensor
+    cutoffs = torch.arange(min_val, max_val, increment, device=ss.device, dtype=ss.dtype)
+    n_cutoffs = len(cutoffs)
+    
+    if n_cutoffs == 0:
+        # Edge case: no cutoffs to test
+        return 0.0, 0.0, 0.0, min_val
+    
+    # Vectorize across all cutoffs: shape (n_cutoffs, n_samples)
+    # Expand cutoffs to (n_cutoffs, 1) and ss to (1, n_samples) for broadcasting
+    ss_expanded = ss.unsqueeze(0)  # (1, n_samples)
+    cutoffs_expanded = cutoffs.unsqueeze(1)  # (n_cutoffs, 1)
+    labels_expanded = labels.unsqueeze(0)  # (1, n_samples)
+    
+    # Compute predictions for all cutoffs at once: (n_cutoffs, n_samples)
+    predictions = (ss_expanded >= cutoffs_expanded).float()
+    
+    # Compute TP, FP, FN for all cutoffs simultaneously
+    # TP: predicted positive and label positive
+    tp = torch.sum(predictions * labels_expanded, dim=1)  # (n_cutoffs,)
+    # FP: predicted positive but label negative
+    fp = torch.sum(predictions * (1.0 - labels_expanded), dim=1)  # (n_cutoffs,)
+    # FN: predicted negative but label positive
+    fn = torch.sum((1.0 - predictions) * labels_expanded, dim=1)  # (n_cutoffs,)
+    
+    # Compute precision, recall, F1 for all cutoffs
+    precision_denominator = tp + fp
+    precision = torch.where(precision_denominator != 0, tp / precision_denominator, torch.tensor(0.0, device=ss.device))
+    
+    recall_denominator = tp + fn
+    recall = torch.where(recall_denominator != 0, tp / recall_denominator, torch.tensor(0.0, device=ss.device))
+    
+    # Compute F1 scores
+    f1_denominator = precision + recall
+    f1s = torch.where(f1_denominator != 0, (2 * precision * recall) / f1_denominator, torch.tensor(0.0, device=ss.device))
+    
+    # Handle NaN values by replacing with -1
+    valid_f1s = torch.where(torch.isnan(f1s), torch.tensor(-1.0, device=ss.device), f1s)
     max_index = torch.argmax(valid_f1s)
-    return f1s[max_index].item(), precs[max_index].item(), recalls[max_index].item(), cutoffs[max_index].item()
+    
+    return f1s[max_index].item(), precision[max_index].item(), recall[max_index].item(), cutoffs[max_index].item()
 
 
 def compute_single_label_classification_metrics(p: EvalPrediction) -> dict[str, float]:
@@ -253,16 +293,22 @@ def compute_multi_label_classification_metrics(p: EvalPrediction) -> dict[str, f
     preds = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
     labels = p.label_ids[1] if isinstance(p.label_ids, tuple) else p.label_ids
 
-    preds = np.array(preds)
-    labels = np.array(labels)
-
-    preds = torch.tensor(preds)
-    y_true = torch.tensor(labels, dtype=torch.int)
+    # Convert to tensors efficiently, avoiding unnecessary numpy round-trip
+    if not isinstance(preds, torch.Tensor):
+        preds = torch.tensor(preds)
+    if not isinstance(labels, torch.Tensor):
+        y_true = torch.tensor(labels, dtype=torch.int)
+    else:
+        y_true = labels.int()
 
     probs = preds.softmax(dim=-1)
     y_pred = (probs > 0.5).int()
 
-    f1, prec, recall, thres = max_metrics(probs, y_true)
+    # Flatten before max_metrics for efficiency - max_metrics expects flattened tensors
+    probs_flat = probs.flatten()
+    y_true_flat = y_true.flatten()
+    f1, prec, recall, thres = max_metrics(probs_flat, y_true_flat)
+    
     y_pred, y_true = y_pred.flatten().numpy(), y_true.flatten().numpy()
     probs = probs.flatten().numpy()
     

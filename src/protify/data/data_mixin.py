@@ -83,6 +83,8 @@ class DataMixin:
         self._multi_column = None if data_args is None else getattr(data_args, 'multi_column', None)
 
     def _not_regression(self, labels): # not a great assumption but works most of the time
+        print(labels)
+        print(isinstance(labels, list))
         if isinstance(labels, list):
             # Check if first element is itself a list (multilabel case)
             if isinstance(labels[0], list):

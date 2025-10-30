@@ -88,6 +88,7 @@ DATASET_NAMES = {
     'shs27-ppi-bfs': r'$SHS_{27k}-bfs$',
     'shs148-ppi-bfs': r'$SHS_{148k}-bfs$',
     'gold-ppi': r'$Human PPI_{bernett}$',
+    'plm-interact': r'$PLM-Interact_{human / cross}$',
     
     # Secondary structure
     'SS3': r'$SS_{3}$',

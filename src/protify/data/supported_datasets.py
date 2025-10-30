@@ -39,6 +39,7 @@ supported_datasets = {
     'string-ppi-random': 'GleghornLab/ppi_STRING_random_2025',
     'string-ppi-dfs': 'GleghornLab/ppi_STRING_dfs_2025',
     'string-ppi-bfs': 'GleghornLab/ppi_STRING_bfs_2025',
+    'plm-interact': 'GleghornLab/plm_interact_human_train_cross_ppi',
     'ppi-mutation-effect': 'GleghornLab/ppi_mutation_effect', # requires multi_column
     'PPA-ppi': 'Synthyra/ProteinProteinAffinity',
     'foldseek-fold': 'lhallee/foldseek_dataset',

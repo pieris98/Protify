@@ -28,33 +28,6 @@ presets = {
     'AMPLIFY-350': 'GleghornLab/AMPLIFY_350M',
 }
 
-
-def _attention_mask_to_additive(
-    attention_mask: Optional[torch.Tensor],
-    target_dtype: torch.dtype,
-) -> Optional[torch.Tensor]:
-    """Convert a standard attention mask (1 for tokens, 0 for padding) into an additive mask.
-
-    The additive mask uses 0 for valid tokens and a large negative value for padding positions,
-    as expected by AMPLIFY. If the incoming mask already contains negative values, it is cast to the 
-    requested dtype and returned as is.
-    """
-
-    if attention_mask is None:
-        return None
-
-    # If the mask already contains negative values, assume it is already additive
-    if attention_mask.dtype.is_floating_point and attention_mask.min().item() < 0:
-        return attention_mask.to(dtype=target_dtype)
-
-    bool_mask = attention_mask.to(torch.bool)
-    additive_mask = torch.zeros_like(attention_mask, dtype=target_dtype)
-
-    if not torch.all(bool_mask):
-        additive_mask = additive_mask.masked_fill(~bool_mask, torch.finfo(additive_mask.dtype).min)
-
-    return additive_mask
-
 class AMPLIFYConfig(PretrainedConfig):
     model_type = "AMPLIFY"
     # All config parameters must have a default value
@@ -247,20 +220,11 @@ class AMPLIFY(AMPLIFYPreTrainedModel):
         # Initialize
         hidden_states, attentions = [], []
 
-        # Convert and expand mask: (Batch, Length) -> (Batch, Heads, Length, Length)
-        # pad_mask comes in as 1.0 for valid tokens, 0.0 for padding
-        if pad_mask is not None:
-            # Check if there are any valid tokens (non-zero values)
-            if not torch.all(pad_mask == 0):
-                # Expand to 4D: [batch, 1, 1, seq_len] -> [batch, heads, seq_len, seq_len]
-                pad_mask = pad_mask.unsqueeze(1).unsqueeze(1).repeat(1, self.config.num_attention_heads, pad_mask.size(-1), 1)
-                
-                # Convert to additive mask: 0 for valid tokens, large negative for padding
-                # Where pad_mask is 1.0 (valid), we want 0; where it's 0.0 (padding), we want -inf
-                pad_mask = _attention_mask_to_additive(pad_mask, self.encoder.weight.dtype)
-            else:
-                # All padding, set to None
-                pad_mask = None
+        # Expand and repeat: (Batch, Length) -> (Batch, Heads, Length, Length)
+        if pad_mask is not None and not torch.all(pad_mask == 0):
+            pad_mask = pad_mask.unsqueeze(1).unsqueeze(1).repeat(1, self.config.num_attention_heads, pad_mask.size(-1), 1)
+        else:
+            pad_mask = None
 
         # RoPE
         self.freqs_cis = self.freqs_cis.to(src.device, non_blocking=True)
@@ -322,32 +286,16 @@ class AmplifyForEmbedding(nn.Module):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = True,
     ) -> torch.Tensor:
-        # Pass attention_mask as float (1.0 for valid, 0.0 for padding)
-        # The AMPLIFY model will handle the conversion internally
-        pad_mask = attention_mask.float() if attention_mask is not None else None
-
         out = self.plm(
             src=input_ids,
-            pad_mask=pad_mask,
+            pad_mask=attention_mask.float(),
             output_attentions=output_attentions if output_attentions is not None else False,
             output_hidden_states=output_hidden_states,
         )
-        residue_embeddings = out.hidden_states[-1]
-
-        if attention_mask is not None:
-            mask = attention_mask.to(torch.bool).unsqueeze(-1)
-            residue_embeddings = residue_embeddings.masked_fill(~mask, 0.0)
-
-        # Debug: check for NaN/Inf in embeddings
-        if torch.isnan(residue_embeddings).any():
-            print(f"WARNING: NaN detected in AMPLIFY embeddings! Count: {torch.isnan(residue_embeddings).sum().item()}")
-        if torch.isinf(residue_embeddings).any():
-            print(f"WARNING: Inf detected in AMPLIFY embeddings! Count: {torch.isinf(residue_embeddings).sum().item()}")
-
         if output_attentions:
-            return residue_embeddings, out.attentions
+            return out.hidden_states[-1], out.attentions
         else:
-            return residue_embeddings
+            return out.hidden_states[-1]
 
 
 class AmplifyForMaskedLM(nn.Module):
@@ -375,13 +323,10 @@ class AmplifyForMaskedLM(nn.Module):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = False,
     ) -> MaskedLMOutput:
-        # Pass attention_mask as float (1.0 for valid, 0.0 for padding)
-        # The AMPLIFY model will handle the conversion internally
-        pad_mask = attention_mask.float() if attention_mask is not None else None
         
         return self.plm(
             src=input_ids,
-            pad_mask=pad_mask,
+            pad_mask=attention_mask.float(),
             output_attentions=output_attentions if output_attentions is not None else False,
             output_hidden_states=output_hidden_states,
         )

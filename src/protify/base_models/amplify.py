@@ -247,11 +247,20 @@ class AMPLIFY(AMPLIFYPreTrainedModel):
         # Initialize
         hidden_states, attentions = [], []
 
-        # Expand and repeat: (Batch, Length) -> (Batch, Heads, Length, Length)
-        if pad_mask is not None and not torch.all(pad_mask == 0):
-            pad_mask = pad_mask.unsqueeze(1).unsqueeze(1).repeat(1, self.config.num_attention_heads, pad_mask.size(-1), 1)
-        else:
-            pad_mask = None
+        # Convert and expand mask: (Batch, Length) -> (Batch, Heads, Length, Length)
+        # pad_mask comes in as 1.0 for valid tokens, 0.0 for padding
+        if pad_mask is not None:
+            # Check if there are any valid tokens (non-zero values)
+            if not torch.all(pad_mask == 0):
+                # Expand to 4D: [batch, 1, 1, seq_len] -> [batch, heads, seq_len, seq_len]
+                pad_mask = pad_mask.unsqueeze(1).unsqueeze(1).repeat(1, self.config.num_attention_heads, pad_mask.size(-1), 1)
+                
+                # Convert to additive mask: 0 for valid tokens, large negative for padding
+                # Where pad_mask is 1.0 (valid), we want 0; where it's 0.0 (padding), we want -inf
+                pad_mask = _attention_mask_to_additive(pad_mask, self.encoder.weight.dtype)
+            else:
+                # All padding, set to None
+                pad_mask = None
 
         # RoPE
         self.freqs_cis = self.freqs_cis.to(src.device, non_blocking=True)
@@ -313,10 +322,9 @@ class AmplifyForEmbedding(nn.Module):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = True,
     ) -> torch.Tensor:
-        if attention_mask is not None:
-            pad_mask = _attention_mask_to_additive(attention_mask, self.plm.encoder.weight.dtype)
-        else:
-            pad_mask = None
+        # Pass attention_mask as float (1.0 for valid, 0.0 for padding)
+        # The AMPLIFY model will handle the conversion internally
+        pad_mask = attention_mask.float() if attention_mask is not None else None
 
         out = self.plm(
             src=input_ids,
@@ -361,10 +369,9 @@ class AmplifyForMaskedLM(nn.Module):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = False,
     ) -> MaskedLMOutput:
-        if attention_mask is not None:
-            pad_mask = _attention_mask_to_additive(attention_mask, self.plm.encoder.weight.dtype)
-        else:
-            pad_mask = None
+        # Pass attention_mask as float (1.0 for valid, 0.0 for padding)
+        # The AMPLIFY model will handle the conversion internally
+        pad_mask = attention_mask.float() if attention_mask is not None else None
         
         return self.plm(
             src=input_ids,

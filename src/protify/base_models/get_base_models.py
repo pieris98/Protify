@@ -178,6 +178,9 @@ def get_tokenizer(model_name: str):
     elif 'onehot' in model_name.lower():
         from .one_hot import get_one_hot_tokenizer
         return get_one_hot_tokenizer(model_name)
+    elif 'amplify' in model_name.lower():
+        from .amplify import get_amplify_tokenizer
+        return get_amplify_tokenizer(model_name)
     else:
         raise ValueError(f"Model {model_name} not supported")
 

@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import yaml
 import safetensors
 from typing import Optional, Tuple, Union, List, Dict
 from transformers import (
@@ -20,7 +19,6 @@ from .amplify_utils import (
     apply_rotary_emb,
     memory_efficient_attention,
     precompute_freqs_cis,
-    ProteinTokenizer,
 )
 from huggingface_hub import hf_hub_download
 import json
@@ -218,18 +216,6 @@ class AMPLIFY(AMPLIFYPreTrainedModel):
         # Initialize weights and apply final processing
         self.post_init()
 
-    @classmethod
-    def load(cls, checkpoint_path: str, config_path: str):
-
-        with open(config_path, "r") as file:
-            cfg = yaml.safe_load(file)
-
-        model = AMPLIFY(AMPLIFYConfig(**cfg["model"], **cfg["tokenizer"]))
-        state_dict = safetensors.torch.load_file(checkpoint_path)
-        model.load_state_dict(state_dict)
-        tokenizer = ProteinTokenizer(**cfg["tokenizer"])
-        return model, tokenizer
-
     def forward(self, src, pad_mask=None, output_hidden_states=False, output_attentions=False):
         # Initialize
         hidden_states, attentions = [], []
@@ -383,4 +369,3 @@ if __name__ == '__main__':
     print(model)
     print(tokenizer)
     print(tokenizer('MEKVQYLTRSAIRRASTIEMPQQARQKLQNLFINFCLILICLLLICIIVMLL'))
-    

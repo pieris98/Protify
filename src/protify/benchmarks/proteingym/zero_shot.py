@@ -453,7 +453,7 @@ def zero_shot_scores_for_indels(
     )
     
     # Grab normalized PLL for indels
-    pll_cache = {seq: result[1] for seq, result in zip(seqs_to_score, pll_results)}
+    pll_cache = {seq: result for seq, result in zip(seqs_to_score, pll_results)}
     
     # Add a mapped column of per-window scores, then average by mutated_seq
     sliced_df['window_score'] = sliced_df['sliced_mutated_seq'].map(pll_cache)

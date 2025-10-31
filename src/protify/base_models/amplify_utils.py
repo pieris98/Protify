@@ -205,10 +205,15 @@ def apply_rotary_emb(
     Returns:
         Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
     """
+    print(f"xq.shape: {xq.shape}")
+    print(f"xk.shape: {xk.shape}")
+    print(f"freqs_cis.shape: {freqs_cis.shape}")
+    
     xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
     xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
+    print(f"xq_.shape after view_as_complex: {xq_.shape}")
+    print(f"Expected freqs_cis shape: ({xq_.shape[1]}, {xq_.shape[-1]})")
     freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
     xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
     xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
     return xq_out.type_as(xq), xk_out.type_as(xk) 
-

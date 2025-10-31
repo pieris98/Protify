@@ -13,6 +13,7 @@ from utils import print_message
 from seed_utils import get_global_seed
 from .supported_datasets import supported_datasets, standard_data_benchmark
 
+
 AMINO_ACIDS = set('LAGVSERTIPDKQNFYMHWCXBUOZ*')
 CODONS = set('aA@bB#$%rRnNdDcCeEqQ^G&ghHiIj+MmlJLkK(fFpPoO=szZwSXTtxWyYuvUV]})')
 DNA = set('ATCG')

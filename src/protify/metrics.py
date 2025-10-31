@@ -8,6 +8,9 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     roc_auc_score,
+    average_precision_score,
+    precision_recall_curve,
+    auc,
     matthews_corrcoef,
     confusion_matrix,
     hamming_loss,
@@ -169,7 +172,8 @@ def compute_single_label_classification_metrics(p: EvalPrediction) -> dict[str, 
             - recall: Recall score (weighted average)
             - accuracy: Overall accuracy
             - mcc: Matthews Correlation Coefficient
-            - auc: Area Under ROC Curve (weighted average)
+            - roc_auc: Area Under ROC Curve (weighted average)
+            - pr_auc: Area Under Precision-Recall Curve (weighted average)
 
     Note:
         - Handles both binary and multi-class cases
@@ -184,19 +188,46 @@ def compute_single_label_classification_metrics(p: EvalPrediction) -> dict[str, 
 
     y_pred = logits.argmax(axis=-1).flatten()
     y_true = labels.flatten().astype(int)
+    probs = softmax(logits)
 
-    # Create one-hot encoded version of labels
+    # Calculate ROC AUC
     try:
         # binary
-        auc = roc_auc_score(y_true, y_pred)
-    except:
-        # multi-class
-        try:
-            n_classes = logits.shape[1]
+        if len(np.unique(y_true)) == 2:
+            # For binary, use probabilities of positive class
+            roc_auc = roc_auc_score(y_true, probs[:, 1] if probs.shape[1] == 2 else probs.flatten())
+        else:
+            # multi-class
+            n_classes = probs.shape[1]
             y_true_onehot = np.eye(n_classes)[y_true]
-            auc = roc_auc_score(y_true_onehot, softmax(logits), multi_class='ovr', average='weighted')
-        except:
-            auc = -100.0
+            roc_auc = roc_auc_score(y_true_onehot, probs, multi_class='ovr', average='weighted')
+    except:
+        roc_auc = -100.0
+    
+    # Calculate PR AUC (true AUC of Precision-Recall curve)
+    try:
+        # binary
+        if len(np.unique(y_true)) == 2:
+            # For binary, use probabilities of positive class
+            y_scores = probs[:, 1] if probs.shape[1] == 2 else probs.flatten()
+            precision, recall, _ = precision_recall_curve(y_true, y_scores)
+            pr_auc = auc(recall, precision)
+        else:
+            # multi-class: compute PR AUC for each class and average
+            n_classes = probs.shape[1]
+            y_true_onehot = np.eye(n_classes)[y_true]
+            pr_aucs = []
+            for i in range(n_classes):
+                precision, recall, _ = precision_recall_curve(y_true_onehot[:, i], probs[:, i])
+                pr_aucs.append(auc(recall, precision))
+            # Weighted average by class support
+            class_weights = y_true_onehot.sum(axis=0)
+            if class_weights.sum() > 0:
+                pr_auc = np.average(pr_aucs, weights=class_weights)
+            else:
+                pr_auc = np.mean(pr_aucs) if pr_aucs else -100.0
+    except:
+        pr_auc = -100.0
     
     cm = confusion_matrix(y_true, y_pred)
     print("\nConfusion Matrix:")
@@ -214,7 +245,8 @@ def compute_single_label_classification_metrics(p: EvalPrediction) -> dict[str, 
         'recall': round(recall, 5),
         'accuracy': round(accuracy, 5),
         'mcc': round(mcc, 5),
-        'auc': round(auc, 5)
+        'roc_auc': round(roc_auc, 5),
+        'pr_auc': round(pr_auc, 5)
     }
 
 
@@ -281,7 +313,8 @@ def compute_multi_label_classification_metrics(p: EvalPrediction) -> dict[str, f
             - hamming_loss: Proportion of wrong labels
             - threshold: Optimal classification threshold
             - mcc: Matthews Correlation Coefficient
-            - auc: Area Under ROC Curve (macro average)
+            - roc_auc: Area Under ROC Curve (macro average)
+            - pr_auc: Area Under Precision-Recall Curve (macro average)
 
     Note:
         - Converts inputs to PyTorch tensors
@@ -316,12 +349,21 @@ def compute_multi_label_classification_metrics(p: EvalPrediction) -> dict[str, f
     hamming = hamming_loss(y_pred, y_true)
     mcc = matthews_corrcoef(y_true, y_pred)
     
-    # Calculate AUC for multilabel case
+    # Calculate ROC AUC for multilabel case
     try:
-        auc = roc_auc_score(y_true, probs, average='macro')
+        roc_auc = roc_auc_score(y_true, probs, average='macro')
     except ValueError:
         # Fallback in case of invalid predictions
-        auc = -100.0
+        roc_auc = -100.0
+    
+    # Calculate PR AUC for multilabel case (true AUC of Precision-Recall curve)
+    try:
+        # For flattened multi-label, compute PR AUC directly
+        precision, recall, _ = precision_recall_curve(y_true, probs)
+        pr_auc = auc(recall, precision)
+    except ValueError:
+        # Fallback in case of invalid predictions
+        pr_auc = -100.0
 
     return {
         'accuracy': round(accuracy, 5),
@@ -331,7 +373,8 @@ def compute_multi_label_classification_metrics(p: EvalPrediction) -> dict[str, f
         'hamming_loss': round(hamming, 5),
         'threshold': round(thres, 5),
         'mcc': round(mcc, 5),
-        'auc': round(auc, 5)
+        'roc_auc': round(roc_auc, 5),
+        'pr_auc': round(pr_auc, 5)
     }
 
 

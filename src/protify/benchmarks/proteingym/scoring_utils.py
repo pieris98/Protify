@@ -545,28 +545,28 @@ def get_sequence_log_probability_batched(
     return results
 
 
-# dictionary of context lengths for supported models in Protify
+# dictionary of context lengths for supported models in Protify. Minus 2 because we add special tokens.
 MODEL_CONTEXT_LENGTH = {
     # currently supported models
-    'ESM2-8': 1024,    # ESM Family models utilize huggingface.co/Synthyra/FastESM2_650
-    'ESM2-35': 1024,   # style models, which have 2048 context window
-    'ESM2-150': 1024,
-    'ESM2-650': 1024,
-    'ESM2-3B': 1024,
-    'ESMC-300': 2048,
-    'ESMC-600': 2048,
-    'ProtBert': 1024,
-    'ProtBert-BFD': 1024,
-    'GLM2-150': 4096,
-    'GLM2-650': 4096,
-    'DSM-150': 1024,
-    'DSM-650': 2048,
-    'DPLM-150': 1024,
-    'DPLM-650': 1024,
-    'DPLM-3B': 1024,
-    'Random-Transformer': 1024,
-    'AMPLIFY-120': 2048,
-    'AMPLIFY-350': 2048,
+    'ESM2-8': 1022,    # ESM Family models utilize huggingface.co/Synthyra/FastESM2_650
+    'ESM2-35': 1022,   # style models, which have 2048 context window
+    'ESM2-150': 1022,
+    'ESM2-650': 1022,
+    'ESM2-3B': 1022,
+    'ESMC-300': 2046,
+    'ESMC-600': 2046,
+    'ProtBert': 1022,
+    'ProtBert-BFD': 1022,
+    'GLM2-150': 4095,
+    'GLM2-650': 4095,
+    'DSM-150': 1022,
+    'DSM-650': 1022,
+    'DPLM-150': 1022,
+    'DPLM-650': 1022,
+    'DPLM-3B': 1022,
+    'Random-Transformer': 1022,
+    'AMPLIFY-120': 2046,
+    'AMPLIFY-350': 2046,
     # currently unsupported models
     'Random': None,
     'Random-ESM2-8': 2048,

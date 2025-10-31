@@ -338,6 +338,12 @@ class AmplifyForEmbedding(nn.Module):
             mask = attention_mask.to(torch.bool).unsqueeze(-1)
             residue_embeddings = residue_embeddings.masked_fill(~mask, 0.0)
 
+        # Debug: check for NaN/Inf in embeddings
+        if torch.isnan(residue_embeddings).any():
+            print(f"WARNING: NaN detected in AMPLIFY embeddings! Count: {torch.isnan(residue_embeddings).sum().item()}")
+        if torch.isinf(residue_embeddings).any():
+            print(f"WARNING: Inf detected in AMPLIFY embeddings! Count: {torch.isinf(residue_embeddings).sum().item()}")
+
         if output_attentions:
             return residue_embeddings, out.attentions
         else:

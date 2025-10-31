@@ -15,8 +15,22 @@ def regression_ci_plot(y_true, y_pred, save_path, title=None):
     """
     # Compute R‑squared, Spearman and Pearson correlations
     y_true, y_pred = y_true.flatten(), y_pred.flatten()
+    print(f"DEBUG: Before filtering - y_true shape: {y_true.shape}, y_pred shape: {y_pred.shape}")
+    print(f"DEBUG: y_true stats - min: {np.min(y_true)}, max: {np.max(y_true)}, mean: {np.mean(y_true)}")
+    print(f"DEBUG: y_pred stats - min: {np.min(y_pred)}, max: {np.max(y_pred)}, mean: {np.mean(y_pred)}")
+    print(f"DEBUG: NaN in y_true: {np.isnan(y_true).sum()}, NaN in y_pred: {np.isnan(y_pred).sum()}")
+    print(f"DEBUG: Inf in y_true: {np.isinf(y_true).sum()}, Inf in y_pred: {np.isinf(y_pred).sum()}")
+    
     mask = np.isfinite(y_true) & np.isfinite(y_pred)
     y_true, y_pred = y_true[mask], y_pred[mask]
+    print(f"DEBUG: After filtering - y_true shape: {y_true.shape}, y_pred shape: {y_pred.shape}")
+    
+    if len(y_true) < 2 or len(y_pred) < 2:
+        print(f"ERROR: Not enough samples after filtering NaN/Inf values. y_true: {len(y_true)}, y_pred: {len(y_pred)}")
+        print(f"DEBUG: Unique values in y_true: {np.unique(y_true)[:20]}")  # Show first 20 unique values
+        print(f"DEBUG: Unique values in y_pred: {np.unique(y_pred)[:20]}")
+        return
+    
     r2 = r2_score(y_true, y_pred)
     r_s, p_s = spearmanr(y_true, y_pred)
     r_p, p_p = pearsonr(y_true, y_pred)

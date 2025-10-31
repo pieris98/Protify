@@ -17,6 +17,8 @@
         "DPLM_150": "DPLM model (150M params)",
         "DPLM_650": "DPLM model (650M params)",
         "DPLM_3B": "DPLM model (3B params)",
+        "AMPLIFY_120M": "AMPLIFY model (120M params)",
+        "AMPLIFY_350M": "AMPLIFY model (350M params)",
         "Tranception_L_no_retrieval":"Tranception Large model (700M params) without retrieval",
         "Tranception_M_no_retrieval":"Tranception Medium model (300M params) without retrieval",
         "Tranception_S_no_retrieval":"Tranception Small model (85M params) without retrieval",

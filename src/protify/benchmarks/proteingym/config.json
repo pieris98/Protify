@@ -18,6 +18,8 @@
         "DPLM-150":{"input_score_name":"DPLM-150", "location":"DPLM/150M", "directionality": 1, "key": "mutant","model_type":"Single sequence"},
         "DPLM-650":{"input_score_name":"DPLM-650", "location":"DPLM/650M", "directionality": 1, "key": "mutant","model_type":"Single sequence"},
         "DPLM-3B":{"input_score_name":"DPLM-3B", "location":"DPLM/3B", "directionality": 1, "key": "mutant","model_type":"Single sequence"},
+        "AMPLIFY-120":{"input_score_name":"AMPLIFY-120", "location":"AMPLIFY/120M", "directionality": 1, "key": "mutant","model_type":"Single sequence"},
+        "AMPLIFY-350":{"input_score_name":"AMPLIFY-350", "location":"AMPLIFY/350M", "directionality": 1, "key": "mutant","model_type":"Single sequence"},
         "Site_Independent":{"input_score_name":"prediction_independent", "location":"EVmutation", "directionality": 1, "key": "mutant", "model_type":"MSA"},
         "EVmutation":{"input_score_name":"prediction_epistatic", "location":"EVmutation", "directionality": 1, "key": "mutant", "model_type":"MSA"},
         "DeepSequence_single":{"input_score_name":"evol_indices_seed_1000", "location":"DeepSequence", "directionality": -1, "key": "mutant","model_type":"MSA"},

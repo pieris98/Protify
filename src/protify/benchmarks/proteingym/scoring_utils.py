@@ -391,9 +391,6 @@ def calculate_pll_batched(
     # Process each length group
     results = [None] * len(sequences)
     
-    # Track progress if progress_bar is provided
-    seq_batches_processed = 0
-    
     for seq_len, indexed_seqs in length_groups.items():
         indices = [idx for idx, _ in indexed_seqs]
         seqs = [seq for _, seq in indexed_seqs]
@@ -430,9 +427,6 @@ def calculate_pll_batched(
         
         # Process positions in batches, across all sequences
         for batch_start_idx in range(0, len(positions), batch_size):
-            # Update progress bar if provided
-            if progress_bar is not None and hasattr(progress_bar, 'update'):
-                progress_bar.update(1)
             batch_end_idx = min(batch_start_idx + batch_size, len(positions))
             batch_positions = positions[batch_start_idx:batch_end_idx]
             num_positions = len(batch_positions)
@@ -452,7 +446,7 @@ def calculate_pll_batched(
             outputs = model(masked_batch, attention_mask=attention_mask_batch)
             logits = outputs.logits.float()
             
-            # Vectorized log probability extraction
+            # Extract log probs
             log_probs = torch.log_softmax(logits, dim=-1)
             
             # Get true token IDs - shape: [num_seqs, num_positions]
@@ -466,6 +460,10 @@ def calculate_pll_batched(
             # Reshape and sum across positions for each sequence
             selected_log_probs = selected_log_probs.reshape(num_seqs, num_positions)
             total_lls += selected_log_probs.sum(dim=1)
+        
+        # Update progress bar after processing all positions for this length group
+        if progress_bar is not None:
+            progress_bar.update(num_seqs)
         
         # Store results in original order
         for i, orig_idx in enumerate(indices):
@@ -567,6 +565,8 @@ MODEL_CONTEXT_LENGTH = {
     'DPLM-650': 1024,
     'DPLM-3B': 1024,
     'Random-Transformer': 1024,
+    'AMPLIFY-120': 2048,
+    'AMPLIFY-350': 2048,
     # currently unsupported models
     'Random': None,
     'Random-ESM2-8': 2048,

@@ -303,7 +303,7 @@ cd src/protify
 
 ### ProteinGym Benchmarking
 
-Protify includes a zero-shot pipeline for the ProteinGym DMS benchmark and a standardized performance summary.
+Protify includes a zero-shot pipeline for the ProteinGym DMS benchmark with a standardized performance summary.
 
 - Run zero-shot scoring on ProteinGym substitutions
   ```console

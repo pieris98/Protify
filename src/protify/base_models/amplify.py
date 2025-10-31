@@ -225,14 +225,7 @@ class AMPLIFY(AMPLIFYPreTrainedModel):
             cfg = yaml.safe_load(file)
 
         model = AMPLIFY(AMPLIFYConfig(**cfg["model"], **cfg["tokenizer"]))
-
-        if checkpoint_path.endswith(".safetensors"):
-            state_dict = safetensors.torch.load_file(checkpoint_path)
-        elif checkpoint_path.endswith(".pt"):
-            state_dict = torch.load(checkpoint_path)
-        else:
-            raise ValueError(f"Expected checkpoint to be a `.pt` or `.safetensors` file.")
-
+        state_dict = safetensors.torch.load_file(checkpoint_path)
         model.load_state_dict(state_dict)
         tokenizer = ProteinTokenizer(**cfg["tokenizer"])
         return model, tokenizer
@@ -288,9 +281,7 @@ class AmplifyTokenizerWrapper(BaseSequenceTokenizer):
 class AmplifyForEmbedding(nn.Module):
     def __init__(self, model_path: str):
         super().__init__()
-        # Load config from HuggingFace and instantiate AMPLIFY model
-        
-        # Download and load config.json manually since AutoConfig doesn't recognize AMPLIFY
+        # Load config from HuggingFace
         config_file = hf_hub_download(repo_id=model_path, filename="config.json")
         with open(config_file, 'r') as f:
             config_dict = json.load(f)
@@ -325,9 +316,7 @@ class AmplifyForMaskedLM(nn.Module):
     """Wrapper for AMPLIFY model to use for Masked Language Modeling tasks."""
     def __init__(self, model_path: str):
         super().__init__()
-        # Load config from HuggingFace and instantiate AMPLIFY model
-        
-        # Download and load config.json manually since AutoConfig doesn't recognize AMPLIFY
+        # Load config from HuggingFace
         config_file = hf_hub_download(repo_id=model_path, filename="config.json")
         with open(config_file, 'r') as f:
             config_dict = json.load(f)

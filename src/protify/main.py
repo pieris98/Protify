@@ -554,7 +554,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         create_plots(results_file, output_dir)
         print_message("Plots generated successfully!")
         
-
+    @log_method_calls
     def run_proteingym_zero_shot(self):
         """Run ProteinGym zero-shot for all specified models and DMS ids."""
         # Signal base model loader to use MaskedLM variants

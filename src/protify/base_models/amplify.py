@@ -286,9 +286,17 @@ class AmplifyForEmbedding(nn.Module):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = True,
     ) -> torch.Tensor:
+        # Convert attention mask to additive format as expected by AMPLIFY
+        # Standard tokenizer format: 1 for real tokens, 0 for padding
+        # AMPLIFY expects: 0.0 for real tokens, -inf for padding
+        if attention_mask is not None:
+            pad_mask = torch.where(attention_mask.bool(), float(0.0), float('-inf'))
+        else:
+            pad_mask = None
+            
         out = self.plm(
             src=input_ids,
-            pad_mask=attention_mask.float(),
+            pad_mask=pad_mask,
             output_attentions=output_attentions if output_attentions is not None else False,
             output_hidden_states=output_hidden_states,
         )
@@ -323,10 +331,17 @@ class AmplifyForMaskedLM(nn.Module):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = False,
     ) -> MaskedLMOutput:
+        # Convert attention mask to additive format as expected by AMPLIFY
+        # Standard tokenizer format: 1 for real tokens, 0 for padding
+        # AMPLIFY expects: 0.0 for real tokens, -inf for padding
+        if attention_mask is not None:
+            pad_mask = torch.where(attention_mask.bool(), float(0.0), float('-inf'))
+        else:
+            pad_mask = None
         
         return self.plm(
             src=input_ids,
-            pad_mask=attention_mask.float(),
+            pad_mask=pad_mask,
             output_attentions=output_attentions if output_attentions is not None else False,
             output_hidden_states=output_hidden_states,
         )

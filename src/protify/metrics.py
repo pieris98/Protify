@@ -258,17 +258,20 @@ def compute_tokenwise_classification_metrics(p: EvalPrediction) -> dict[str, flo
         p: EvalPrediction object containing model predictions and ground truth labels
 
     Returns:
-        Dictionary containing:
-            - f1: F1 score (weighted average)
-            - acc: Accuracy score
-            - prec: Precision score (weighted average)
-            - rec: Recall score (weighted average)
+        Dictionary containing the following metrics (all rounded to 5 decimal places):
+            - accuracy: Overall accuracy
+            - f1: F1 score (macro average)
+            - precision: Precision score (macro average)
+            - recall: Recall score (macro average)
             - mcc: Matthews Correlation Coefficient
+            - roc_auc: Area Under ROC Curve (weighted average)
+            - pr_auc: Area Under Precision-Recall Curve (weighted average)
 
     Note:
         - Handles special token padding (-100) by filtering before metric calculation
-        - Uses weighted averaging for multi-class metrics
+        - Uses macro averaging for multi-class metrics
         - Converts predictions to class labels using argmax
+        - Handles AUC calculation for both binary and multi-class cases
     """
     logits = p.predictions[0] if isinstance(p.predictions, tuple) else p.predictions
     labels = p.label_ids
@@ -284,16 +287,63 @@ def compute_tokenwise_classification_metrics(p: EvalPrediction) -> dict[str, flo
     print(cm)
 
     f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
-    prec = precision_score(y_true, y_pred, average='macro', zero_division=0)
-    rec = recall_score(y_true, y_pred, average='macro', zero_division=0)
-    acc = accuracy_score(y_true, y_pred)
+    precision = precision_score(y_true, y_pred, average='macro', zero_division=0)
+    recall = recall_score(y_true, y_pred, average='macro', zero_division=0)
+    accuracy = accuracy_score(y_true, y_pred)
     mcc = matthews_corrcoef(y_true, y_pred)
+    
+    # Calculate probabilities for AUC metrics
+    probs = softmax(logits)
+    probs = probs.reshape(-1, probs.shape[-1])  # Flatten to (n_samples, n_classes)
+    probs = probs[valid_indices]  # Filter by valid indices
+    
+    # Calculate ROC AUC
+    try:
+        # binary
+        if len(np.unique(y_true)) == 2:
+            # For binary, use probabilities of positive class
+            roc_auc = roc_auc_score(y_true, probs[:, 1] if probs.shape[1] == 2 else probs.flatten())
+        else:
+            # multi-class
+            n_classes = probs.shape[1]
+            y_true_onehot = np.eye(n_classes)[y_true]
+            roc_auc = roc_auc_score(y_true_onehot, probs, multi_class='ovr', average='weighted')
+    except:
+        roc_auc = -100.0
+    
+    # Calculate PR AUC (true AUC of Precision-Recall curve)
+    try:
+        # binary
+        if len(np.unique(y_true)) == 2:
+            # For binary, use probabilities of positive class
+            y_scores = probs[:, 1] if probs.shape[1] == 2 else probs.flatten()
+            pr_precision, pr_recall, _ = precision_recall_curve(y_true, y_scores)
+            pr_auc = auc(pr_recall, pr_precision)
+        else:
+            # multi-class: compute PR AUC for each class and average
+            n_classes = probs.shape[1]
+            y_true_onehot = np.eye(n_classes)[y_true]
+            pr_aucs = []
+            for i in range(n_classes):
+                pr_precision, pr_recall, _ = precision_recall_curve(y_true_onehot[:, i], probs[:, i])
+                pr_aucs.append(auc(pr_recall, pr_precision))
+            # Weighted average by class support
+            class_weights = y_true_onehot.sum(axis=0)
+            if class_weights.sum() > 0:
+                pr_auc = np.average(pr_aucs, weights=class_weights)
+            else:
+                pr_auc = np.mean(pr_aucs) if pr_aucs else -100.0
+    except:
+        pr_auc = -100.0
+    
     return {
-        "f1": f1,
-        "acc": acc,
-        "prec": prec,
-        "rec": rec,
-        "mcc": mcc,
+        'accuracy': round(accuracy, 5),
+        'f1': round(f1, 5),
+        'precision': round(precision, 5),
+        'recall': round(recall, 5),
+        'mcc': round(mcc, 5),
+        'roc_auc': round(roc_auc, 5),
+        'pr_auc': round(pr_auc, 5)
     }
 
 
@@ -359,8 +409,8 @@ def compute_multi_label_classification_metrics(p: EvalPrediction) -> dict[str, f
     # Calculate PR AUC for multilabel case (true AUC of Precision-Recall curve)
     try:
         # For flattened multi-label, compute PR AUC directly
-        precision, recall, _ = precision_recall_curve(y_true, probs)
-        pr_auc = auc(recall, precision)
+        pr_precision, pr_recall, _ = precision_recall_curve(y_true, probs)
+        pr_auc = auc(pr_recall, pr_precision)
     except ValueError:
         # Fallback in case of invalid predictions
         pr_auc = -100.0

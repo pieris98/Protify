@@ -180,7 +180,7 @@ def plot_radar(*,
 
     if normalize:
         arr = np.asarray(data)
-        rng = np.where(arr.ptp(0) == 0, 1, arr.ptp(0))
+        rng = np.where(np.ptp(arr, 0) == 0, 1, np.ptp(arr, 0))
         data = (arr - arr.min(0)) / rng
         # Convert back to list of lists for consistency
         data = data.tolist()
@@ -454,7 +454,7 @@ def create_plots(tsv: str, outdir: str):
     # Normalized bar plot
     # For bar plot normalization, use min-max per dataset (column-wise normalization)
     arr = np.asarray(sorted_plot_matrix)
-    rng = np.where(arr.ptp(0) == 0, 1, arr.ptp(0))
+    rng = np.where(np.ptp(arr, 0) == 0, 1, np.ptp(arr, 0))
     arr_norm = (arr - arr.min(0)) / rng
     bar_plot(datasets, sorted_models, arr_norm.tolist(), metric_name + " (Normalized)", bar_path_norm)
     # Heatmap
@@ -511,7 +511,7 @@ if __name__ == "__main__":
     print(f"Bar plot test passed: {bar_path}")
     # Normalized bar plot
     arr = np.asarray(data)
-    rng = np.where(arr.ptp(0) == 0, 1, arr.ptp(0))
+    rng = np.where(np.ptp(arr, 0) == 0, 1, np.ptp(arr, 0))
     arr_norm = (arr - arr.min(0)) / rng
     bar_path_norm = tmpdir / "test_bar_normalized.png"
     bar_plot(categories, models, arr_norm.tolist(), "Test Metric (Normalized)", bar_path_norm)

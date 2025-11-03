@@ -42,13 +42,18 @@ class MetricsLogger:
         os.makedirs(self.log_dir, exist_ok=True)
         os.makedirs(self.results_dir, exist_ok=True)
 
-        # Generate random ID with date and 4-letter code
-        random_letters = ''.join(random.choices(string.ascii_uppercase, k=4))
-        date_str = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')
-        self.random_id = f"{date_str}_{random_letters}"
-        
-        if args.replay_path is not None:
+        # Check if PROTIFY_JOB_ID is set (from Modal app), use it if available
+        protify_job_id = os.environ.get("PROTIFY_JOB_ID")
+        if protify_job_id:
+            self.random_id = protify_job_id
+        elif args.replay_path is not None:
             self.random_id = 'replay_' + args.replay_path.split('/')[-1].split('.')[0]
+        else:
+            # Generate random ID with date and 4-letter code
+            random_letters = ''.join(random.choices(string.ascii_uppercase, k=4))
+            date_str = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')
+            self.random_id = f"{date_str}_{random_letters}"
+        
         self.log_file = os.path.join(self.log_dir, f"{self.random_id}.txt")
         self.results_file = os.path.join(self.results_dir, f"{self.random_id}.tsv")
 

@@ -113,7 +113,16 @@ def parse_arguments():
 
     if args.hf_token is not None:
         from huggingface_hub import login
+        # Override environment variable to ensure this token is used
+        os.environ["HF_TOKEN"] = args.hf_token
         login(args.hf_token)
+        print(f"Logged in to HuggingFace Hub with token from arguments")
+    else:
+        # Check if token exists in environment (from Modal secret or other source)
+        hf_token_env = os.environ.get("HF_TOKEN")
+        if hf_token_env:
+            print(f"Note: HF_TOKEN found in environment (from Modal secret or other source)")
+            print(f"Note: This token will be used for read operations only unless overridden")
     if args.wandb_api_key is not None:
         print_message('Wandb not integrated yet')
     if args.synthyra_api_key is not None:
@@ -130,6 +139,8 @@ def parse_arguments():
         yaml_args.yaml_path = args.yaml_path
         yaml_args.seed = args.seed
         yaml_args.deterministic = args.deterministic
+        # Debug logging for HF settings
+        print(f"Loaded from YAML - hf_username: {getattr(yaml_args, 'hf_username', 'NOT SET')}, save_model: {getattr(yaml_args, 'save_model', 'NOT SET')}")
         return yaml_args
     else:
         return args

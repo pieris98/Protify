@@ -41,6 +41,8 @@ currently_supported_models = [
     'OneHot-DNA',
     'OneHot-RNA',
     'OneHot-Codon',
+    'AMPLIFY-120',
+    'AMPLIFY-350',
 ]
 
 standard_models = [
@@ -64,6 +66,8 @@ standard_models = [
     'DSM-PPI',
     'Random',
     'Random-Transformer',
+    'AMPLIFY-120',
+    'AMPLIFY-350',
 ]
 
 experimental_models = []

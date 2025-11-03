@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import safetensors
+import json
 from typing import Optional, Tuple, Union, List, Dict
 from transformers import (
     AutoTokenizer,
@@ -21,12 +22,13 @@ from .amplify_utils import (
     precompute_freqs_cis,
 )
 from huggingface_hub import hf_hub_download
-import json
-    
+
+
 presets = {
     'AMPLIFY-120': 'GleghornLab/AMPLIFY_120M',
     'AMPLIFY-350': 'GleghornLab/AMPLIFY_350M',
 }
+
 
 class AMPLIFYConfig(PretrainedConfig):
     model_type = "AMPLIFY"

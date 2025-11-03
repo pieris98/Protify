@@ -160,7 +160,10 @@ def is_regression(metrics: Dict[str, float]) -> bool:
     """Heuristic based on key names."""
     reg = ("spearman", "pearson", "r_squared", "rmse", "mse")
     cls = ("accuracy", "f1", "mcc", "auc", "precision", "recall")
-    keys = {k.lower() for k in metrics}
+    # Filter out time-related metrics
+    filtered_metrics = {k: v for k, v in metrics.items() 
+                       if 'training_time' not in k.lower() and 'time_seconds' not in k.lower()}
+    keys = {k.lower() for k in filtered_metrics}
     if any(k for k in keys if any(r in k for r in reg)):
         return True
     if any(k for k in keys if any(c in k for c in cls)):
@@ -172,6 +175,9 @@ def pick_metric(metrics: Dict[str, float], prefs: List[Tuple[str, str]]) -> Tupl
     """Return (key, pretty_name) for the first preference present in metrics."""
     for k, nice in prefs:
         for mk in metrics:
+            # Skip time-related metrics
+            if 'training_time' in mk.lower() or 'time_seconds' in mk.lower():
+                continue
             if mk.lower().endswith(k):
                 return k, nice
     raise KeyError("No preferred metric found.")
@@ -180,6 +186,9 @@ def pick_metric(metrics: Dict[str, float], prefs: List[Tuple[str, str]]) -> Tupl
 def get_metric_value(metrics: Dict[str, float], key_suffix: str) -> float:
     """Fetch metric value case-/prefix-insensitively; NaN if absent."""
     for k, v in metrics.items():
+        # Skip time-related metrics
+        if 'training_time' in k.lower() or 'time_seconds' in k.lower():
+            continue
         if k.lower().endswith(key_suffix):
             return v
     return math.nan

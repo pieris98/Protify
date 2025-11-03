@@ -254,7 +254,7 @@ def _position_log_probs(
             batch_sequences,
             return_tensors='pt',
             add_special_tokens=True,
-            padding=True,
+            padding=False,
         )
         input_ids = tokens['input_ids'].to(device)
         attention_mask = tokens['attention_mask'].to(device)

@@ -4,6 +4,7 @@ import subprocess
 import argparse
 import yaml
 import pandas as pd
+import time
 from types import SimpleNamespace
 
 
@@ -574,8 +575,11 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         if isinstance(mode, str) and mode.lower() == 'indels':
             print_message("Only pll is currently supported for indels scoring.")
             scoring_method = 'pll'
-        print_message(f"Running ProteinGym zero-shot with [{scoring_method}] scoring on {len(dms_ids)} DMS ids with models: {', '.join(model_names)}")
+        # Track timing per model
+        self._proteingym_timing = {}
         for model_name in model_names:
+            self.logger.info(f"Running ProteinGym zero-shot with [{scoring_method}] scoring on {len(dms_ids)} DMS ids with model {model_name}")
+            start_time = time.time()
             _ = run_zero_shot(
                 dms_ids=dms_ids,
                 model_name=model_name,
@@ -587,6 +591,8 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 scoring_window=scoring_window,
                 batch_size=getattr(args, 'pg_batch_size', 32),
             )
+            elapsed_time = time.time() - start_time
+            self._proteingym_timing[model_name] = elapsed_time
         print_message(f"ProteinGym zero-shot complete. Results in {results_dir}")
 
         # After all models are scored, run standardized performance benchmarking
@@ -617,10 +623,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             print_message(f"Benchmark performance computed. Outputs in {perf_out_dir}")
         except Exception as e:
             print_message(f"Failed to compute benchmark performance: {e}")
-
-
-
-
 
 def main(args: SimpleNamespace):
     if args.replay_path is not None:
@@ -696,7 +698,10 @@ def main(args: SimpleNamespace):
                 pg_scores = collect_proteingym_spearman(args, getattr(args, 'model_names', []))
                 for model_name, score in pg_scores.items():
                     if isinstance(score, (int, float)):
-                        main.log_metrics('proteingym', model_name, {'spearman': float(score)})
+                        training_time = getattr(main, '_proteingym_timing', {}).get(model_name, None)
+                        metrics_dict = {'spearman': float(score)}
+                        metrics_dict['training_time_seconds'] = float(training_time)
+                        main.log_metrics('proteingym', model_name, metrics_dict)
             except Exception as e:
                 print_message(f"Failed to log ProteinGym metrics: {e}")
 

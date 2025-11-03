@@ -497,10 +497,6 @@ def run_zero_shot(
         if show_progress and hasattr(assay_iterator, 'set_description_str'):
             assay_iterator.set_description_str(f"Assay {dms_id}")
         if mode == 'indels':
-            # Prefer sliding windows if any sequence exceeds context
-            target_seq = df['target_seq'].iloc[0]
-            model_context_len = MODEL_CONTEXT_LENGTH.get(model_name, 1024)
-            max_len = max([len(target_seq)] + [len(s) for s in df['mutated_seq'].tolist()])
             results_df = zero_shot_scores_for_indels(
                 df,
                 model_name,
@@ -546,14 +542,13 @@ def run_zero_shot(
         if os.path.exists(per_dms_path):
             try:
                 existing = pd.read_csv(per_dms_path)
-                # Merge priority: mutant -> mutated_seq -> row order
                 if 'mutant' in existing.columns:
                     merged = existing.merge(
                         results_to_save[['mutant', model_name]],
                         on='mutant',
                         how='outer',
                     )
-                elif 'mutated_seq' in existing.columns:
+                elif 'mutated_seq' in existing.columns: # for indels
                     merged = existing.merge(
                         results_to_save[['mutated_seq', model_name]],
                         on='mutated_seq',

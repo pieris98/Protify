@@ -174,46 +174,53 @@ class GUI(MainProcess):
         entry_home_dir.grid(row=0, column=1, padx=10, pady=5)
         self.add_help_button(paths_frame, 0, 2, "Home directory for Protify.")
 
+        # HF Home directory
+        ttk.Label(paths_frame, text="HF Home Directory:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["hf_home"] = tk.StringVar(value="")
+        entry_hf_home = ttk.Entry(paths_frame, textvariable=self.settings_vars["hf_home"], width=30)
+        entry_hf_home.grid(row=1, column=1, padx=10, pady=5)
+        self.add_help_button(paths_frame, 1, 2, "Customize the HuggingFace cache directory. Leave empty to use default.")
+
         # Log directory
-        ttk.Label(paths_frame, text="Log Directory:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(paths_frame, text="Log Directory:").grid(row=2, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["log_dir"] = tk.StringVar(value="logs")
         entry_log_dir = ttk.Entry(paths_frame, textvariable=self.settings_vars["log_dir"], width=30)
-        entry_log_dir.grid(row=1, column=1, padx=10, pady=5)
-        self.add_help_button(paths_frame, 1, 2, "Directory where log files will be stored.")
+        entry_log_dir.grid(row=2, column=1, padx=10, pady=5)
+        self.add_help_button(paths_frame, 2, 2, "Directory where log files will be stored.")
 
         # Results directory
-        ttk.Label(paths_frame, text="Results Directory:").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(paths_frame, text="Results Directory:").grid(row=3, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["results_dir"] = tk.StringVar(value="results")
         entry_results_dir = ttk.Entry(paths_frame, textvariable=self.settings_vars["results_dir"], width=30)
-        entry_results_dir.grid(row=2, column=1, padx=10, pady=5)
-        self.add_help_button(paths_frame, 2, 2, "Directory where results data will be stored.")
+        entry_results_dir.grid(row=3, column=1, padx=10, pady=5)
+        self.add_help_button(paths_frame, 3, 2, "Directory where results data will be stored.")
 
         # Model save directory
-        ttk.Label(paths_frame, text="Model Save Directory:").grid(row=3, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(paths_frame, text="Model Save Directory:").grid(row=4, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["model_save_dir"] = tk.StringVar(value="weights")
         entry_model_save = ttk.Entry(paths_frame, textvariable=self.settings_vars["model_save_dir"], width=30)
-        entry_model_save.grid(row=3, column=1, padx=10, pady=5)
-        self.add_help_button(paths_frame, 3, 2, "Directory where trained models will be saved.")
+        entry_model_save.grid(row=4, column=1, padx=10, pady=5)
+        self.add_help_button(paths_frame, 4, 2, "Directory where trained models will be saved.")
 
-        ttk.Label(paths_frame, text="Plots Directory:").grid(row=4, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(paths_frame, text="Plots Directory:").grid(row=5, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["plots_dir"] = tk.StringVar(value="plots")
         entry_plots_dir = ttk.Entry(paths_frame, textvariable=self.settings_vars["plots_dir"], width=30)
-        entry_plots_dir.grid(row=4, column=1, padx=10, pady=5)
-        self.add_help_button(paths_frame, 4, 2, "Directory where plots and visualizations will be saved.")
+        entry_plots_dir.grid(row=5, column=1, padx=10, pady=5)
+        self.add_help_button(paths_frame, 5, 2, "Directory where plots and visualizations will be saved.")
 
         # Embedding save directory
-        ttk.Label(paths_frame, text="Embedding Save Directory:").grid(row=5, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(paths_frame, text="Embedding Save Directory:").grid(row=6, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["embedding_save_dir"] = tk.StringVar(value="embeddings")
         entry_embed_save = ttk.Entry(paths_frame, textvariable=self.settings_vars["embedding_save_dir"], width=30)
-        entry_embed_save.grid(row=5, column=1, padx=10, pady=5)
-        self.add_help_button(paths_frame, 5, 2, "Directory where computed embeddings will be saved.")
+        entry_embed_save.grid(row=6, column=1, padx=10, pady=5)
+        self.add_help_button(paths_frame, 6, 2, "Directory where computed embeddings will be saved.")
 
         # Download directory
-        ttk.Label(paths_frame, text="Download Directory:").grid(row=6, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(paths_frame, text="Download Directory:").grid(row=7, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["download_dir"] = tk.StringVar(value="Synthyra/mean_pooled_embeddings")
         entry_download = ttk.Entry(paths_frame, textvariable=self.settings_vars["download_dir"], width=30)
-        entry_download.grid(row=6, column=1, padx=10, pady=5)
-        self.add_help_button(paths_frame, 6, 2, "HuggingFace repository path for downloading pre-computed embeddings.")
+        entry_download.grid(row=7, column=1, padx=10, pady=5)
+        self.add_help_button(paths_frame, 7, 2, "HuggingFace repository path for downloading pre-computed embeddings.")
 
         # button to start logging
         start_logging_button = ttk.Button(self.info_tab, text="Start session", command=self._session_start)
@@ -302,14 +309,21 @@ class GUI(MainProcess):
         entry_col_names.grid(row=3, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.data_tab, 3, 2, "Names of columns in data files, separate with commas.")
 
+        # Multi-column sequences
+        ttk.Label(self.data_tab, text="Multi-Column Sequences (space-separated):").grid(row=4, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["multi_column"] = tk.StringVar(value="")
+        entry_multi_column = ttk.Entry(self.data_tab, textvariable=self.settings_vars["multi_column"], width=20)
+        entry_multi_column.grid(row=4, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.data_tab, 4, 2, "If set, list of sequence column names to combine per sample (space-separated). Leave empty if not using multi-column sequences.")
+
         # Label + Listbox for dataset names
-        ttk.Label(self.data_tab, text="Dataset Names:").grid(row=4, column=0, padx=10, pady=5, sticky="nw")
-        self.data_listbox = tk.Listbox(self.data_tab, selectmode="extended", height=25, width=25)
+        ttk.Label(self.data_tab, text="Dataset Names:").grid(row=5, column=0, padx=10, pady=5, sticky="nw")
+        self.data_listbox = tk.Listbox(self.data_tab, selectmode="extended", height=24, width=25)
         for dataset_name in supported_datasets:
             if dataset_name not in internal_datasets:
                 self.data_listbox.insert(tk.END, dataset_name)
-        self.data_listbox.grid(row=4, column=1, padx=10, pady=5, sticky="nw")
-        self.add_help_button(self.data_tab, 4, 2, "Select datasets to use. Multiple datasets can be selected.")
+        self.data_listbox.grid(row=5, column=1, padx=10, pady=5, sticky="nw")
+        self.add_help_button(self.data_tab, 5, 2, "Select datasets to use. Multiple datasets can be selected.")
 
         run_button = ttk.Button(self.data_tab, text="Get Data", command=self._get_data)
         run_button.grid(row=99, column=0, columnspan=2, pady=(10, 10))
@@ -465,50 +479,71 @@ class GUI(MainProcess):
         spin_transformer_dropout.grid(row=12, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.probe_tab, 12, 2, "Dropout probability in the transformer layers (0.0-1.0).")
         
+        # Token Attention
+        ttk.Label(self.probe_tab, text="Token Attention:").grid(row=13, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["token_attention"] = tk.BooleanVar(value=False)
+        check_token_attention = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["token_attention"])
+        check_token_attention.grid(row=13, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 13, 2, "If true, use TokenFormer instead of Transformer blocks.")
+        
+        # RetrievalNet Settings Section
+        ttk.Label(self.probe_tab, text="=== RetrievalNet Settings ===").grid(row=14, column=0, columnspan=2, pady=10)
+        
+        # Sim Type
+        ttk.Label(self.probe_tab, text="Similarity Type:").grid(row=15, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["sim_type"] = tk.StringVar(value="dot")
+        combo_sim_type = ttk.Combobox(
+            self.probe_tab,
+            textvariable=self.settings_vars["sim_type"],
+            values=["dot", "euclidean", "cosine"]
+        )
+        combo_sim_type.grid(row=15, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 15, 2, "Cross-attention mechanism for token-parameter-attention (dot, euclidean, or cosine).")
+        
         # Save Model
-        ttk.Label(self.probe_tab, text="Save Model:").grid(row=13, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Save Model:").grid(row=16, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["save_model"] = tk.BooleanVar(value=False)
         check_save_model = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["save_model"])
-        check_save_model.grid(row=13, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 13, 2, "Whether to save the trained probe model to disk.")
+        check_save_model.grid(row=16, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 16, 2, "Whether to save the trained probe model to disk.")
         
         # Production Model
-        ttk.Label(self.probe_tab, text="Production Model:").grid(row=14, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Production Model:").grid(row=17, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["production_model"] = tk.BooleanVar(value=False)
         check_prod_model = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["production_model"])
-        check_prod_model.grid(row=14, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 14, 2, "Whether to prepare the model for production deployment.")
+        check_prod_model.grid(row=17, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 17, 2, "Whether to prepare the model for production deployment.")
 
         # LoRA Settings Section
-        ttk.Label(self.probe_tab, text="=== LoRA Settings ===").grid(row=15, column=0, columnspan=2, pady=10)
+        ttk.Label(self.probe_tab, text="=== LoRA Settings ===").grid(row=18, column=0, columnspan=2, pady=10)
         
         # Lora checkbox
-        ttk.Label(self.probe_tab, text="Use LoRA:").grid(row=16, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["use_lora"] = tk.BooleanVar(value=False)
-        check_lora = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["use_lora"])
-        check_lora.grid(row=16, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 16, 2, "Whether to use Low-Rank Adaptation (LoRA) for fine-tuning.")
+        ttk.Label(self.probe_tab, text="Use LoRA:").grid(row=19, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["lora"] = tk.BooleanVar(value=False)
+        check_lora = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["lora"])
+        check_lora.grid(row=19, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 19, 2, "Whether to use Low-Rank Adaptation (LoRA) for fine-tuning.")
 
         # LoRA r
-        ttk.Label(self.probe_tab, text="LoRA r:").grid(row=17, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="LoRA r:").grid(row=20, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora_r"] = tk.IntVar(value=8)
         spin_lora_r = ttk.Spinbox(self.probe_tab, from_=1, to=128, textvariable=self.settings_vars["lora_r"])
-        spin_lora_r.grid(row=17, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 17, 2, "Rank parameter r for LoRA (lower = more efficient, higher = more expressive).")
+        spin_lora_r.grid(row=20, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 20, 2, "Rank parameter r for LoRA (lower = more efficient, higher = more expressive).")
 
         # LoRA alpha
-        ttk.Label(self.probe_tab, text="LoRA alpha:").grid(row=18, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="LoRA alpha:").grid(row=21, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora_alpha"] = tk.DoubleVar(value=32.0)
         spin_lora_alpha = ttk.Spinbox(self.probe_tab, from_=1.0, to=128.0, increment=1.0, textvariable=self.settings_vars["lora_alpha"])
-        spin_lora_alpha.grid(row=18, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 18, 2, "Alpha parameter for LoRA, controls update scale.")
+        spin_lora_alpha.grid(row=21, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 21, 2, "Alpha parameter for LoRA, controls update scale.")
 
         # LoRA dropout
-        ttk.Label(self.probe_tab, text="LoRA dropout:").grid(row=19, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="LoRA dropout:").grid(row=22, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora_dropout"] = tk.DoubleVar(value=0.01)
         spin_lora_dropout = ttk.Spinbox(self.probe_tab, from_=0.0, to=0.5, increment=0.01, textvariable=self.settings_vars["lora_dropout"])
-        spin_lora_dropout.grid(row=19, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 19, 2, "Dropout probability for LoRA layers (0.0-0.5).")
+        spin_lora_dropout.grid(row=22, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 22, 2, "Dropout probability for LoRA layers (0.0-0.5).")
         
         # Add a button to create the probe
         run_button = ttk.Button(self.probe_tab, text="Save Probe Arguments", command=self._create_probe_args)
@@ -591,6 +626,13 @@ class GUI(MainProcess):
         spin_seed = ttk.Spinbox(self.trainer_tab, from_=0, to=10000, textvariable=self.settings_vars["seed"])
         spin_seed.grid(row=10, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.trainer_tab, 10, 2, "Random seed for reproducibility of experiments.")
+
+        # Read Scaler
+        ttk.Label(self.trainer_tab, text="Read Scaler:").grid(row=11, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["read_scaler"] = tk.IntVar(value=100)
+        spin_read_scaler = ttk.Spinbox(self.trainer_tab, from_=1, to=1000, textvariable=self.settings_vars["read_scaler"])
+        spin_read_scaler.grid(row=11, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.trainer_tab, 11, 2, "Read scaler for SQL storage (multiplier for batch size when reading from SQL database).")
 
         run_button = ttk.Button(self.trainer_tab, text="Run trainer", command=self._run_trainer)
         run_button.grid(row=99, column=0, columnspan=2, pady=(10, 10))
@@ -735,6 +777,10 @@ class GUI(MainProcess):
             self.full_args.synthyra_api_key = synthyra_api_key
             self.full_args.wandb_api_key = wandb_api_key
             self.full_args.home_dir = self.settings_vars["home_dir"].get()
+            
+            # Handle hf_home - convert empty string to None
+            hf_home_value = self.settings_vars["hf_home"].get().strip()
+            self.full_args.hf_home = hf_home_value if hf_home_value else None
 
             def _make_true_dir(path):
                 true_path = os.path.join(self.full_args.home_dir, path)
@@ -802,12 +848,20 @@ class GUI(MainProcess):
             self.full_args.trim = self.settings_vars["trim"].get()
             self.full_args.delimiter = self.settings_vars["delimiter"].get()
             self.full_args.col_names = self.settings_vars["col_names"].get().split(",")
+            
+            # Handle multi_column - convert space-separated string to list or None
+            multi_column_str = self.settings_vars["multi_column"].get().strip()
+            if multi_column_str:
+                self.full_args.multi_column = multi_column_str.split()
+            else:
+                self.full_args.multi_column = None
 
             # Update mixin attributes
             self._max_length = self.full_args.max_length
             self._trim = self.full_args.trim
             self._delimiter = self.full_args.delimiter
             self._col_names = self.full_args.col_names
+            self._multi_column = self.full_args.multi_column
 
             # Create data args and get datasets
             self.data_args = DataArguments(**self.full_args.__dict__)
@@ -880,7 +934,9 @@ class GUI(MainProcess):
         self.full_args.probe_pooling_types = probe_pooling_types
         self.full_args.save_model = self.settings_vars["save_model"].get()
         self.full_args.production_model = self.settings_vars["production_model"].get()
-        self.full_args.use_lora = self.settings_vars["use_lora"].get()
+        self.full_args.token_attention = self.settings_vars["token_attention"].get()
+        self.full_args.sim_type = self.settings_vars["sim_type"].get()
+        self.full_args.lora = self.settings_vars["lora"].get()
         self.full_args.lora_r = self.settings_vars["lora_r"].get()
         self.full_args.lora_alpha = self.settings_vars["lora_alpha"].get()
         self.full_args.lora_dropout = self.settings_vars["lora_dropout"].get()
@@ -901,7 +957,7 @@ class GUI(MainProcess):
     def _run_trainer(self):
         print_message("Starting training process...")
         # Gather settings
-        self.full_args.use_lora = self.settings_vars["use_lora"].get()
+        self.full_args.lora = self.settings_vars["lora"].get()
         self.full_args.hybrid_probe = self.settings_vars["hybrid_probe"].get()
         self.full_args.full_finetuning = self.settings_vars["full_finetuning"].get()
         self.full_args.lora_r = self.settings_vars["lora_r"].get()
@@ -914,6 +970,7 @@ class GUI(MainProcess):
         self.full_args.weight_decay = self.settings_vars["weight_decay"].get()
         self.full_args.patience = self.settings_vars["patience"].get()
         self.full_args.seed = self.settings_vars["seed"].get()
+        self.full_args.read_scaler = self.settings_vars["read_scaler"].get()
 
         def background_run_trainer():
             self.trainer_args = TrainerArguments(**self.full_args.__dict__)

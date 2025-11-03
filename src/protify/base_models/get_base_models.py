@@ -61,9 +61,10 @@ standard_models = [
     'DPLM-650',
     'DSM-150',
     'DSM-650',
-    'DSM-PPI'
+    'DSM-PPI',
     'Random',
     'Random-Transformer',
+    'OneHot-Protein',
 ]
 
 experimental_models = []

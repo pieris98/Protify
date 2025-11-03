@@ -1012,31 +1012,8 @@ def web_interface():
             
             # Create unique button ID for this job
             button_id = f"copy-btn-{job_id.replace('-', '').replace('_', '')}"
-            # Escape job_id for use in HTML attributes and JavaScript
+            # Escape job_id for use in HTML attributes
             job_id_escaped = html.escape(job_id, quote=True)
-            # Escape for JavaScript string (handle quotes and backslashes)
-            job_id_js = job_id.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r")
-            
-            # Create inline onclick handler that copies the job ID
-            # Using a simpler approach that's more likely to work with Gradio
-            copy_onclick = (
-                "const b=this;const o=b.innerHTML;const j='" + job_id_js + "';"
-                "if(navigator.clipboard&&navigator.clipboard.writeText){"
-                "navigator.clipboard.writeText(j).then(()=>{"
-                "b.innerHTML='✓ Copied!';b.style.background='#10b981';b.style.borderColor='#10b981';b.style.color='white';"
-                "setTimeout(()=>{b.innerHTML=o;b.style.background='white';b.style.borderColor='#d1d5db';b.style.color='#374151';},2000);"
-                "}).catch(()=>{"
-                "const t=document.createElement('textarea');t.value=j;t.style.position='fixed';t.style.left='-9999px';document.body.appendChild(t);t.select();"
-                "try{document.execCommand('copy');b.innerHTML='✓ Copied!';b.style.background='#10b981';setTimeout(()=>{b.innerHTML=o;b.style.background='white';},2000);}catch(e){alert('Copy failed. Please copy: '+j);}"
-                "document.body.removeChild(t);"
-                "});"
-                "}else{"
-                "const t=document.createElement('textarea');t.value=j;t.style.position='fixed';t.style.left='-9999px';document.body.appendChild(t);t.select();"
-                "try{document.execCommand('copy');b.innerHTML='✓ Copied!';b.style.background='#10b981';setTimeout(()=>{b.innerHTML=o;b.style.background='white';},2000);}catch(e){alert('Copy failed. Please copy: '+j);}"
-                "document.body.removeChild(t);"
-                "}"
-            )
-            
             html_content += f"""
             <div style='padding: 20px; margin: 10px 0; border-radius: 8px; border: 2px solid #e5e7eb; background: white; min-width: 600px;'>
                 <div style='display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;'>
@@ -1046,7 +1023,7 @@ def web_interface():
                         <br><span style='color: #6b7280; font-size: 14px;'>User: {hf_username}</span>
                     </div>
                     <div style='display: flex; gap: 10px; align-items: center;'>
-                        <button onclick="{copy_onclick}" id="{button_id}" style='padding: 6px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: white; color: #374151; font-size: 12px; cursor: pointer; transition: all 0.2s;' onmouseover="this.style.background='#f3f4f6'; this.style.borderColor='#9ca3af';" onmouseout="this.style.background='white'; this.style.borderColor='#d1d5db';" title="Copy Job ID">
+                        <button class="copy-job-id-btn" data-job-id="{job_id_escaped}" id="{button_id}" style='padding: 6px 12px; border-radius: 6px; border: 1px solid #d1d5db; background: white; color: #374151; font-size: 12px; cursor: pointer; transition: all 0.2s;' onmouseover="this.style.background='#f3f4f6'; this.style.borderColor='#9ca3af';" onmouseout="this.style.background='white'; this.style.borderColor='#d1d5db';" title="Copy Job ID">
                             📋 Copy ID
                         </button>
                         <span style='padding: 8px 16px; border-radius: 6px; background: {status_color}; color: white; font-weight: bold; font-size: 14px; min-width: 100px; text-align: center;'>{status}</span>
@@ -1058,6 +1035,92 @@ def web_interface():
             </div>
             """
         html_content += "</div>"
+        # Add JavaScript function for copying job IDs using event delegation
+        # Use a unique ID to prevent multiple script executions
+        script_id = f"copy-script-{int(time.time())}"
+        html_content += f"""
+        <script id="{script_id}">
+        (function() {{
+            // Use event delegation on document body to handle dynamically added buttons
+            // This works even when Gradio updates the HTML
+            function handleCopyClick(e) {{
+                // Check if clicked element or its parent is a copy button
+                let button = e.target;
+                while (button && !button.classList.contains('copy-job-id-btn')) {{
+                    button = button.parentElement;
+                }}
+                
+                if (!button || !button.classList.contains('copy-job-id-btn')) {{
+                    return;
+                }}
+                
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const jobId = button.getAttribute('data-job-id');
+                if (!jobId) {{
+                    console.error('No job-id attribute found');
+                    return;
+                }}
+                
+                // Try modern clipboard API first
+                if (navigator.clipboard && navigator.clipboard.writeText) {{
+                    navigator.clipboard.writeText(jobId).then(function() {{
+                        updateButtonSuccess(button);
+                    }}).catch(function(err) {{
+                        console.error('Clipboard API failed:', err);
+                        fallbackCopy(jobId, button);
+                    }});
+                }} else {{
+                    fallbackCopy(jobId, button);
+                }}
+            }}
+            
+            function updateButtonSuccess(button) {{
+                const originalText = button.innerHTML;
+                button.innerHTML = '✓ Copied!';
+                button.style.background = '#10b981';
+                button.style.borderColor = '#10b981';
+                button.style.color = 'white';
+                setTimeout(function() {{
+                    button.innerHTML = originalText;
+                    button.style.background = 'white';
+                    button.style.borderColor = '#d1d5db';
+                    button.style.color = '#374151';
+                }}, 2000);
+            }}
+            
+            function fallbackCopy(text, button) {{
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                textArea.style.opacity = '0';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                try {{
+                    const successful = document.execCommand('copy');
+                    if (successful) {{
+                        updateButtonSuccess(button);
+                    }} else {{
+                        alert('Failed to copy. Please manually copy: ' + text);
+                    }}
+                }} catch (err) {{
+                    console.error('execCommand failed:', err);
+                    alert('Failed to copy. Please manually copy: ' + text);
+                }}
+                document.body.removeChild(textArea);
+            }}
+            
+            // Remove any existing listeners to prevent duplicates
+            document.removeEventListener('click', handleCopyClick);
+            // Attach event listener to document body for event delegation
+            document.addEventListener('click', handleCopyClick, true);
+        }})();
+        </script>
+        """
         return html_content
     
     def refresh_queue():

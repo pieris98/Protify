@@ -101,8 +101,6 @@ def set_determinism():
     # Note: This can significantly slow down operations. Only use if you need to be 100% reproducible
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.allow_tf32 = False
-    torch.backends.cuda.matmul.allow_tf32 = False
 
     if hasattr(torch, 'use_deterministic_algorithms'):
         try:

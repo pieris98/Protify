@@ -35,7 +35,7 @@ APP_NAME = "protify-app"
 # Resource configuration constants
 PROTIFY_DEFAULT_GPU = "A10"
 PROTIFY_CPU_MIN_GPU, PROTIFY_CPU_MAX_GPU = 8.0, 16.0
-PROTIFY_MEMORY_MIN_GPU, PROTIFY_MEMORY_MAX_GPU = 32768, 65536
+PROTIFY_MEMORY_MIN_GPU, PROTIFY_MEMORY_MAX_GPU = 65536, 262144
 MAX_CONTAINERS_PROTIFY = 8
 SCALEDOWN_WINDOW = 10  # seconds to wait before scaling down idle containers
 WEB_INTERFACE_SCALEDOWN_WINDOW = 300  # 5 minutes for web interface
@@ -182,6 +182,7 @@ def _execute_protify_job(
     import subprocess
     import json
     import time
+    import threading
     from pathlib import Path
     from types import SimpleNamespace
     
@@ -262,8 +263,9 @@ def _execute_protify_job(
     # Prepare command - run main.py directly from protify directory
     # This is necessary because main.py uses relative imports (from probes, base_models, etc.)
     # that expect to be run from within the protify directory
+    # Add -u flag for unbuffered output
     cmd = [
-        "python", "main.py",
+        "python", "-u", "main.py",
         "--yaml_path", str(config_path)
     ]
     
@@ -285,6 +287,7 @@ def _execute_protify_job(
     env["PYTHONPATH"] = "/root/src"
     env["WORKING_DIR"] = "/root"
     env["CUDA_VISIBLE_DEVICES"] = "0"
+    env["PYTHONUNBUFFERED"] = "1"  # Ensure Python output is unbuffered
     # CRITICAL: Override HF_TOKEN in subprocess environment if user provided token
     # This ensures the subprocess uses the user's token, not the secret token
     if hf_token:
@@ -298,26 +301,74 @@ def _execute_protify_job(
     # This allows the relative imports (from probes, base_models, etc.) to work correctly
     os.chdir("/root/src/protify")
     
-    # Run Protify
+    # Run Protify with streaming output
+    stdout_lines = []
+    stderr_lines = []
+    
+    def stream_output(pipe, output_list, prefix=""):
+        """Stream output from a pipe line by line."""
+        try:
+            for line in iter(pipe.readline, ''):
+                if line:
+                    line_str = line.rstrip()
+                    output_list.append(line_str)
+                    # Print immediately to Modal logs
+                    if prefix:
+                        print(f"{prefix}{line_str}", flush=True)
+                    else:
+                        print(line_str, flush=True)
+        except Exception as e:
+            print(f"Error streaming output: {e}", flush=True)
+        finally:
+            pipe.close()
+    
     try:
-        result = subprocess.run(
+        # Use Popen to stream output in real-time
+        process = subprocess.Popen(
             cmd,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
+            bufsize=1,  # Line buffered
             cwd="/root/src/protify",
-            env=env,
-            timeout=TIMEOUT - 600
+            env=env
         )
         
-        # Log output
-        if result.stdout:
-            print("=== STDOUT ===")
-            print(result.stdout[-10000:])  # Last 10000 chars
-        if result.stderr:
-            print("=== STDERR ===")
-            print(result.stderr[-10000:])
+        # Start threads to stream stdout and stderr
+        stdout_thread = threading.Thread(
+            target=stream_output,
+            args=(process.stdout, stdout_lines, ""),
+            daemon=True
+        )
+        stderr_thread = threading.Thread(
+            target=stream_output,
+            args=(process.stderr, stderr_lines, "[STDERR] "),
+            daemon=True
+        )
         
-        if result.returncode != 0:
+        stdout_thread.start()
+        stderr_thread.start()
+        
+        # Wait for process to complete with timeout
+        start_time = time.time()
+        timeout_seconds = TIMEOUT - 600
+        
+        while process.poll() is None:
+            if time.time() - start_time > timeout_seconds:
+                process.kill()
+                process.wait()
+                raise subprocess.TimeoutExpired(cmd, timeout_seconds)
+            time.sleep(0.1)
+        
+        # Wait for output threads to finish
+        stdout_thread.join(timeout=5)
+        stderr_thread.join(timeout=5)
+        
+        returncode = process.returncode
+        stdout_text = "\n".join(stdout_lines)
+        stderr_text = "\n".join(stderr_lines)
+        
+        if returncode != 0:
             # Update job status to FINISHED
             if job_id:
                 hf_username = config.get("hf_username")
@@ -325,8 +376,8 @@ def _execute_protify_job(
             
             return {
                 "success": False,
-                "error": result.stderr[-5000:] if result.stderr else "Unknown error",
-                "stdout": result.stdout[-5000:] if result.stdout else ""
+                "error": stderr_text[-5000:] if stderr_text else "Unknown error",
+                "stdout": stdout_text[-5000:] if stdout_text else ""
             }
         
         # Collect results
@@ -363,7 +414,7 @@ def _execute_protify_job(
             "result_files": result_files,
             "plot_dirs": plot_dirs,
             "log_files": log_files,
-            "stdout": result.stdout[-5000:] if result.stdout else "",
+            "stdout": stdout_text[-5000:] if stdout_text else "",
             "job_id": job_id
         }
         
@@ -735,22 +786,47 @@ def web_interface():
             print(f"Warning: Failed to save job storage: {e}")
     
     # Model and dataset lists (from Protify source)
+    # All currently supported models from src/protify/base_models/get_base_models.py
     STANDARD_MODELS = [
         'ESM2-8', 'ESM2-35', 'ESM2-150', 'ESM2-650', 'ESM2-3B',
-        'ESMC-300', 'ESMC-600', 'ProtBert', 'ProtT5', 'GLM2-150',
-        'GLM2-650', 'ANKH-Base', 'ANKH-Large', 'DPLM-150', 'DPLM-650',
-        'DSM-150', 'DSM-650'
+        'ESMC-300', 'ESMC-600', 
+        'ESM2-diff-150', 'ESM2-diffAV-150',
+        'ProtBert', 'ProtBert-BFD', 
+        'ProtT5', 'ProtT5-XL-UniRef50-full-prec', 'ProtT5-XXL-UniRef50', 
+        'ProtT5-XL-BFD', 'ProtT5-XXL-BFD',
+        'ANKH-Base', 'ANKH-Large', 'ANKH2-Large',
+        'GLM2-150', 'GLM2-650', 'GLM2-GAIA',
+        'DPLM-150', 'DPLM-650', 'DPLM-3B',
+        'DSM-150', 'DSM-650', 'DSM-PPI',
+        'ProtCLM-1b',
+        'Random', 'Random-Transformer', 
+        'Random-ESM2-8', 'Random-ESM2-35', 'Random-ESM2-150', 'Random-ESM2-650',
+        'OneHot-Protein', 'OneHot-DNA', 'OneHot-RNA', 'OneHot-Codon'
     ]
     
+    # All supported datasets from src/protify/data/supported_datasets.py
     STANDARD_DATASETS = [
-        'DeepLoc-2', 'EC', 'GO-CC', 'GO-BP', 'GO-MF', 'MB',
-        'DeepLoc-10', 'Subcellular', 'enzyme-kcat', 'solubility',
-        'localization', 'temperature-stability', 'peptide-HLA-MHC-affinity',
+        'EC', 'GO-CC', 'GO-BP', 'GO-MF', 'MB',
+        'DeepLoc-2', 'DeepLoc-10', 'Subcellular',
+        'enzyme-kcat', 'solubility', 'localization', 
+        'temperature-stability', 'peptide-HLA-MHC-affinity',
         'optimal-temperature', 'optimal-ph', 'material-production',
         'fitness-prediction', 'number-of-folds', 'cloning-clf',
-        'stability-prediction', 'human-ppi-saprot', 'SecondaryStructure-3',
-        'SecondaryStructure-8', 'fluorescence-prediction', 'plastic',
-        'gold-ppi', 'human-ppi-pinui', 'yeast-ppi-pinui'
+        'stability-prediction', 'human-ppi-saprot', 
+        'SecondaryStructure-3', 'SecondaryStructure-8', 
+        'fluorescence-prediction', 'plastic',
+        'gold-ppi', 'human-ppi-pinui', 'yeast-ppi-pinui',
+        'shs27-ppi-raw', 'shs148-ppi-raw',
+        'shs27-ppi-random', 'shs148-ppi-random',
+        'shs27-ppi-dfs', 'shs148-ppi-dfs',
+        'shs27-ppi-bfs', 'shs148-ppi-bfs',
+        'string-ppi-random', 'string-ppi-dfs', 'string-ppi-bfs',
+        'plm-interact', 'ppi-mutation-effect', 'PPA-ppi',
+        'foldseek-fold', 'foldseek-inverse',
+        'ec-active',
+        'taxon_domain', 'taxon_kingdom', 'taxon_phylum', 'taxon_class',
+        'taxon_order', 'taxon_family', 'taxon_genus', 'taxon_species',
+        'diff_phylogeny', 'plddt', 'realness', 'million_full'
     ]
     
     def form_values_to_config(*form_values) -> str:
@@ -761,9 +837,9 @@ def web_interface():
             home_dir, hf_home, log_dir, results_dir, model_save_dir,
             plots_dir, embedding_save_dir, download_dir,
             # Data tab
-            max_length, trim, delimiter, col_names, multi_column, data_names,
+            max_length, trim, delimiter, col_names, multi_column, data_names_selected, data_names_custom,
             # Model tab
-            model_names, gpu_type,
+            model_names_selected, model_names_custom, gpu_type,
             # Embed tab
             embedding_batch_size, num_workers, download_embeddings,
             matrix_embed, embedding_pooling_types, embed_dtype, sql,
@@ -834,10 +910,18 @@ def web_interface():
             "delimiter": delimiter or ",",
             "col_names": str_to_list(col_names) if col_names else ["seqs", "labels"],
             "multi_column": str_to_list(multi_column) if multi_column else None,
-            "data_names": str_to_list(data_names) if data_names else ["DeepLoc-2"],
+            # Combine selected datasets and custom datasets
+            "data_names": (
+                (list(data_names_selected) if data_names_selected else []) +
+                (str_to_list(data_names_custom) if data_names_custom else [])
+            ) or ["DeepLoc-2"],  # Default if both are empty
             "data_dirs": [],
             # Model
-            "model_names": str_to_list(model_names) if model_names else ["ESM2-8"],
+            # Combine selected models and custom models
+            "model_names": (
+                (list(model_names_selected) if model_names_selected else []) +
+                (str_to_list(model_names_custom) if model_names_custom else [])
+            ) or ["ESM2-8"],  # Default if both are empty
             # Embed
             "embedding_batch_size": int(embedding_batch_size) if embedding_batch_size else 16,
             "num_workers": int(num_workers) if num_workers else 0,
@@ -912,9 +996,10 @@ def web_interface():
             # Counting: hf_username(0), hf_token(1), wandb_api_key(2), synthyra_api_key(3),
             # home_dir(4), hf_home(5), log_dir(6), results_dir(7), model_save_dir(8),
             # plots_dir(9), embedding_save_dir(10), download_dir(11),
-            # max_length(12), trim(13), delimiter(14), col_names(15), multi_column(16), data_names(17),
-            # model_names(18), gpu_type(19)
-            gpu_type = form_values[19] if len(form_values) > 19 else PROTIFY_DEFAULT_GPU
+            # max_length(12), trim(13), delimiter(14), col_names(15), multi_column(16), 
+            # data_names_selected(17), data_names_custom(18),
+            # model_names_selected(19), model_names_custom(20), gpu_type(21)
+            gpu_type = form_values[21] if len(form_values) > 21 else PROTIFY_DEFAULT_GPU
             if not gpu_type or gpu_type not in AVAILABLE_GPUS:
                 gpu_type = PROTIFY_DEFAULT_GPU
             
@@ -1200,12 +1285,32 @@ def web_interface():
                             delimiter = gr.Textbox(label="Delimiter", value=",")
                             col_names = gr.Textbox(label="Column Names (comma-separated)", value="seqs,labels")
                             multi_column = gr.Textbox(label="Multi-Column Sequences (space-separated, optional)", value="")
-                            data_names = gr.Textbox(label="Dataset Names (comma-separated)", value="DeepLoc-2", 
-                                                  info=f"Available: {', '.join(STANDARD_DATASETS[:10])}...")
+                            data_names_selected = gr.CheckboxGroup(
+                                label="Select Standard Datasets",
+                                choices=STANDARD_DATASETS,
+                                value=["DeepLoc-2"],
+                                info="Select one or more standard datasets"
+                            )
+                            data_names_custom = gr.Textbox(
+                                label="Custom Dataset Names (comma-separated, optional)",
+                                value="",
+                                placeholder="Enter custom dataset names separated by commas",
+                                info="Add any custom dataset names not in the standard list above"
+                            )
                         
                         with gr.Accordion("🤖 Model Settings", open=True):
-                            model_names = gr.Textbox(label="Model Names (comma-separated)", value="ESM2-8",
-                                                    info=f"Available: {', '.join(STANDARD_MODELS[:10])}...")
+                            model_names_selected = gr.CheckboxGroup(
+                                label="Select Standard Models",
+                                choices=STANDARD_MODELS,
+                                value=["ESM2-8"],
+                                info="Select one or more standard models"
+                            )
+                            model_names_custom = gr.Textbox(
+                                label="Custom Model Names (comma-separated, optional)",
+                                value="",
+                                placeholder="Enter custom model names separated by commas",
+                                info="Add any custom model names not in the standard list above"
+                            )
                         
                         with gr.Accordion("🔢 Embedding Settings", open=False):
                             embedding_batch_size = gr.Number(label="Batch Size", value=16, precision=0)
@@ -1290,8 +1395,8 @@ def web_interface():
                     hf_username, hf_token, wandb_api_key, synthyra_api_key,
                     home_dir, hf_home, log_dir, results_dir, model_save_dir,
                     plots_dir, embedding_save_dir, download_dir,
-                    max_length, trim, delimiter, col_names, multi_column, data_names,
-                    model_names, gpu_type,
+                    max_length, trim, delimiter, col_names, multi_column, data_names_selected, data_names_custom,
+                    model_names_selected, model_names_custom, gpu_type,
                     embedding_batch_size, num_workers, download_embeddings,
                     matrix_embed, embedding_pooling_types, embed_dtype, sql,
                     probe_type, tokenwise, pre_ln, n_layers, hidden_size, dropout,

@@ -9,7 +9,9 @@ with a Gradio web interface. This app allows you to:
 3. Track job progress and view results
 
 Usage:
-    modal deploy protify_modal_app.py
+    modal deploy modal/protify_modal_app.py
+    
+    Note: Run this command from the project root directory.
     
     Then visit the web interface URL provided by Modal.
 
@@ -28,6 +30,11 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 import yaml
 import json
+
+# Get the directory where this script is located
+SCRIPT_DIR = Path(__file__).parent.resolve()
+# Get the project root (parent of modal/ directory)
+PROJECT_ROOT = SCRIPT_DIR.parent
 
 # Constants for app management
 APP_NAME = "protify-app"
@@ -64,32 +71,48 @@ app = modal.App(APP_NAME)
 
 # Build image conditionally - add local_data only if it exists
 # Add all Protify files and directories explicitly, similar to example_modal_app.py
+# Note: Since this file is in modal/, paths need to reference parent directory
+# Modal resolves paths relative to where 'modal deploy' is run from.
+# We'll use paths relative to project root - these will work when deploy is run from project root
+req_file_path = "requirements.txt"  # Relative to project root
+src_dir_path = "src"  # Relative to project root
+readme_file_path = "README.md"  # Relative to project root
+local_data_dir_path = "local_data"  # Relative to project root
+
+# Build base image
 image_base = (
     modal.Image.debian_slim(python_version="3.10")
     .apt_install("git", "wget", "curl")
     .run_commands("pip install --upgrade pip setuptools")
-    .add_local_file("requirements.txt", "/tmp/requirements.txt", copy=True)
-    .run_commands("pip install -r /tmp/requirements.txt")
-    .run_commands("pip install gradio fastapi")
-    .run_commands("pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128 -U")
-    .env({
-        "TF_CPP_MIN_LOG_LEVEL": "2",
-        "TF_ENABLE_ONEDNN_OPTS": "0",
-        "TOKENIZERS_PARALLELISM": "true",
-        "CUBLAS_WORKSPACE_CONFIG": ":4096:8"
-    })
-    # Add Protify source code - copy the entire src directory structure
-    # This includes: protify package, probes, base_models, data, visualization, etc.
-    .add_local_dir("src", "/root/src")
 )
 
+# Add requirements.txt if it exists (relative to project root where deploy is run)
+if (PROJECT_ROOT / req_file_path).exists():
+    image_base = image_base.add_local_file(req_file_path, "/tmp/requirements.txt", copy=True)
+
+# Continue building image
+image_base = image_base.run_commands("pip install -r /tmp/requirements.txt")
+image_base = image_base.run_commands("pip install gradio fastapi")
+image_base = image_base.run_commands("pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128 -U")
+image_base = image_base.env({
+    "TF_CPP_MIN_LOG_LEVEL": "2",
+    "TF_ENABLE_ONEDNN_OPTS": "0",
+    "TOKENIZERS_PARALLELISM": "true",
+    "CUBLAS_WORKSPACE_CONFIG": ":4096:8"
+})
+
+# Add Protify source code - copy the entire src directory structure
+# This includes: protify package, probes, base_models, data, visualization, etc.
+if (PROJECT_ROOT / src_dir_path).exists():
+    image_base = image_base.add_local_dir(src_dir_path, "/root/src")
+
 # Add README.md to the image
-if os.path.exists("README.md"):
-    image_base = image_base.add_local_file("README.md", "/root/README.md")
+if (PROJECT_ROOT / readme_file_path).exists():
+    image_base = image_base.add_local_file(readme_file_path, "/root/README.md")
 
 # Conditionally add local_data directory if it exists at root level
-if os.path.exists("local_data") and os.path.isdir("local_data"):
-    image = image_base.add_local_dir("local_data", "/root/local_data")
+if (PROJECT_ROOT / local_data_dir_path).exists() and (PROJECT_ROOT / local_data_dir_path).is_dir():
+    image = image_base.add_local_dir(local_data_dir_path, "/root/local_data")
 else:
     image = image_base
 

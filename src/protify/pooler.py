@@ -26,7 +26,6 @@ class Pooler:
         # Run PageRank on the attention matrix converted to a graph.
         # Raises exceptions if the graph doesn't match the token sequence or has no edges.
         # Returns the PageRank scores for each token node.
-
         G = self._convert_to_graph(attention_matrix)
         if G.number_of_nodes() != attention_matrix.shape[0]:
             raise Exception(

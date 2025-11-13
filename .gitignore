@@ -17,3 +17,6 @@ src/protify/private_yamls
 *.db
 *.yaml
 !yamls/base.yaml
+/outputs/*
+src/protify/benchmarks/proteingym/scores_old/*
+src/protify/results/*

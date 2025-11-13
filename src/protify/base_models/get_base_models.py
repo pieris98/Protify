@@ -44,6 +44,9 @@ currently_supported_models = [
 ]
 
 standard_models = [
+    'Random',
+    'Random-Transformer',
+    'OneHot-Protein',
     'ESM2-8',
     'ESM2-35',
     'ESM2-150',
@@ -51,20 +54,22 @@ standard_models = [
     'ESM2-3B',
     'ESMC-300',
     'ESMC-600',
-    'ProtBert',
-    'ProtT5',
-    'GLM2-150',
-    'GLM2-650',
-    'ANKH-Base',
-    'ANKH-Large',
-    'DPLM-150',
-    'DPLM-650',
     'DSM-150',
     'DSM-650',
     'DSM-PPI',
-    'Random',
-    'Random-Transformer',
-    'OneHot-Protein',
+    'ProtBert',
+    'ProtBert-BFD',
+    'ProtT5',
+    'ProtCLM-1b',
+    'ANKH-Base',
+    'ANKH-Large',
+    'ANKH2-Large',
+    'GLM2-150',
+    'GLM2-650',
+    'GLM2-GAIA',
+    'DPLM-150',
+    'DPLM-650',
+    'DPLM-3B',
 ]
 
 experimental_models = []

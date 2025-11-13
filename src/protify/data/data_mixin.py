@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from utils import print_message
 from seed_utils import get_global_seed
+from embedder import get_embedding_filename
 from .supported_datasets import supported_datasets, standard_data_benchmark
 
 
@@ -682,9 +683,12 @@ class DataMixin:
         ):
         save_dir = self.embedding_args.embedding_save_dir
         train_array, valid_array, test_array = [], [], []
+        # Get pooling types from embedding_args, default to ['mean'] if not available
+        pooling_types = self.embedding_args.pooling_types
         if self._sql:
             import sqlite3
-            save_path = os.path.join(save_dir, f'{model_name}_{self._full}.db')
+            filename = get_embedding_filename(model_name, self._full, pooling_types, 'db')
+            save_path = os.path.join(save_dir, filename)
             with sqlite3.connect(save_path) as conn:
                 c = conn.cursor()
                 for seq in train_seqs:
@@ -699,7 +703,8 @@ class DataMixin:
                     embedding = self._select_from_sql(c, seq, cast_to_torch=False)
                     test_array.append(embedding)
         else:
-            save_path = os.path.join(save_dir, f'{model_name}_{self._full}.pth')
+            filename = get_embedding_filename(model_name, self._full, pooling_types, 'pth')
+            save_path = os.path.join(save_dir, filename)
             emb_dict = torch.load(save_path)
             for seq in train_seqs:
                 embedding = self._select_from_pth(emb_dict, seq, cast_to_np=True)
@@ -741,8 +746,10 @@ class DataMixin:
         ):
         save_dir = self.embedding_args.embedding_save_dir
         train_array, valid_array, test_array = [], [], []
+        pooling_types = self.embedding_args.pooling_types
         if self._sql:
-            save_path = os.path.join(save_dir, f'{model_name}_{self._full}.db')
+            filename = get_embedding_filename(model_name, self._full, pooling_types, 'db')
+            save_path = os.path.join(save_dir, filename)
             with sqlite3.connect(save_path) as conn:
                 c = conn.cursor()
                 for seq_a, seq_b in zip(train_seqs_a, train_seqs_b):
@@ -763,7 +770,8 @@ class DataMixin:
                     embedding_b = self._select_from_sql(c, seq_b, cast_to_torch=False)
                     test_array.append(np.concatenate([embedding_a, embedding_b], axis=-1))
         else:
-            save_path = os.path.join(save_dir, f'{model_name}_{self._full}.pth')
+            filename = get_embedding_filename(model_name, self._full, pooling_types, 'pth')
+            save_path = os.path.join(save_dir, filename)
             emb_dict = torch.load(save_path)
             for seq_a, seq_b in zip(train_seqs_a, train_seqs_b):
                 seq_a, seq_b = self._random_order(seq_a, seq_b)

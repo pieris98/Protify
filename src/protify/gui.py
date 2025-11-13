@@ -217,7 +217,7 @@ class GUI(MainProcess):
 
         # Download directory
         ttk.Label(paths_frame, text="Download Directory:").grid(row=7, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["download_dir"] = tk.StringVar(value="Synthyra/mean_pooled_embeddings")
+        self.settings_vars["download_dir"] = tk.StringVar(value="Synthyra/vector_embeddings")
         entry_download = ttk.Entry(paths_frame, textvariable=self.settings_vars["download_dir"], width=30)
         entry_download.grid(row=7, column=1, padx=10, pady=5)
         self.add_help_button(paths_frame, 7, 2, "HuggingFace repository path for downloading pre-computed embeddings.")

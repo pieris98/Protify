@@ -926,7 +926,7 @@ def web_interface():
             "model_save_dir": model_save_dir or "weights",
             "plots_dir": plots_dir or "plots",
             "embedding_save_dir": embedding_save_dir or "embeddings",
-            "download_dir": download_dir or "Synthyra/mean_pooled_embeddings",
+            "download_dir": download_dir or "Synthyra/vector_embeddings",
             # Data
             "max_length": int(max_length) if max_length else 2048,
             "trim": bool(trim),
@@ -1300,7 +1300,7 @@ def web_interface():
                             model_save_dir = gr.Textbox(label="Model Save Directory", value="weights")
                             plots_dir = gr.Textbox(label="Plots Directory", value="plots")
                             embedding_save_dir = gr.Textbox(label="Embedding Save Directory", value="embeddings")
-                            download_dir = gr.Textbox(label="Download Directory", value="Synthyra/mean_pooled_embeddings")
+                            download_dir = gr.Textbox(label="Download Directory", value="Synthyra/vector_embeddings")
                         
                         with gr.Accordion("📊 Data Settings", open=True):
                             max_length = gr.Number(label="Max Sequence Length", value=2048, precision=0)

@@ -24,6 +24,27 @@ def build_collator(tokenizer) -> Callable[[List[str]], tuple[torch.Tensor, torch
     return _collate_fn
 
 
+def get_embedding_filename(model_name: str, matrix_embed: bool, pooling_types: List[str], extension: str = 'pth') -> str:
+    """
+    Generate embedding filename with pooling types for vector embeddings.
+    
+    Args:
+        model_name: Name of the model
+        matrix_embed: Whether embeddings are matrices (True) or vectors (False)
+        pooling_types: List of pooling types used (only relevant for vector embeddings)
+        extension: File extension ('pth' or 'db')
+    
+    Returns:
+        Filename string in format: {model_name}_{matrix_embed}[_{pooling_types}].{extension}
+    """
+    base_name = f'{model_name}_{matrix_embed}'
+    if not matrix_embed and pooling_types:
+        # For vector embeddings, include pooling types in filename
+        pooling_str = '_'.join(sorted(pooling_types))  # Sort for consistency
+        base_name = f'{base_name}_{pooling_str}'
+    return f'{base_name}.{extension}'
+
+
 @dataclass
 class EmbeddingArguments:
     def __init__(
@@ -31,7 +52,7 @@ class EmbeddingArguments:
             embedding_batch_size: int = 4,
             embedding_num_workers: int = 0,
             download_embeddings: bool = False,
-            download_dir: str = 'Synthyra/mean_pooled_embeddings',
+            download_dir: str = 'Synthyra/vector_embeddings',
             matrix_embed: bool = False,
             embedding_pooling_types: List[str] = ['mean'],
             save_embeddings: bool = False,
@@ -74,10 +95,11 @@ class Embedder:
         # download from download_dir
         # unzip
         # move to embedding_save_dir
+        filename = get_embedding_filename(model_name, self.matrix_embed, self.pooling_types, 'pth')
         try:
             local_path = hf_hub_download(
                 repo_id=self.download_dir,
-                filename=f'embeddings/{model_name}_{self.matrix_embed}.pth.gz',
+                filename=f'embeddings/{filename}.gz',
                 repo_type='dataset'
             )
         except:
@@ -91,7 +113,7 @@ class Embedder:
                 f_out.write(f_in.read())
         # move to embedding_save_dir
         unzipped_path = local_path.replace('.gz', '')
-        final_path = os.path.join(self.embedding_save_dir, f'{model_name}_{self.matrix_embed}.pth')
+        final_path = os.path.join(self.embedding_save_dir, filename)
         
         if os.path.exists(final_path):
             print_message(f'Found existing embeddings in {final_path}')
@@ -136,7 +158,8 @@ class Embedder:
 
     def _read_embeddings_from_disk(self, model_name: str):
         if self.sql:
-            save_path = os.path.join(self.embedding_save_dir, f'{model_name}_{self.matrix_embed}.db')
+            filename = get_embedding_filename(model_name, self.matrix_embed, self.pooling_types, 'db')
+            save_path = os.path.join(self.embedding_save_dir, filename)
             if os.path.exists(save_path):
                 conn = sqlite3.connect(save_path)
                 c = conn.cursor()
@@ -151,7 +174,8 @@ class Embedder:
 
         else:
             embeddings_dict = {}
-            save_path = os.path.join(self.embedding_save_dir, f'{model_name}_{self.matrix_embed}.pth')
+            filename = get_embedding_filename(model_name, self.matrix_embed, self.pooling_types, 'pth')
+            save_path = os.path.join(self.embedding_save_dir, filename)
             if os.path.exists(save_path):
                 print_message(f"Loading embeddings from {save_path}")
                 embeddings_dict = torch_load(save_path)
@@ -293,11 +317,12 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--token', default=None, help='Huggingface token')
-    parser.add_argument('--batch_size', type=int, default=4)
-    parser.add_argument('--num_workers', type=int, default=0)
+    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--embed_dtype', type=str, default='float16')
     parser.add_argument('--embedding_save_dir', type=str, default='embeddings')
-    parser.add_argument('--download_dir', type=str, default='Synthyra/mean_pooled_embeddings')
+    parser.add_argument('--download_dir', type=str, default='Synthyra/vector_embeddings')
+    parser.add_argument('--embedding_pooling_types', nargs='+', default=['mean', 'var'], help='Pooling types for embeddings.')
     args = parser.parse_args()
 
     if args.token is not None:
@@ -326,7 +351,7 @@ if __name__ == '__main__':
         num_workers=args.num_workers,
         download_embeddings=True,
         matrix_embed=False,
-        pooling_types=['mean'],
+        pooling_types=args.embedding_pooling_types,
         save_embeddings=True,
         embed_dtype=dtype,
         sql=False,
@@ -338,7 +363,8 @@ if __name__ == '__main__':
     model_args = BaseModelArguments(model_names=['standard'])
     for model_name in model_args.model_names:
         _ = embedder(model_name)
-        save_path = os.path.join(args.embedding_save_dir, f'{model_name}_False.pth')
+        filename = get_embedding_filename(model_name, False, embedder_args.pooling_types, 'pth')
+        save_path = os.path.join(args.embedding_save_dir, filename)
         
         compressed_path = f"{save_path}.gz"
         print(f"Compressing {save_path} to {compressed_path}")
@@ -346,7 +372,7 @@ if __name__ == '__main__':
             with gzip.open(compressed_path, 'wb') as f_out:
                 f_out.write(f_in.read())
         upload_path = compressed_path
-        path_in_repo = f'embeddings/{model_name}_False.pth.gz'
+        path_in_repo = f'embeddings/{filename}.gz'
 
             
         upload_file(

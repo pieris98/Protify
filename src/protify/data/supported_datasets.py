@@ -65,34 +65,62 @@ internal_datasets = {
 
 # TODO update
 possible_with_vector_reps = [
-    # multi-label
+    ### multi-label
     'EC',
+    # GO
     'GO-CC',
     'GO-BP',
     'GO-MF',
-    # classification
+    'Subcellular',
+    # ppi
+    'shs27-ppi-random',
+    'shs27-ppi-dfs',
+    'shs27-ppi-bfs',
+    'shs148-ppi-random',
+    'shs148-ppi-dfs',
+    'shs148-ppi-bfs',
+    'string-ppi-random',
+    'string-ppi-dfs',
+    'string-ppi-bfs',
+    ### classification
     'MB',
     'DeepLoc-2',
     'DeepLoc-10',
     'solubility',
-    'localization',
     'temperature-stability',
     'material-production',
     'fitness-prediction',
     'number-of-folds',
     'cloning-clf',
     'stability-prediction',
-    # regression
+    'ec-active',
+    'localization',
+    # taxonomy
+    'taxon_domain',
+    'taxon_kingdom',
+    'taxon_phylum',
+    'taxon_class',
+    'taxon_order',
+    'taxon_family',
+    'taxon_genus',
+    'taxon_species',
+    'diff_phylogeny',
+    # ppi
+    'shs27-ppi-raw',
+    'shs148-ppi-raw',
+    'plm-interact',
+    'gold-ppi',
+    'string-ppi-bfs'
+    'human-ppi-saprot',
+    'human-ppi-pinui',
+    'yeast-ppi-pinui',
+    ### regression
     'enzyme-kcat',
     'optimal-temperature',
     'optimal-ph',
+    'million_full',
     # ppi
-    'human-ppi',
     'PPA-ppi',
-    'human-ppi-pinui',
-    'yeast-ppi-pinui',
-    'gold-ppi',
-    'peptide-HLA-MHC-affinity',
 ]
 
 # TODO update
@@ -110,6 +138,57 @@ standard_data_benchmark = [
     'optimal-ph',
     'fitness-prediction',
 ]
+
+
+vector_benchmark = [
+    ### multi-label
+    'EC',
+    # GO
+    'GO-CC',
+    'GO-BP',
+    'GO-MF',
+    'Subcellular',
+    # ppi
+    'shs27-ppi-bfs'
+    'shs148-ppi-bfs',
+    'string-ppi-bfs',
+    ### classification
+    'MB',
+    'DeepLoc-2',
+    'DeepLoc-10',
+    'solubility',
+    'temperature-stability',
+    'material-production',
+    'fitness-prediction',
+    'number-of-folds',
+    'cloning-clf',
+    'stability-prediction',
+    'ec-active',
+    # taxonomy
+    'taxon_domain',
+    'taxon_kingdom',
+    'taxon_phylum',
+    'taxon_class',
+    'taxon_order',
+    'taxon_family',
+    'taxon_genus',
+    'taxon_species',
+    'diff_phylogeny',
+    # ppi
+    'shs27-ppi-raw',
+    'shs148-ppi-raw',
+    'plm-interact',
+    'gold-ppi',
+    'string-ppi-bfs'
+    ### regression
+    'enzyme-kcat',
+    'optimal-temperature',
+    'optimal-ph',
+    'million_full',
+    # ppi
+    'PPA-ppi',  
+]
+
 
 testing = [
     'EC', # multilabel

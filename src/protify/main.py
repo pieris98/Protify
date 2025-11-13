@@ -24,7 +24,7 @@ def parse_arguments():
     parser.add_argument("--results_dir", type=str, default="results", help="Path to the results directory.")
     parser.add_argument("--model_save_dir", default="weights", help="Directory to save models.")
     parser.add_argument("--embedding_save_dir", default="embeddings", help="Directory to save embeddings.")
-    parser.add_argument("--download_dir", default="Synthyra/mean_pooled_embeddings", help="Directory to download embeddings to.")
+    parser.add_argument("--download_dir", default="Synthyra/vector_embeddings", help="Directory to download embeddings to.")
     parser.add_argument("--plots_dir", default="plots", help="Directory to save plots.")
     parser.add_argument("--replay_path", type=str, default=None, help="Path to the replay file.")
     parser.add_argument("--pretrained_probe_path", type=str, default=None) # TODO not used right now
@@ -184,7 +184,7 @@ from base_models.utils import wrap_lora
 from data.data_mixin import DataMixin, DataArguments
 from probes.trainers import TrainerMixin, TrainerArguments
 from probes.scikit_classes import ScikitArguments, ScikitProbe
-from embedder import EmbeddingArguments, Embedder
+from embedder import EmbeddingArguments, Embedder, get_embedding_filename
 from logger import MetricsLogger, log_method_calls
 from utils import torch_load, print_message
 from visualization.plot_result import create_plots
@@ -365,14 +365,17 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             tokenizer = get_tokenizer(model_name)
 
             # get embedding size
+            pooling_types = self.embedding_args.pooling_types
             if self._sql:
                 # for sql, the embeddings will be gathered in real time during training
-                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.db')
+                filename = get_embedding_filename(model_name, self._full, pooling_types, 'db')
+                save_path = os.path.join(self.embedding_args.embedding_save_dir, filename)
                 input_size = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
                 emb_dict = None
             else:
                 # for pth, the embeddings are loaded entirely into RAM and accessed during training
-                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.pth')
+                filename = get_embedding_filename(model_name, self._full, pooling_types, 'pth')
+                save_path = os.path.join(self.embedding_args.embedding_save_dir, filename)
                 emb_dict = torch_load(save_path)
                 input_size = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
 
@@ -431,14 +434,17 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 clean_model_name = model_name
 
             # get embedding size
+            pooling_types = self.embedding_args.pooling_types
             if self._sql:
                 # for sql, the embeddings will be gathered in real time during training
-                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{clean_model_name}_{self._full}.db')
+                filename = get_embedding_filename(clean_model_name, self._full, pooling_types, 'db')
+                save_path = os.path.join(self.embedding_args.embedding_save_dir, filename)
                 input_size = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
                 emb_dict = None
             else:
                 # for pth, the embeddings are loaded entirely into RAM and accessed during training
-                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{clean_model_name}_{self._full}.pth')
+                filename = get_embedding_filename(clean_model_name, self._full, pooling_types, 'pth')
+                save_path = os.path.join(self.embedding_args.embedding_save_dir, filename)
                 emb_dict = torch_load(save_path)
                 input_size = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
 

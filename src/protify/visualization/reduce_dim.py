@@ -14,7 +14,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from utils import torch_load, print_message
 from seed_utils import get_global_seed, set_global_seed, set_determinism
 from data.data_mixin import DataMixin, DataArguments
-from embedder import Embedder, EmbeddingArguments
+from embedder import Embedder, EmbeddingArguments, get_embedding_filename
 
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
@@ -38,7 +38,7 @@ class VisualizationArguments:
     embedding_batch_size: int = 16
     num_workers: int = 0
     download_embeddings: bool = False
-    download_dir: str = "Synthyra/mean_pooled_embeddings"
+    download_dir: str = "Synthyra/vector_embeddings"
     embedding_pooling_types: List[str] = field(default_factory=lambda: ["mean"])
     save_embeddings: bool = False
     embed_dtype: str = "float32"  # Will be converted to torch dtype
@@ -75,10 +75,11 @@ class DimensionalityReducer(DataMixin):
         os.makedirs(self.args.embedding_save_dir, exist_ok=True)
         
         # Check if we need to embed (similar to Embedder._read_embeddings_from_disk)
-        save_path = os.path.join(self.args.embedding_save_dir,
-                               f'{self.args.model_name}_{self.args.matrix_embed}.pth')
-        db_path = os.path.join(self.args.embedding_save_dir,
-                              f'{self.args.model_name}_{self.args.matrix_embed}.db')
+        pooling_types = self.args.embedding_pooling_types
+        filename_pth = get_embedding_filename(self.args.model_name, self.args.matrix_embed, pooling_types, 'pth')
+        filename_db = get_embedding_filename(self.args.model_name, self.args.matrix_embed, pooling_types, 'db')
+        save_path = os.path.join(self.args.embedding_save_dir, filename_pth)
+        db_path = os.path.join(self.args.embedding_save_dir, filename_db)
         
         if self._sql:
             # Check SQL database
@@ -140,10 +141,11 @@ class DimensionalityReducer(DataMixin):
         
         embeddings = []
         
+        pooling_types = self.args.embedding_pooling_types
         if self._sql:
             import sqlite3
-            save_path = os.path.join(self.args.embedding_save_dir, 
-                                   f'{self.args.model_name}_{self.args.matrix_embed}.db')
+            filename = get_embedding_filename(self.args.model_name, self.args.matrix_embed, pooling_types, 'db')
+            save_path = os.path.join(self.args.embedding_save_dir, filename)
             with sqlite3.connect(save_path) as conn:
                 c = conn.cursor()
                 for seq in sequences:
@@ -159,8 +161,8 @@ class DimensionalityReducer(DataMixin):
                             embedding = embedding.squeeze(0)
                     embeddings.append(embedding)
         else:
-            save_path = os.path.join(self.args.embedding_save_dir,
-                                   f'{self.args.model_name}_{self.args.matrix_embed}.pth')
+            filename = get_embedding_filename(self.args.model_name, self.args.matrix_embed, pooling_types, 'pth')
+            save_path = os.path.join(self.args.embedding_save_dir, filename)
             emb_dict = torch_load(save_path)
             for seq in sequences:
                 # Use DataMixin's _select_from_pth method
@@ -340,7 +342,7 @@ def parse_arguments():
                        help="Number of worker processes for data loading.")
     parser.add_argument("--download_embeddings", action="store_true", default=False,
                        help="Download embeddings from HuggingFace hub.")
-    parser.add_argument("--download_dir", type=str, default="Synthyra/mean_pooled_embeddings",
+    parser.add_argument("--download_dir", type=str, default="Synthyra/vector_embeddings",
                        help="Directory to download embeddings from.")
     parser.add_argument("--embedding_pooling_types", nargs="+", default=["mean", "var"],
                        help="Pooling types for embeddings.")

@@ -110,7 +110,7 @@ possible_with_vector_reps = [
     'shs148-ppi-raw',
     'plm-interact',
     'gold-ppi',
-    'string-ppi-bfs'
+    'string-ppi-bfs',
     'human-ppi-saprot',
     'human-ppi-pinui',
     'yeast-ppi-pinui',
@@ -149,7 +149,7 @@ vector_benchmark = [
     'GO-MF',
     'Subcellular',
     # ppi
-    'shs27-ppi-bfs'
+    'shs27-ppi-bfs',
     'shs148-ppi-bfs',
     'string-ppi-bfs',
     ### classification
@@ -179,7 +179,7 @@ vector_benchmark = [
     'shs148-ppi-raw',
     'plm-interact',
     'gold-ppi',
-    'string-ppi-bfs'
+    'string-ppi-bfs',
     ### regression
     'enzyme-kcat',
     'optimal-temperature',

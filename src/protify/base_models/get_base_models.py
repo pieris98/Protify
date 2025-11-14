@@ -36,7 +36,6 @@ currently_supported_models = [
     'DSM-150',
     'DSM-650',
     'DSM-PPI',
-    'ProtCLM-1b'
     'OneHot-Protein',
     'OneHot-DNA',
     'OneHot-RNA',
@@ -60,7 +59,6 @@ standard_models = [
     'ProtBert',
     'ProtBert-BFD',
     'ProtT5',
-    'ProtCLM-1b',
     'ANKH-Base',
     'ANKH-Large',
     'ANKH2-Large',

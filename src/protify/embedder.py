@@ -312,6 +312,7 @@ if __name__ == '__main__':
     from data.supported_datasets import possible_with_vector_reps
     from data.data_mixin import DataArguments, DataMixin
     from base_models.get_base_models import BaseModelArguments, get_base_model
+    from seed_utils import set_global_seed
 
     os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1' # prevent cache warning on Windows machines
 
@@ -324,6 +325,8 @@ if __name__ == '__main__':
     parser.add_argument('--download_dir', type=str, default='Synthyra/vector_embeddings')
     parser.add_argument('--embedding_pooling_types', nargs='+', default=['mean', 'var'], help='Pooling types for embeddings.')
     args = parser.parse_args()
+
+    chosen_seed = set_global_seed()
 
     if args.token is not None:
         login(args.token)
@@ -351,7 +354,7 @@ if __name__ == '__main__':
         num_workers=args.num_workers,
         download_embeddings=True,
         matrix_embed=False,
-        pooling_types=args.embedding_pooling_types,
+        embedding_pooling_types=args.embedding_pooling_types,
         save_embeddings=True,
         embed_dtype=dtype,
         sql=False,

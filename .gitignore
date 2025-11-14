@@ -19,3 +19,5 @@ src/protify/private_yamls
 !yamls/base.yaml
 /src/protify/results/*
 .cursorignore
+/outputs/*
+src/protify/benchmarks/proteingym/scores_old/*

@@ -15,8 +15,6 @@ currently_supported_models = [
     'Random-ESM2-650',
     'ESMC-300',
     'ESMC-600',
-    'ESM2-diff-150',
-    'ESM2-diffAV-150',
     'ProtBert',
     'ProtBert-BFD',
     'ProtT5',

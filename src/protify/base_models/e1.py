@@ -35,7 +35,7 @@ class E1TokenizerWrapper(BaseSequenceTokenizer):
 class E1ForEmbedding(nn.Module):
     def __init__(self, model_path: str):
         super().__init__()
-        self.e1 = E1Model.from_pretrained(model_path)
+        self.e1 = E1Model.from_pretrained(model_path, dtype=torch.bfloat16)
 
     def forward(
             self,

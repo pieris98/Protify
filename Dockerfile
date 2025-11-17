@@ -31,7 +31,7 @@ ENV PIP_BREAK_SYSTEM_PACKAGES=1
 RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && \
     ln -s /usr/bin/python3.12 /usr/local/bin/python && \
     ln -s /usr/bin/python3.12 /usr/local/bin/python3 && \
-    python -m pip install --upgrade pip setuptools
+    python -m pip install pip setuptools -U
 
 # 3️⃣  Location of project code (inside image) – NOT shared with host
 WORKDIR /app
@@ -53,7 +53,8 @@ RUN git clone https://github.com/ROCm/flash-attention.git &&\
     cd flash-attention &&\
     git checkout main_perf &&\
     python setup.py install &&\
-    cd .. && rm -rf flash-attention
+    cd .. &&\
+    rm -rf flash-attention
 
 # 5️⃣  Copy the rest of the source
 COPY . .

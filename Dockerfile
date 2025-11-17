@@ -12,7 +12,7 @@ ENV        DEBIAN_FRONTEND=noninteractive \
            CUDA_HOME=/usr/local/cuda \
            TF_CPP_MIN_LOG_LEVEL=2 \
            TF_ENABLE_ONEDNN_OPTS=0 \
-           TOKENIZERS_PARALLELISM=true
+           TOKENIZERS_PARALLELISM=true \
            FLASH_ATTENTION_TRITON_AMD_ENABLE=true \
 
 RUN apt-get update && \

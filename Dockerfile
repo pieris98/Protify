@@ -21,7 +21,7 @@ RUN apt-get update && \
         libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
         libsqlite3-dev libncursesw5-dev xz-utils tk-dev \
         libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev \
-        ninja-build && \
+        ninja-build procps && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install pip for Python 3.12
@@ -41,10 +41,26 @@ COPY requirements.txt .
 # Install packages in correct order:
 # 1. Install requirements.txt first (some packages may install torch, but we'll override it)
 # 2. Install torch/torchvision with CUDA 12.8 AFTER requirements (to override any torch version)
-# 3. Install flash-attn with limited parallelism to prevent memory crashes
+# 3. Install flash-attn (slow: compiles CUDA kernels from source)
+#    - Automatically detects CPU count and RAM to set optimal MAX_JOBS
+#    - ninja-build (installed above) enables parallel compilation, reducing build time from ~2hrs to ~5-10min
 RUN pip install -r requirements.txt && \
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128 -U && \
-    MAX_JOBS=2 CMAKE_BUILD_PARALLEL_LEVEL=2 pip install flash-attn --no-build-isolation --no-cache-dir
+    bash -c ' \
+      CPU_COUNT=$(nproc) && \
+      RAM_GB=$(free -g | awk "/^Mem:/{print \$2}") && \
+      RAM_GB=${RAM_GB:-8} && \
+      CPU_COUNT=${CPU_COUNT:-2} && \
+      echo "Detected: ${CPU_COUNT} CPUs, ${RAM_GB}GB RAM" && \
+      MAX_JOBS_BY_CPU=$((CPU_COUNT < 8 ? CPU_COUNT : 8)) && \
+      MAX_JOBS_BY_RAM=$((RAM_GB / 8 < 1 ? 1 : RAM_GB / 8)) && \
+      MAX_JOBS_BY_RAM=$((MAX_JOBS_BY_RAM > 8 ? 8 : MAX_JOBS_BY_RAM)) && \
+      MAX_JOBS=$((MAX_JOBS_BY_CPU < MAX_JOBS_BY_RAM ? MAX_JOBS_BY_CPU : MAX_JOBS_BY_RAM)) && \
+      MAX_JOBS=$((MAX_JOBS < 1 ? 1 : MAX_JOBS)) && \
+      MAX_JOBS=$((MAX_JOBS > 8 ? 8 : MAX_JOBS)) && \
+      echo "Using MAX_JOBS=${MAX_JOBS}, CMAKE_BUILD_PARALLEL_LEVEL=${MAX_JOBS} (conservative: ~8GB RAM per job, max 8 jobs)" && \
+      MAX_JOBS=${MAX_JOBS} CMAKE_BUILD_PARALLEL_LEVEL=${MAX_JOBS} pip install flash-attn --no-build-isolation --no-cache-dir \
+    '
 
 # 5️⃣  Copy the rest of the source
 COPY . .

@@ -63,12 +63,12 @@ def build_e1_model(preset: str):
 def get_e1_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):
     model_path = presets[preset]
     if hybrid:
-        model = E1Model.from_pretrained(model_path).eval()
+        model = E1Model.from_pretrained(model_path, dtype=torch.bfloat16).eval()
     else:
         if tokenwise:
-            model = E1ForTokenClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = E1ForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=torch.bfloat16).eval()
         else:
-            model = E1ForSequenceClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = E1ForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=torch.bfloat16).eval()
     tokenizer = get_e1_tokenizer(preset)
     return model, tokenizer
 

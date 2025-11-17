@@ -327,6 +327,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--embed_dtype', type=str, default='float16')
+    parser.add_argument('--model_names', nargs='+', default=['standard'])
     parser.add_argument('--embedding_save_dir', type=str, default='embeddings')
     parser.add_argument('--download_dir', type=str, default='Synthyra/vector_embeddings')
     parser.add_argument('--embedding_pooling_types', nargs='+', default=['mean', 'var'], help='Pooling types for embeddings.')
@@ -369,7 +370,7 @@ if __name__ == '__main__':
     embedder = Embedder(embedder_args, all_seqs)
 
     # Embed for each model
-    model_args = BaseModelArguments(model_names=['standard'])
+    model_args = BaseModelArguments(model_names=args.model_names)
     for model_name in model_args.model_names:
         _ = embedder(model_name)
         filename = get_embedding_filename(model_name, False, embedder_args.pooling_types, 'pth')

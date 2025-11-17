@@ -25,6 +25,8 @@ RUN apt-get update && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install pip for Python 3.12
+# Using PIP_BREAK_SYSTEM_PACKAGES=1 is safe in Docker containers (PEP 668)
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && \
     ln -s /usr/bin/python3.12 /usr/local/bin/python && \
     ln -s /usr/bin/python3.12 /usr/local/bin/python3 && \

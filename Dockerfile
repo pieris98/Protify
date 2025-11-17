@@ -13,6 +13,7 @@ ENV        DEBIAN_FRONTEND=noninteractive \
            TF_CPP_MIN_LOG_LEVEL=2 \
            TF_ENABLE_ONEDNN_OPTS=0 \
            TOKENIZERS_PARALLELISM=true
+           FLASH_ATTENTION_TRITON_AMD_ENABLE=true \
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -45,23 +46,14 @@ COPY requirements.txt .
 #    - Automatically detects CPU count and RAM to set optimal MAX_JOBS
 #    - ninja-build (installed above) enables parallel compilation, reducing build time from ~2hrs to ~5-10min
 RUN pip install -r requirements.txt && \
-    pip install ninja && \
+    pip install triton ninja && \
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128 -U && \
-    bash -c ' \
-      CPU_COUNT=$(nproc) && \
-      RAM_GB=$(free -g | awk "/^Mem:/{print \$2}") && \
-      RAM_GB=${RAM_GB:-8} && \
-      CPU_COUNT=${CPU_COUNT:-2} && \
-      echo "Detected: ${CPU_COUNT} CPUs, ${RAM_GB}GB RAM" && \
-      MAX_JOBS_BY_CPU=$((CPU_COUNT < 8 ? CPU_COUNT : 8)) && \
-      MAX_JOBS_BY_RAM=$((RAM_GB / 8 < 1 ? 1 : RAM_GB / 8)) && \
-      MAX_JOBS_BY_RAM=$((MAX_JOBS_BY_RAM > 8 ? 8 : MAX_JOBS_BY_RAM)) && \
-      MAX_JOBS=$((MAX_JOBS_BY_CPU < MAX_JOBS_BY_RAM ? MAX_JOBS_BY_CPU : MAX_JOBS_BY_RAM)) && \
-      MAX_JOBS=$((MAX_JOBS < 1 ? 1 : MAX_JOBS)) && \
-      MAX_JOBS=$((MAX_JOBS > 8 ? 8 : MAX_JOBS)) && \
-      echo "Using MAX_JOBS=${MAX_JOBS}, CMAKE_BUILD_PARALLEL_LEVEL=${MAX_JOBS} (conservative: ~8GB RAM per job, max 8 jobs)" && \
-      MAX_JOBS=${MAX_JOBS} CMAKE_BUILD_PARALLEL_LEVEL=${MAX_JOBS} pip install flash-attn --no-build-isolation \
-    '
+
+RUN git clone https://github.com/ROCm/flash-attention.git &&\ 
+    cd flash-attention &&\
+    git checkout main_perf &&\
+    python setup.py install &&\
+    cd .. && rm -rf flash-attention
 
 # 5️⃣  Copy the rest of the source
 COPY . .

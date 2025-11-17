@@ -16,11 +16,7 @@ ENV        DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        software-properties-common && \
-    add-apt-repository -y ppa:deadsnakes/ppa && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        python3.12 python3.12-dev python3.12-distutils \
+        python3.12 python3.12-dev python3.12-venv \
         build-essential curl git ca-certificates wget \
         libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
         libsqlite3-dev libncursesw5-dev xz-utils tk-dev \

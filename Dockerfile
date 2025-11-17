@@ -43,14 +43,21 @@ COPY requirements.txt .
 # 1. Install requirements.txt first (some packages may install torch, but we'll override it)
 # 2. Install torch/torchvision with CUDA 12.8 AFTER requirements (to override any torch version)
 # 3. Install flash-attn (slow: compiles CUDA kernels from source)
-#    - Automatically detects CPU count and RAM to set optimal MAX_JOBS
+#    - Limited to MAX_JOBS=4 to reduce memory usage during compilation
+#    - Added compilation flags to disable unused features and reduce build time
 #    - ninja-build (installed above) enables parallel compilation, reducing build time from ~2hrs to ~5-10min
 RUN pip install -r requirements.txt && \
     pip install triton ninja && \
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128 -U && \
-    git clone https://github.com/Dao-AILab/flash-attention.git && \
-    cd flash-attention && \
-    python setup.py install && \
+    git clone https://github.com/Dao-AILab/flash-attention.git
+
+# Patch flash-attention setup.py to add compilation flags for faster builds
+RUN cd flash-attention && \
+    python3 -c "import re; flags=['-DFLASHATTENTION_DISABLE_BACKWARD','-DFLASHATTENTION_DISABLE_DROPOUT','-DFLASHATTENTION_DISABLE_ALIBI','-DFLASHATTENTION_DISABLE_UNEVEN_K','-DFLASHATTENTION_DISABLE_LOCAL']; c=open('setup.py').read(); p=r'(extra_compile_args\s*=\s*\[)([^\]]*)(\])'; def f(m): a,b,s=m.groups(); e=[x.strip().strip('\"\\'') for x in b.split(',') if x.strip()]; n=[x for x in flags if x not in e]; j=', '.join(n); return a+b+', '+j+s if n and b.strip() else a+j+s if n else m.group(0); open('setup.py','w').write(re.sub(p,f,c))"
+
+# Install flash-attention with MAX_JOBS=4 to limit parallel compilation
+RUN cd flash-attention && \
+    MAX_JOBS=4 python setup.py install && \
     cd .. && \
     rm -rf flash-attention
 

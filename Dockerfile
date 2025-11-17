@@ -8,7 +8,8 @@ FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu24.04
 # Note: Modal uses Python 3.10, but we use 3.12 for better compatibility
 ENV        DEBIAN_FRONTEND=noninteractive \
            PYTHON_VERSION=3.12.7 \
-           PATH=/usr/local/bin:$PATH \
+           PATH=/usr/local/bin:/usr/local/cuda/bin:$PATH \
+           CUDA_HOME=/usr/local/cuda \
            TF_CPP_MIN_LOG_LEVEL=2 \
            TF_ENABLE_ONEDNN_OPTS=0 \
            TOKENIZERS_PARALLELISM=true
@@ -40,13 +41,13 @@ COPY requirements.txt .
 
 # Install packages in same order as Modal image:
 # 1. Upgrade pip/setuptools
-# 2. Install requirements.txt
-# 3. Install requirements_modal.txt (if exists)
-# 4. Force reinstall torch/torchvision with CUDA 12.8 (last, as in Modal)
+# 2. Install torch/torchvision with CUDA 12.8 FIRST (flash-attn needs CUDA-enabled torch)
+# 3. Install requirements.txt
+# 4. Install flash-attn (requires CUDA_HOME and CUDA-enabled torch)
 RUN pip install --upgrade pip setuptools && \
     pip install -r requirements.txt && \
-    pip install flash-attn --no-build-isolation && \
-    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128 -U
+    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128 -U && \
+    pip install flash-attn --no-build-isolation
 
 # 5️⃣  Copy the rest of the source
 COPY . .

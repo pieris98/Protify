@@ -1,12 +1,16 @@
 """
-We use the FastESM2 implementation of ESM2, which is exactly equivalent but uses FlashAttention2.
+We use the FastESM2 implementation of ESM2.
 """
 import torch
 import torch.nn as nn
 from typing import Optional, Union, List, Dict
 from transformers import EsmTokenizer
 
-from .FastPLMs.modeling_fastesm import FastEsmModel, FastEsmForSequenceClassification, FastEsmForTokenClassification
+from .FastPLMs.esm2.modeling_fastesm import (
+    FastEsmModel,
+    FastEsmForSequenceClassification,
+    FastEsmForTokenClassification,
+)
 from .base_tokenizer import BaseSequenceTokenizer
 
 

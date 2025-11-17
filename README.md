@@ -215,15 +215,16 @@ From pip
 `pip install Protify`
 
 To get started locally
-```console
+```bash
 git clone https://github.com/Gleghorn-Lab/Protify.git
 cd Protify
-python -m pip install -r requirements.txt
 git submodule update --init --remote --recursive
+python -m pip install -r requirements.txt
 cd src/protify
 ```
+
 With a Python VM (linux)
-```console
+```bash
 git clone https://github.com/Gleghorn-Lab/Protify.git
 cd Protify
 git submodule update --init --remote --recursive
@@ -231,6 +232,12 @@ chmod +x setup_protify.sh
 ./setup_protify.sh
 source ~/protify_venv/bin/activate
 cd src/protify
+```
+
+With Docker
+```bash
+docker build -t protify-env:latest .
+docker run --rm --gpus all -v ${PWD}:/workspace protify-env:latest python -m main
 ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -242,7 +249,7 @@ cd src/protify
   
   To launch the gui, run
   
-  ```console
+  ```bash
   python -m gui
   ```
   

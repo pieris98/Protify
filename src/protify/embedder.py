@@ -3,7 +3,6 @@ import torch
 import warnings
 import sqlite3
 import gzip
-import sys
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from dataclasses import dataclass
@@ -199,7 +198,7 @@ class Embedder:
             embeddings_dict: dict[str, torch.Tensor]) -> Optional[dict[str, torch.Tensor]]:
         os.makedirs(self.embedding_save_dir, exist_ok=True)
         model = embedding_model.to(self.device).eval()
-        if sys.platform.lower() == 'linux':
+        if os.name == 'posix':
             try:
                 torch.compile(model)
             except:
@@ -242,19 +241,26 @@ class Embedder:
 
         for i, batch in tqdm(enumerate(dataloader), total=len(dataloader), desc='Embedding batches'):
             seqs = to_embed[i * self.batch_size:(i + 1) * self.batch_size]
-            input_ids, attention_mask = batch['input_ids'].to(device), batch['attention_mask'].to(device)
+            batch = {k: v.to(device) for k, v in batch.items() if isinstance(v, torch.Tensor)}
+            if 'attention_mask' in batch:
+                attention_mask = batch['attention_mask']
+            elif 'sequence_ids' in batch:
+                attention_mask = (batch['sequence_ids'] != -1).long().to(device)
+            else:
+                attention_mask = torch.ones_like(batch['input_ids'], device=device)
+
             if 'parti' in self.pooling_types:
                 try:
-                    residue_embeddings, attentions = model(input_ids, attention_mask, output_attentions=True)
+                    residue_embeddings, attentions = model(**batch, output_attentions=True)
                     embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask, attentions=attentions).cpu()
                 except Exception as e:
                     print_message(f"Error in parti pooling: {e}\nDefaulting to mean pooling")
                     self.pooling_types = ['mean']
                     pooler = Pooler(self.pooling_types)
-                    residue_embeddings = model(input_ids, attention_mask)
+                    residue_embeddings = model(**batch)
                     embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask).cpu()
             else:
-                residue_embeddings = model(input_ids, attention_mask)
+                residue_embeddings = model(**batch)
                 embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask).cpu()
 
             for seq, emb, mask in zip(seqs, embeddings, attention_mask.cpu()):

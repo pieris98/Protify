@@ -15,6 +15,9 @@ currently_supported_models = [
     'Random-ESM2-650',
     'ESMC-300',
     'ESMC-600',
+    'E1-150',
+    'E1-300',
+    'E1-600',
     'ProtBert',
     'ProtBert-BFD',
     'ProtT5',
@@ -51,6 +54,9 @@ standard_models = [
     'ESM2-3B',
     'ESMC-300',
     'ESMC-600',
+    'E1-150',
+    'E1-300',
+    'E1-600',
     'DSM-150',
     'DSM-650',
     'DSM-PPI',
@@ -117,6 +123,9 @@ def get_base_model(model_name: str):
     elif 'onehot' in model_name.lower():
         from .one_hot import build_one_hot_model
         return build_one_hot_model(model_name)
+    elif 'e1' in model_name.lower():
+        from .e1 import build_e1_model
+        return build_e1_model(model_name)
     elif 'custom' in model_name.lower():
         model_path = model_name.split('---')[-1]
         from .custom_model import build_custom_model
@@ -147,6 +156,9 @@ def get_base_model_for_training(model_name: str, tokenwise: bool = False, num_la
     elif 'dplm' in model_name.lower():
         from .dplm import get_dplm_for_training
         return get_dplm_for_training(model_name, tokenwise, num_labels, hybrid)
+    elif 'e1' in model_name.lower():
+        from .e1 import get_e1_for_training
+        return get_e1_for_training(model_name, tokenwise, num_labels, hybrid)
     elif 'protclm' in model_name.lower():
         from .protCLM import get_protCLM_for_training
         return get_protCLM_for_training(model_name, tokenwise, num_labels, hybrid)
@@ -180,6 +192,9 @@ def get_tokenizer(model_name: str):
     elif 'dplm' in model_name.lower():
         from .dplm import get_dplm_tokenizer
         return get_dplm_tokenizer(model_name)
+    elif 'e1' in model_name.lower():
+        from .e1 import get_e1_tokenizer
+        return get_e1_tokenizer(model_name)
     elif 'protclm' in model_name.lower():
         from .protCLM import get_protCLM_tokenizer
         return get_protCLM_tokenizer(model_name)

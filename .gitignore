@@ -20,3 +20,4 @@ src/protify/private_yamls
 /outputs/*
 src/protify/benchmarks/proteingym/scores_old/*
 src/protify/results/*
+/.cache

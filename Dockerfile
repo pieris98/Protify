@@ -6,8 +6,8 @@ FROM nvidia/cuda:12.8.0-cudnn-devel-ubuntu24.04
 
 # 2️⃣  System prerequisites + Python 3.12
 # Note: Modal uses Python 3.10, but we use 3.12 for better compatibility
+# Using Ubuntu's pre-built Python 3.12 to avoid memory-intensive compilation
 ENV        DEBIAN_FRONTEND=noninteractive \
-           PYTHON_VERSION=3.12.7 \
            PATH=/usr/local/bin:/usr/local/cuda/bin:$PATH \
            CUDA_HOME=/usr/local/cuda \
            TF_CPP_MIN_LOG_LEVEL=2 \
@@ -16,6 +16,11 @@ ENV        DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+        software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3.12 python3.12-dev python3.12-distutils \
         build-essential curl git ca-certificates wget \
         libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
         libsqlite3-dev libncursesw5-dev xz-utils tk-dev \
@@ -23,15 +28,11 @@ RUN apt-get update && \
         ninja-build && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN curl -fsSLO https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz && \
-    tar -xzf Python-${PYTHON_VERSION}.tgz && \
-    cd Python-${PYTHON_VERSION} && \
-    ./configure --enable-optimizations && \
-    make -j"$(nproc)" && \
-    make altinstall && \
-    cd .. && rm -rf Python-${PYTHON_VERSION}* && \
-    ln -s /usr/local/bin/python3.12 /usr/local/bin/python && \
-    ln -s /usr/local/bin/pip3.12    /usr/local/bin/pip
+# Install pip for Python 3.12
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && \
+    ln -s /usr/bin/python3.12 /usr/local/bin/python && \
+    ln -s /usr/bin/python3.12 /usr/local/bin/python3 && \
+    python -m pip install --upgrade pip setuptools
 
 # 3️⃣  Location of project code (inside image) – NOT shared with host
 WORKDIR /app
@@ -39,15 +40,13 @@ WORKDIR /app
 # 4️⃣  Copy requirements first for layer caching (matching Modal image order)
 COPY requirements.txt .
 
-# Install packages in same order as Modal image:
-# 1. Upgrade pip/setuptools
-# 2. Install torch/torchvision with CUDA 12.8 FIRST (flash-attn needs CUDA-enabled torch)
-# 3. Install requirements.txt
-# 4. Install flash-attn (requires CUDA_HOME and CUDA-enabled torch)
-RUN pip install --upgrade pip setuptools && \
-    pip install -r requirements.txt && \
+# Install packages in correct order:
+# 1. Install requirements.txt first (some packages may install torch, but we'll override it)
+# 2. Install torch/torchvision with CUDA 12.8 AFTER requirements (to override any torch version)
+# 3. Install flash-attn with limited parallelism to prevent memory crashes
+RUN pip install -r requirements.txt && \
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128 -U && \
-    pip install flash-attn --no-build-isolation
+    MAX_JOBS=2 CMAKE_BUILD_PARALLEL_LEVEL=2 pip install flash-attn --no-build-isolation --no-cache-dir
 
 # 5️⃣  Copy the rest of the source
 COPY . .

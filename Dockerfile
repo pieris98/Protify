@@ -45,6 +45,7 @@ COPY requirements.txt .
 #    - Automatically detects CPU count and RAM to set optimal MAX_JOBS
 #    - ninja-build (installed above) enables parallel compilation, reducing build time from ~2hrs to ~5-10min
 RUN pip install -r requirements.txt && \
+    pip install ninja && \
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128 -U && \
     bash -c ' \
       CPU_COUNT=$(nproc) && \
@@ -59,7 +60,7 @@ RUN pip install -r requirements.txt && \
       MAX_JOBS=$((MAX_JOBS < 1 ? 1 : MAX_JOBS)) && \
       MAX_JOBS=$((MAX_JOBS > 8 ? 8 : MAX_JOBS)) && \
       echo "Using MAX_JOBS=${MAX_JOBS}, CMAKE_BUILD_PARALLEL_LEVEL=${MAX_JOBS} (conservative: ~8GB RAM per job, max 8 jobs)" && \
-      MAX_JOBS=${MAX_JOBS} CMAKE_BUILD_PARALLEL_LEVEL=${MAX_JOBS} pip install flash-attn --no-build-isolation --no-cache-dir \
+      MAX_JOBS=${MAX_JOBS} CMAKE_BUILD_PARALLEL_LEVEL=${MAX_JOBS} pip install flash-attn --no-build-isolation \
     '
 
 # 5️⃣  Copy the rest of the source

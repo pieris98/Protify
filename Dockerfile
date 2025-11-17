@@ -48,12 +48,10 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt && \
     pip install triton ninja && \
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128 -U && \
-
-RUN git clone https://github.com/ROCm/flash-attention.git &&\ 
-    cd flash-attention &&\
-    git checkout main_perf &&\
-    python setup.py install &&\
-    cd .. &&\
+    git clone https://github.com/Dao-AILab/flash-attention.git && \
+    cd flash-attention && \
+    python setup.py install && \
+    cd .. && \
     rm -rf flash-attention
 
 # 5️⃣  Copy the rest of the source

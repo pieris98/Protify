@@ -49,6 +49,7 @@ class DataArguments:
         self.col_names = col_names
         self.max_length = max_length
         self.trim = trim
+        self.protein_gym = False
         self.multi_column = multi_column
 
         if len(data_names) > 0:
@@ -57,6 +58,10 @@ class DataArguments:
             else:
                 self.data_paths = []
                 for data_name in data_names:
+                    if data_name == 'protein_gym':
+                        # For special handling in the main workflow
+                        self.protein_gym = True
+                        continue
                     if data_name in supported_datasets:
                         self.data_paths.append(supported_datasets[data_name])
                     else:

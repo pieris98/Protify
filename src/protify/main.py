@@ -1,6 +1,10 @@
 import os
+import sys
+import subprocess
 import argparse
 import yaml
+import pandas as pd
+import time
 from types import SimpleNamespace
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
@@ -36,7 +40,7 @@ def parse_arguments():
     parser.add_argument("--trim", action="store_true", default=False,
                         help="Whether to trim sequences (default: False). If False, sequences are removed from the dataset if they are longer than max length. If True, they are truncated to max length."
                         )
-    parser.add_argument("--data_names", nargs="+", default=["DeepLoc-2"], help="List of HF dataset names.") # TODO rename to data_names
+    parser.add_argument("--data_names", nargs="+", default=[], help="List of HF dataset names.") # TODO rename to data_names
     parser.add_argument("--data_dirs", nargs="+", default=[], help="List of local data directories.")
 
     # ----------------- BaseModelArguments ----------------- #
@@ -108,6 +112,21 @@ def parse_arguments():
                         help="Enable deterministic behavior for reproducibility (will slow down training).")
     parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning (default: False).")
     parser.add_argument("--hybrid_probe", action="store_true", default=False, help="Hybrid probe (default: False).")
+    
+    # ----------------- ProteinGym Arguments ----------------- #
+    parser.add_argument("--dms_ids", nargs="+", default=["all"],
+                        help="ProteinGym DMS assay IDs to evaluate (space-separated), or 'all' to run all assays.")
+    parser.add_argument("--proteingym", action="store_true", default=False, help="ProteinGym (default: False).")
+    parser.add_argument("--mode", type=str, default='benchmark',
+                        help="ProteinGym zero-shot mode: 'benchmark', 'indels', 'multiples', 'singles'")
+    parser.add_argument("--scoring_method", choices=["masked_marginal", "mutant_marginal", "wildtype_marginal", "pll", "global_log_prob"], default="masked_marginal",
+                        help="Select a scoring method for ProteinGym zero-shot.")
+    parser.add_argument("--scoring_window", choices=["optimal", "sliding"], default="optimal",
+                        help="Select how to slice the sequence for ProteinGym zero-shot.")
+    parser.add_argument("--pg_batch_size", type=int, default=32,
+                        help="Batch size for ProteinGym zero-shot scoring (default: 32).")
+    parser.add_argument("--compare_scoring_methods", action="store_true", default=False,
+                        help="Compare different scoring methods across models and DMS assays (default: False).")
 
     args = parser.parse_args()
 
@@ -137,10 +156,15 @@ def parse_arguments():
         yaml_args.synthyra_api_key = args.synthyra_api_key
         yaml_args.wandb_api_key = args.wandb_api_key
         yaml_args.yaml_path = args.yaml_path
-        yaml_args.seed = args.seed
-        yaml_args.deterministic = args.deterministic
-        # Debug logging for HF settings
-        print(f"Loaded from YAML - hf_username: {getattr(yaml_args, 'hf_username', 'NOT SET')}, save_model: {getattr(yaml_args, 'save_model', 'NOT SET')}")
+        # Ensure ProteinGym defaults exist when using YAML configs
+        if not hasattr(yaml_args, 'proteingym'):
+            yaml_args.proteingym = False
+        if not hasattr(yaml_args, 'dms_ids'):
+            yaml_args.dms_ids = ["all"]
+        if not hasattr(yaml_args, 'mode'):
+            yaml_args.mode = None
+        if not hasattr(yaml_args, 'scoring_method'):
+            yaml_args.scoring_method = "masked_marginal"
         return yaml_args
     else:
         return args
@@ -149,6 +173,12 @@ def parse_arguments():
 if __name__ == "__main__":
     # Settings that need to happen pre-imports
     args = parse_arguments()
+
+    # Require that either datasets are specified or a ProteinGym experiment is chosen
+    has_datasets = bool(getattr(args, 'data_names', []) or getattr(args, 'data_dirs', []))
+    has_proteingym = bool(getattr(args, 'proteingym', False))
+    if not has_datasets and not has_proteingym:
+        raise AssertionError("No datasets specified. Provide --data_names or --data_dirs, or run a ProteinGym experiment.")
 
     if args.hf_home is not None:
         # Needs to happen before any HF imports
@@ -177,6 +207,7 @@ if __name__ == "__main__":
 
 import torch
 from torchinfo import summary
+import numpy as np
 
 from probes.get_probe import ProbeArguments, get_probe
 from base_models.get_base_models import BaseModelArguments, get_tokenizer, get_base_model_for_training
@@ -186,8 +217,11 @@ from probes.trainers import TrainerMixin, TrainerArguments
 from probes.scikit_classes import ScikitArguments, ScikitProbe
 from embedder import EmbeddingArguments, Embedder, get_embedding_filename
 from logger import MetricsLogger, log_method_calls
-from utils import torch_load, print_message
+from utils import torch_load, print_message, expand_dms_ids_all
 from visualization.plot_result import create_plots
+from benchmarks.proteingym.zero_shot import run_zero_shot
+from benchmarks.proteingym.scoring_utils import collect_proteingym_spearman
+from benchmarks.proteingym.compare_scoring_methods import compare_scoring_methods
 from seed_utils import set_global_seed
 
 
@@ -267,6 +301,54 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         self.log_metrics(data_name, model_name, test_metrics, split_name='test')
         return probe
 
+    def _train_nn_probe_fold(self, model_name, dms_id, subtrain_seqs, subtrain_labels,
+                            valid_seqs, valid_labels, test_seqs, test_labels, 
+                            emb_dict, fold_info):
+        """Trains a neural network probe on a ProteinGym DMS assay CV fold."""
+
+        train_set = {'seqs': subtrain_seqs, 'labels': subtrain_labels}
+        valid_set = None if (valid_seqs is None or valid_labels is None) else {'seqs': valid_seqs, 'labels': valid_labels}
+        test_set = {'seqs': test_seqs, 'labels': test_labels}
+        
+        # Get tokenizer and determine input dimensions
+        tokenizer = get_tokenizer(model_name)
+        
+        if self._sql:
+            save_path = os.path.join(self.embedding_args.embedding_save_dir, 
+                                    f'{model_name}_{self._full}.db')
+            input_dim = self.get_embedding_dim_sql(save_path, subtrain_seqs[0], tokenizer)
+            emb_for_training = None
+        else:
+            save_path = os.path.join(self.embedding_args.embedding_save_dir,
+                                    f'{model_name}_{self._full}.pth')
+            emb_for_training = torch_load(save_path) if os.path.exists(save_path) else emb_dict
+            input_dim = self.get_embedding_dim_pth(emb_for_training, subtrain_seqs[0], tokenizer)
+        
+        # Configure probe for regression
+        self.probe_args.input_dim = input_dim
+        self.probe_args.task_type = 'regression'
+        self.probe_args.num_labels = 1
+        self.trainer_args.task_type = 'regression'
+        
+        probe = get_probe(self.probe_args)
+        _, _, test_metrics = self.trainer_probe(
+            model=probe,
+            tokenizer=tokenizer,
+            model_name=model_name,
+            data_name=f"{dms_id}_{fold_info}",
+            train_dataset=train_set,
+            valid_dataset=valid_set,
+            test_dataset=test_set,
+            emb_dict=emb_for_training,
+            ppi=False,
+            log_id=f"{self.random_id}_{fold_info}",
+        )
+        
+        # Handle both plain and test-prefixed metric keys returned by HF Trainer
+        rho = test_metrics.get('spearman_rho', test_metrics.get('test_spearman_rho', None))
+        mse = test_metrics.get('mse', test_metrics.get('test_mse', None))
+        return rho, mse
+    
     def _run_full_finetuning(
             self,
             model_name,
@@ -516,6 +598,74 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         create_plots(results_file, output_dir)
         print_message("Plots generated successfully!")
         
+    @log_method_calls
+    def run_proteingym_zero_shot(self):
+        """Run ProteinGym zero-shot for all specified models and DMS ids."""
+        # Signal base model loader to use MaskedLM variants
+        dms_ids = getattr(args, 'dms_ids', []) or []
+        mode = getattr(args, 'mode', 'benchmark')
+        dms_ids = expand_dms_ids_all(dms_ids, mode=mode)
+        if len(dms_ids) == 0:
+            raise ValueError("--dms_ids is required when --proteingym is specified")
+        model_names = getattr(args, 'model_names', []) or []
+        if len(model_names) == 0:
+            raise ValueError("--model_names must specify at least one model")
+        # Where to write results
+        results_root = getattr(args, 'results_dir', 'results')
+        results_dir = os.path.join(results_root, 'proteingym')
+        scoring_method = getattr(args, 'scoring_method', 'masked_marginal')
+        scoring_window = getattr(args, 'scoring_window', 'optimal')
+        if isinstance(mode, str) and mode.lower() == 'indels':
+            print_message("Only pll is currently supported for indels scoring.")
+            scoring_method = 'pll'
+        # Track timing per model
+        self._proteingym_timing = {}
+        for model_name in model_names:
+            self.logger.info(f"Running ProteinGym zero-shot with [{scoring_method}] scoring on {len(dms_ids)} DMS ids with model {model_name}")
+            start_time = time.time()
+            _ = run_zero_shot(
+                dms_ids=dms_ids,
+                model_name=model_name,
+                mode=mode,
+                repo_id="GleghornLab/ProteinGym_DMS",
+                results_dir=results_dir,
+                device=None,
+                scoring_method=scoring_method,
+                scoring_window=scoring_window,
+                batch_size=getattr(args, 'pg_batch_size', 32),
+            )
+            elapsed_time = time.time() - start_time
+            self._proteingym_timing[model_name] = elapsed_time
+        print_message(f"ProteinGym zero-shot complete. Results in {results_dir}")
+
+        # After all models are scored, run standardized performance benchmarking
+        try:
+            pg_dir = os.path.join(os.path.dirname(__file__), 'benchmarks', 'proteingym')
+            reference_mapping = os.path.join(pg_dir, 'DMS_substitutions.csv')
+            config_path = os.path.join(pg_dir, 'config.json')
+            perf_out_dir = os.path.join(results_dir, 'benchmark_performance')
+            os.makedirs(perf_out_dir, exist_ok=True)
+
+            script_path = os.path.join(pg_dir, 'DMS_benchmark_performance.py')
+            script_cmd = [
+                sys.executable, script_path,
+                '--input_scoring_files_folder', results_dir,
+                '--output_performance_file_folder', perf_out_dir,
+                '--DMS_reference_file_path', reference_mapping,
+                '--config_file', config_path,
+            ]
+            script_cmd += ['--scoring_method', scoring_method]
+            if isinstance(model_names, (list, tuple)) and len(model_names) > 0:
+                script_cmd += ['--selected_model_names', *model_names]
+            if isinstance(dms_ids, (list, tuple)) and len(dms_ids) > 0:
+                script_cmd += ['--dms_ids', *[str(x) for x in dms_ids]]
+            if isinstance(mode, str) and mode.lower() == 'indels':
+                script_cmd.append('--indel_mode')
+            subprocess.run(script_cmd, check=True)
+            
+            print_message(f"Benchmark performance computed. Outputs in {perf_out_dir}")
+        except Exception as e:
+            print_message(f"Failed to compute benchmark performance: {e}")
 
 def main(args: SimpleNamespace):
     chosen_seed = set_global_seed(args.seed)
@@ -546,23 +696,73 @@ def main(args: SimpleNamespace):
         main = MainProcess(args, GUI=False)
         for k, v in main.full_args.__dict__.items():
             print(f"{k}:\t{v}")
-        main.apply_current_settings()
-        main.get_datasets()
-        print_message(f"Number of sequences: {len(main.all_seqs)}")
-        if main.full_args.full_finetuning:
-            main.run_full_finetuning()
 
-        elif main.full_args.hybrid_probe:
-            main.save_embeddings_to_disk()
-            main.run_hybrid_probes()
+        if getattr(args, 'compare_scoring_methods', False) and getattr(args, 'proteingym', False):
+            # Run scoring method comparison
+            print_message("Running scoring method comparison...")
+            dms_ids = getattr(args, 'dms_ids', []) or []
+            mode = getattr(args, 'mode', 'benchmark')
+            dms_ids = expand_dms_ids_all(dms_ids, mode=mode)
+            model_names = getattr(args, 'model_names', []) or []
+            if len(model_names) == 0:
+                raise ValueError("--model_names must specify at least one model")
+            
+            # Set up output path
+            results_root = getattr(args, 'results_dir', 'results')
+            output_csv = os.path.join(results_root, 'scoring_methods_comparison.csv')
+            
+            summary_df = compare_scoring_methods(
+                model_names=model_names,
+                device=None,
+                methods=None,
+                dms_ids=dms_ids,
+                progress=True,
+                output_csv=output_csv
+            )
+            print_message(f"Scoring method comparison complete. Results saved to {output_csv}")
+            return
 
-        elif main.full_args.use_scikit:
-            main.save_embeddings_to_disk()
-            main.run_scikit_scheme()
-        
+        # Determine if current experiment passed datasets
+        has_datasets = bool(getattr(args, 'data_names', []) or getattr(args, 'data_dirs', []))
+
+        # Run through datasets first (if any)
+        if has_datasets:
+            main.apply_current_settings()
+            main.get_datasets()
+            num_seqs = len(main.all_seqs) if hasattr(main, 'all_seqs') else 0
+            print_message(f"Number of sequences: {num_seqs}")
+
+            if main.full_args.full_finetuning:
+                main.run_full_finetuning()
+
+            elif main.full_args.hybrid_probe:
+                main.save_embeddings_to_disk()
+                main.run_hybrid_probes()
+
+            elif main.full_args.use_scikit:
+                main.save_embeddings_to_disk()
+                main.run_scikit_scheme()
+            
+            else:
+                main.save_embeddings_to_disk()
+                main.run_nn_probes()
         else:
-            main.save_embeddings_to_disk()
-            main.run_nn_probes()
+            print_message("No datasets specified; proceeding with ProteinGym.")
+
+        if getattr(args, 'proteingym', False):
+            main.run_proteingym_zero_shot()
+            try:
+                pg_scores = collect_proteingym_spearman(args, getattr(args, 'model_names', []))
+                for model_name, score in pg_scores.items():
+                    if isinstance(score, (int, float)):
+                        training_time = getattr(main, '_proteingym_timing', {}).get(model_name, None)
+                        metrics_dict = {'spearman': float(score)}
+                        metrics_dict['training_time_seconds'] = float(training_time)
+                        main.log_metrics('proteingym', model_name, metrics_dict)
+            except Exception as e:
+                print_message(f"Failed to log ProteinGym metrics: {e}")
+
+        # Write results and generate plots
         main.write_results()
         main.generate_plots()
         main.end_log()

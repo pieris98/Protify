@@ -41,6 +41,8 @@ currently_supported_models = [
     'OneHot-DNA',
     'OneHot-RNA',
     'OneHot-Codon',
+    'AMPLIFY-120',
+    'AMPLIFY-350',
 ]
 
 standard_models = [
@@ -71,7 +73,13 @@ standard_models = [
     'GLM2-GAIA',
     'DPLM-150',
     'DPLM-650',
-    'DPLM-3B',
+    'DSM-150',
+    'DSM-650',
+    'DSM-PPI',
+    'Random',
+    'Random-Transformer',
+    'AMPLIFY-120',
+    'AMPLIFY-350',
 ]
 
 experimental_models = []
@@ -95,16 +103,16 @@ def get_base_model(model_name: str):
         return build_custom_model(model_path)
     elif 'random' in model_name.lower():
         from .random import build_random_model
-        return build_random_model(model_name)
+        return build_random_model(model_name, masked_lm=masked_lm)
     elif 'esm2' in model_name.lower() or 'dsm' in model_name.lower():
         from .esm2 import build_esm2_model
-        return build_esm2_model(model_name)
+        return build_esm2_model(model_name, masked_lm=masked_lm)
     elif 'esmc' in model_name.lower():
         from .esmc import build_esmc_model
-        return build_esmc_model(model_name)
+        return build_esmc_model(model_name, masked_lm=masked_lm)
     elif 'protbert' in model_name.lower():
         from .protbert import build_protbert_model
-        return build_protbert_model(model_name)
+        return build_protbert_model(model_name, masked_lm=masked_lm)
     elif 'prott5' in model_name.lower():
         from .prott5 import build_prott5_model
         return build_prott5_model(model_name)
@@ -113,16 +121,19 @@ def get_base_model(model_name: str):
         return build_ankh_model(model_name)
     elif 'glm' in model_name.lower():
         from .glm import build_glm2_model
-        return build_glm2_model(model_name)
+        return build_glm2_model(model_name, masked_lm=masked_lm)
     elif 'dplm' in model_name.lower():
         from .dplm import build_dplm_model
-        return build_dplm_model(model_name)
+        return build_dplm_model(model_name, masked_lm=masked_lm)
     elif 'protclm' in model_name.lower():
         from .protCLM import build_protCLM
         return build_protCLM(model_name)
     elif 'onehot' in model_name.lower():
         from .one_hot import build_one_hot_model
         return build_one_hot_model(model_name)
+    elif 'amplify' in model_name.lower():
+        from .amplify import build_amplify_model
+        return build_amplify_model(model_name, masked_lm=masked_lm)
     elif 'e1' in model_name.lower():
         from .e1 import build_e1_model
         return build_e1_model(model_name)
@@ -162,6 +173,9 @@ def get_base_model_for_training(model_name: str, tokenwise: bool = False, num_la
     elif 'protclm' in model_name.lower():
         from .protCLM import get_protCLM_for_training
         return get_protCLM_for_training(model_name, tokenwise, num_labels, hybrid)
+    elif 'amplify' in model_name.lower():
+        from .amplify import get_amplify_for_training
+        return get_amplify_for_training(model_name, tokenwise, num_labels, hybrid)
     else:
         raise ValueError(f"Model {model_name} not supported")
 
@@ -201,6 +215,9 @@ def get_tokenizer(model_name: str):
     elif 'onehot' in model_name.lower():
         from .one_hot import get_one_hot_tokenizer
         return get_one_hot_tokenizer(model_name)
+    elif 'amplify' in model_name.lower():
+        from .amplify import get_amplify_tokenizer
+        return get_amplify_tokenizer(model_name)
     else:
         raise ValueError(f"Model {model_name} not supported")
 

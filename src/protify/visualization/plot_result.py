@@ -137,7 +137,10 @@ def is_regression(metrics: Dict[str, float]) -> bool:
     """Heuristic based on key names."""
     reg = ("spearman", "pearson", "r_squared", "rmse", "mse")
     cls = ("accuracy", "f1", "mcc", "auc", "precision", "recall")
-    keys = {k.lower() for k in metrics}
+    # Filter out time-related metrics
+    filtered_metrics = {k: v for k, v in metrics.items() 
+                       if 'training_time' not in k.lower() and 'time_seconds' not in k.lower()}
+    keys = {k.lower() for k in filtered_metrics}
     if any(k for k in keys if any(r in k for r in reg)):
         return True
     if any(k for k in keys if any(c in k for c in cls)):
@@ -149,6 +152,9 @@ def pick_metric(metrics: Dict[str, float], prefs: List[Tuple[str, str]]) -> Tupl
     """Return (key, pretty_name) for the first preference present in metrics."""
     for k, nice in prefs:
         for mk in metrics:
+            # Skip time-related metrics
+            if 'training_time' in mk.lower() or 'time_seconds' in mk.lower():
+                continue
             if mk.lower().endswith(k):
                 return k, nice
     raise KeyError("No preferred metric found.")
@@ -157,6 +163,9 @@ def pick_metric(metrics: Dict[str, float], prefs: List[Tuple[str, str]]) -> Tupl
 def get_metric_value(metrics: Dict[str, float], key_suffix: str) -> float:
     """Fetch metric value case-/prefix-insensitively; NaN if absent."""
     for k, v in metrics.items():
+        # Skip time-related metrics
+        if 'training_time' in k.lower() or 'time_seconds' in k.lower():
+            continue
         if k.lower().endswith(key_suffix):
             return v
     return math.nan
@@ -183,7 +192,7 @@ def plot_radar(*,
 
     if normalize:
         arr = np.asarray(data)
-        rng = np.where(np.ptp(arr, 0) == 0, 1, np.ptp(arr, 0))
+        rng = np.where(np.ptp(arr, axis=0) == 0, 1, np.ptp(arr, axis=0))
         data = (arr - arr.min(0)) / rng
         # Convert back to list of lists for consistency
         data = data.tolist()
@@ -457,7 +466,7 @@ def create_plots(tsv: str, outdir: str):
     # Normalized bar plot
     # For bar plot normalization, use min-max per dataset (column-wise normalization)
     arr = np.asarray(sorted_plot_matrix)
-    rng = np.where(np.ptp(arr, 0) == 0, 1, np.ptp(arr, 0))
+    rng = np.where(np.ptp(arr, axis=0) == 0, 1, np.ptp(arr, axis=0))
     arr_norm = (arr - arr.min(0)) / rng
     bar_plot(datasets, sorted_models, arr_norm.tolist(), metric_name + " (Normalized)", bar_path_norm)
     # Heatmap
@@ -514,7 +523,7 @@ if __name__ == "__main__":
     print(f"Bar plot test passed: {bar_path}")
     # Normalized bar plot
     arr = np.asarray(data)
-    rng = np.where(np.ptp(arr, 0) == 0, 1, np.ptp(arr, 0))
+    rng = np.where(np.ptp(arr, axis=0) == 0, 1, np.ptp(arr, axis=0))
     arr_norm = (arr - arr.min(0)) / rng
     bar_path_norm = tmpdir / "test_bar_normalized.png"
     bar_plot(categories, models, arr_norm.tolist(), "Test Metric (Normalized)", bar_path_norm)

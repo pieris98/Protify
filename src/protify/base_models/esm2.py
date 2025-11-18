@@ -62,8 +62,11 @@ def get_esm2_tokenizer(preset: str):
     return ESM2TokenizerWrapper(EsmTokenizer.from_pretrained('facebook/esm2_t6_8M_UR50D'))
 
 
-def build_esm2_model(preset: str):
-    model = FastEsmForEmbedding(presets[preset]).eval()
+def build_esm2_model(preset: str, masked_lm: bool = False):
+    if masked_lm:
+        model = FastEsmForMaskedLM.from_pretrained(presets[preset]).eval()
+    else:
+        model = FastEsmForEmbedding(presets[preset]).eval()
     tokenizer = get_esm2_tokenizer(preset)
     return model, tokenizer
 

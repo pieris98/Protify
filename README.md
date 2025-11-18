@@ -327,6 +327,43 @@ Note: You may need to include `sudo` before the docker commands.
 </details>
 
 
+### ProteinGym Benchmarking
+
+Protify includes a zero-shot pipeline for the ProteinGym DMS benchmark with a standardized performance summary.
+
+- Run zero-shot scoring on ProteinGym substitutions
+  ```console
+  python -m main --proteingym \
+    --model_names ESM2-8 ESM2-35 ProtBert \
+    --dms_ids all \
+    --scoring_method masked_marginal \
+    --scoring_window optimal \
+  ```
+  - Outputs per-assay CSVs at `results/proteingym/*__zs_masked_marginal.csv`
+  - After scoring, a standardized performance summary is written to `results/proteingym/benchmark_performance/`
+    - This summary exactly matches the format expected by the ProteinGym repository for adding scores for a new model (ready to use in a PR)
+
+  Available options
+  - dms_ids. By default, all 217 substitution assays are used. You can specify DMS_ids by name to only use a subset.
+  - scoring_method
+    - masked_marginal (default): Mask mutated positions in the wild-type window; score Δlog p(mutant) − log p(wildtype) at those positions
+    - wildtype_marginal: Unmasked wild-type context; score Δlog p(mutant) − log p(wildtype) at mutated positions
+    - mutant_marginal: Unmasked mutant context; score Δlog p(mutant) − log p(wildtype) at mutated positions
+    - pll: Pseudo log-likelihood obtained by masking each position and summing true-token log-likelihoods (indels are scored with a length-normalized PLL across windows)
+    - global_log_prob: Unmasked log-probability of the entire mutated sequence/window
+  - scoring_window
+    - optimal (default): Single window (≤ model context) centered around the mutation barycenter
+    - sliding: Non-overlapping contiguous windows across the full sequence (default for indels)
+
+- Compare performance & time for each scoring method for one or more models
+  ```console
+  python -m main --proteingym --compare_scoring_methods \
+    --model_names ESM2-650 \
+    --dms_ids AACC1_PSEAI_Dandage_2018 A4_HUMAN_Seuma_2022 \
+    --results_dir results
+  ```
+  - Saves a summary CSV to `results/scoring_methods_comparison.csv`
+
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

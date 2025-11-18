@@ -167,9 +167,17 @@ class MetricsLogger:
 
     def log_metrics(self, dataset, model, metrics_dict, split_name=None):
         try:
-            # Remove time-related metrics
-            metrics_dict = {k: v for k, v in metrics_dict.items() 
-                           if 'time' not in k.lower() and 'second' not in k.lower()}
+            training_time = metrics_dict.get('training_time_seconds')
+            # Preserve training_time_seconds
+            filtered_dict = {k: v for k, v in metrics_dict.items() 
+                           if not (('time' in k.lower() and k != 'training_time_seconds') or 
+                                  ('second' in k.lower() and k != 'training_time_seconds'))}
+            if training_time is not None:
+                # Add it in the end
+                filtered_dict.pop('training_time_seconds', None)
+                filtered_dict['training_time_seconds'] = training_time
+            
+            metrics_dict = filtered_dict
             
             # Log the metrics
             if split_name is not None:

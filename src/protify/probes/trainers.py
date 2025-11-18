@@ -408,9 +408,3 @@ class TrainerMixin:
                 ppi=ppi,
                 log_id=log_id,
             )
-
-
-
-
-
-

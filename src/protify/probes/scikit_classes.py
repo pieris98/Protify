@@ -3,7 +3,9 @@ import pandas as pd
 from sklearn.model_selection import RandomizedSearchCV
 from typing import Dict, Any, Tuple, Optional
 from metrics import get_regression_scorer, get_classification_scorer, classification_scorer, regression_scorer
+
 from utils import print_message
+from seed_utils import get_global_seed
 from .lazy_predict import (
     LazyRegressor,
     LazyClassifier,
@@ -23,7 +25,7 @@ class ScikitArguments:
         # Tuning arguments
         n_iter: int = 100,
         cv: int = 3,
-        random_state: int = 42,
+        random_state: Optional[int] = None,
         # Specific model arguments (optional)
         model_name: Optional[str] = None,
         model_args: Optional[Dict[str, Any]] = None,
@@ -33,7 +35,7 @@ class ScikitArguments:
         # Tuning arguments
         self.n_iter = n_iter
         self.cv = cv
-        self.random_state = random_state
+        self.random_state = random_state or get_global_seed()
         
         # Specific model arguments
         self.model_name = model_name

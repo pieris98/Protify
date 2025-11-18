@@ -26,7 +26,6 @@ class Pooler:
         # Run PageRank on the attention matrix converted to a graph.
         # Raises exceptions if the graph doesn't match the token sequence or has no edges.
         # Returns the PageRank scores for each token node.
-
         G = self._convert_to_graph(attention_matrix)
         if G.number_of_nodes() != attention_matrix.shape[0]:
             raise Exception(
@@ -98,15 +97,24 @@ class Pooler:
         if attention_mask is None:
             return emb.std(dim=1)
         else:
-            attention_mask = attention_mask.unsqueeze(-1)
-            return (emb * attention_mask).std(dim=1)
+            # Compute variance correctly over non-masked positions, then take sqrt
+            var = self.var_pooling(emb, attention_mask, **kwargs)
+            return torch.sqrt(var)
     
     def var_pooling(self, emb: torch.Tensor, attention_mask: Optional[torch.Tensor] = None, **kwargs): # (b, L, d) -> (b, d)
         if attention_mask is None:
             return emb.var(dim=1)
         else:
-            attention_mask = attention_mask.unsqueeze(-1)
-            return (emb * attention_mask).var(dim=1)
+            # Correctly compute variance over only non-masked positions
+            attention_mask = attention_mask.unsqueeze(-1)  # (b, L, 1)
+            # Compute mean over non-masked positions
+            mean = (emb * attention_mask).sum(dim=1) / attention_mask.sum(dim=1)  # (b, d)
+            mean = mean.unsqueeze(1)  # (b, 1, d)
+            # Compute squared differences from mean, only over non-masked positions
+            squared_diff = (emb - mean) ** 2  # (b, L, d)
+            # Sum squared differences over non-masked positions and divide by count
+            var = (squared_diff * attention_mask).sum(dim=1) / attention_mask.sum(dim=1)  # (b, d)
+            return var
 
     def cls_pooling(self, emb: torch.Tensor, attention_mask: Optional[torch.Tensor] = None, **kwargs): # (b, L, d) -> (b, d)
         return emb[:, 0, :]

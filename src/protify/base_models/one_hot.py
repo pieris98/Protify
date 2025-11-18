@@ -4,9 +4,7 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 from typing import List, Dict, Tuple, Optional, Union, Sequence
 
-# ---------------------------------------------------------------------------
-# 1.  Character-level tokenizer
-# ---------------------------------------------------------------------------
+
 class CharTokenizer:
     """
     Maps every symbol in `alphabet` to the *smallest* consecutive integers
@@ -39,9 +37,6 @@ class CharTokenizer:
         
         self.vocab_size: int = len(alphabet) + 3  # +3 for pad, cls, and eos
 
-    # ---------------------------------------------------------------------
-    # basic helpers
-    # ---------------------------------------------------------------------
     def encode(self, seq: str) -> torch.Tensor:
         """Convert a single string to a *1-D LongTensor* of ids (no padding)."""
         try:
@@ -62,9 +57,6 @@ class CharTokenizer:
             chars.append(self.id2char.get(int(idx), "?"))
         return "".join(chars)
 
-    # ---------------------------------------------------------------------
-    # vectorised call – batch encode + pad
-    # ---------------------------------------------------------------------
     def __call__(
         self,
         sequences: Union[str, List[str], Tuple[str, ...]],
@@ -90,9 +82,6 @@ class CharTokenizer:
         raise ValueError(f"Unsupported tensor type: {return_tensors}")
 
 
-# ---------------------------------------------------------------------------
-# 2.  Parameter-free one-hot "embedding"
-# ---------------------------------------------------------------------------
 class OneHotModel(nn.Module):
     """
     Fast, parameter-free one-hot projection.
@@ -107,19 +96,15 @@ class OneHotModel(nn.Module):
 
     def forward(
         self,
-        input_ids: torch.Tensor,          # [B, L]
+        input_ids: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:                    # [B, L, vocab_size]
-        # one-hot → float32 (keeps gradients if needed; cast later if not)
+    ) -> torch.Tensor:
         one_hot = F.one_hot(input_ids, num_classes=self.vocab_size).float()
         if attention_mask is not None:
             one_hot = one_hot * attention_mask.unsqueeze(-1)  # zero out pads
         return one_hot
 
 
-# ---------------------------------------------------------------------------
-# 3.  Convenience builders
-# ---------------------------------------------------------------------------
 AMINO_ACIDS = 'LAGVSERTIPDKQNFYMHWCXBUOZ*'
 CODONS      = 'aA@bB#$%rRnNdDcCeEqQ^G&ghHiIj+MmlJLkK(fFpPoO=szZwSXTtxWyYuvUV]})'
 DNA         = 'ATCG'
@@ -144,9 +129,6 @@ def get_one_hot_tokenizer(preset: str):
     return CharTokenizer(ALPHABET_DICT[preset])
 
 
-# ---------------------------------------------------------------------------
-# 4.  Quick sanity check
-# ---------------------------------------------------------------------------
 if __name__ == '__main__':
     # py -m base_models.one_hot
     model, tokenizer = build_one_hot_model()          # default: protein

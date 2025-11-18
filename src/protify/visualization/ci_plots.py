@@ -67,11 +67,11 @@ def classification_ci_plot(y_true, y_pred, save_path, title=None):
         y_pred = y_pred.flatten()
         y_true = y_true.flatten()
 
-    # if more than 100,000 data points, only pass 100,000
+    # if more than 10,000 data points, only pass 10,000
     # else, pAUC can be very slow
-    if y_true.shape[0] > 100000:
-        y_pred = y_pred[:100000]
-        y_true = y_true[:100000]
+    if y_true.shape[0] > 10000:
+        y_pred = y_pred[:10000]
+        y_true = y_true[:10000]
 
     print(y_true.shape, y_pred.shape)
 

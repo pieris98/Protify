@@ -1,7 +1,5 @@
-
 # Copyright (c) 2024 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: Apache-2.0
-
 """
 This is a modified version of the DPLM model from https://github.com/bytedance/dplm/blob/main/src/byprot/models/lm/esm_dplm.py
 """

@@ -1,11 +1,11 @@
 """
-We use the ESM++ implementation of ESMC, which is exactly equivalent but offers batching.
+We use the FastPLM implementation of ESMC.
 """
 import torch
 import torch.nn as nn
 from typing import Optional, Union, List, Dict
 
-from .FastPLMs.modeling_esm_plusplus import (
+from .FastPLMs.esm_plusplus.modeling_esm_plusplus import (
     ESMplusplusModel,
     ESMplusplusForSequenceClassification,
     ESMplusplusForTokenClassification,

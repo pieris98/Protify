@@ -20,7 +20,7 @@ supported_datasets = {
     'number-of-folds': 'GleghornLab/fold_prediction',
     'cloning-clf': 'GleghornLab/cloning_clf',
     'stability-prediction': 'GleghornLab/stability_prediction',
-    'human-ppi': 'GleghornLab/HPPI',
+    'human-ppi-saprot': 'GleghornLab/HPPI',
     'SecondaryStructure-3': 'GleghornLab/SS3',
     'SecondaryStructure-8': 'GleghornLab/SS8',
     'fluorescence-prediction': 'GleghornLab/fluorescence_prediction',
@@ -28,60 +28,105 @@ supported_datasets = {
     'gold-ppi': 'Synthyra/bernett_gold_ppi',
     'human-ppi-pinui': 'GleghornLab/HPPI_PiNUI',
     'yeast-ppi-pinui': 'GleghornLab/YPPI_PiNUI',
-    'shs27-ppi': 'Synthyra/SHS27k',
-    'shs148-ppi': 'Synthyra/SHS148k',
+    'shs27-ppi-raw': 'Synthyra/SHS27k',
+    'shs148-ppi-raw': 'Synthyra/SHS148k',
+    'shs27-ppi-random': 'GleghornLab/ppi_SHS27k_random_2025',
+    'shs148-ppi-random': 'GleghornLab/ppi_SHS148k_random_2025',
+    'shs27-ppi-dfs': 'GleghornLab/ppi_SHS27k_dfs_2025',
+    'shs148-ppi-dfs': 'GleghornLab/ppi_SHS148k_dfs_2025',
+    'shs27-ppi-bfs': 'GleghornLab/ppi_SHS27k_bfs_2025',
+    'shs148-ppi-bfs': 'GleghornLab/ppi_SHS148k_bfs_2025',
+    'string-ppi-random': 'GleghornLab/ppi_STRING_random_2025',
+    'string-ppi-dfs': 'GleghornLab/ppi_STRING_dfs_2025',
+    'string-ppi-bfs': 'GleghornLab/ppi_STRING_bfs_2025',
+    'plm-interact': 'GleghornLab/plm_interact_human_train_cross_ppi',
+    'ppi-mutation-effect': 'GleghornLab/ppi_mutation_effect', # requires multi_column
     'PPA-ppi': 'Synthyra/ProteinProteinAffinity',
     'foldseek-fold': 'lhallee/foldseek_dataset',
     'foldseek-inverse': 'lhallee/foldseek_dataset',
     'ec-active': 'lhallee/ec_active',
     'bernett_processed': 'lhallee/bernett_processed',
-    'taxon_domain': 'GleghornLab/taxonomy_domain',
-    'taxon_kingdom': 'GleghornLab/taxonomy_kingdom',
-    'taxon_phylum': 'GleghornLab/taxonomy_phylum',
-    'taxon_class': 'GleghornLab/taxonomy_class',
-    'taxon_order': 'GleghornLab/taxonomy_order',
-    'taxon_family': 'GleghornLab/taxonomy_family',
-    'taxon_genus': 'GleghornLab/taxonomy_genus',
-    'taxon_species': 'GleghornLab/taxonomy_species',
     'proteingym_zs': 'proteingym_zs', # not a path, data loading for this is currently handled in benchmarks/proteingym/data_loader.py
     'proteingym_supervised': 'proteingym_supervised', # not a path, data loading for this is currently handled in benchmarks/proteingym/data_loader.py
+    'taxon_domain': 'GleghornLab/taxonomy_domain_0.4_clusters',
+    'taxon_kingdom': 'GleghornLab/taxonomy_kingdom_0.4_clusters',
+    'taxon_phylum': 'GleghornLab/taxonomy_phylum_0.4_clusters',
+    'taxon_class': 'GleghornLab/taxonomy_class_0.4_clusters',
+    'taxon_order': 'GleghornLab/taxonomy_order_0.4_clusters',
+    'taxon_family': 'GleghornLab/taxonomy_family_0.4_clusters',
+    'taxon_genus': 'GleghornLab/taxonomy_genus_0.4_clusters',
+    'taxon_species': 'GleghornLab/taxonomy_species_0.4_clusters',
+    'diff_phylogeny': 'GleghornLab/diff_phylo',
+    'plddt': 'GleghornLab/af2_plddt',
+    'realness': 'GleghornLab/realness_dataset',
+    'million_full': 'GleghornLab/millionfull_round_1_oct_2025',
 }
 
 internal_datasets = {
     'plastic': 'GleghornLab/plastic_degradation_benchmark',
 }
 
+# TODO update
 possible_with_vector_reps = [
-    # multi-label
+    ### multi-label
     'EC',
+    # GO
     'GO-CC',
     'GO-BP',
     'GO-MF',
-    # classification
+    'Subcellular',
+    # ppi
+    'shs27-ppi-random',
+    'shs27-ppi-dfs',
+    'shs27-ppi-bfs',
+    'shs148-ppi-random',
+    'shs148-ppi-dfs',
+    'shs148-ppi-bfs',
+    'string-ppi-random',
+    'string-ppi-dfs',
+    'string-ppi-bfs',
+    ### classification
     'MB',
     'DeepLoc-2',
     'DeepLoc-10',
     'solubility',
-    'localization',
     'temperature-stability',
     'material-production',
     'fitness-prediction',
     'number-of-folds',
     'cloning-clf',
     'stability-prediction',
-    # regression
+    'ec-active',
+    'localization',
+    # taxonomy
+    'taxon_domain',
+    'taxon_kingdom',
+    'taxon_phylum',
+    'taxon_class',
+    'taxon_order',
+    'taxon_family',
+    'taxon_genus',
+    'taxon_species',
+    'diff_phylogeny',
+    # ppi
+    'shs27-ppi-raw',
+    'shs148-ppi-raw',
+    'plm-interact',
+    'gold-ppi',
+    'string-ppi-bfs',
+    'human-ppi-saprot',
+    'human-ppi-pinui',
+    'yeast-ppi-pinui',
+    ### regression
     'enzyme-kcat',
     'optimal-temperature',
     'optimal-ph',
+    'million_full',
     # ppi
-    'human-ppi',
     'PPA-ppi',
-    'human-ppi-pinui',
-    'yeast-ppi-pinui',
-    'gold-ppi',
-    'peptide-HLA-MHC-affinity',
 ]
 
+# TODO update
 standard_data_benchmark = [
     'ec-active',
     'EC',
@@ -97,17 +142,63 @@ standard_data_benchmark = [
     'fitness-prediction',
 ]
 
-testing = [
-    'EC', # multilabel
-    'DeepLoc-2', # 
-    'DeepLoc-10', # multiclass
-    'enzyme-kcat', # regression
-    'human-ppi', # ppi
+
+vector_benchmark = [
+    ### multi-label
+    'EC',
+    # GO
+    'GO-CC',
+    'GO-BP',
+    'GO-MF',
+    'Subcellular',
+    # ppi
+    'shs27-ppi-bfs',
+    'shs148-ppi-bfs',
+    'string-ppi-bfs',
+    ### classification
+    'MB',
+    'DeepLoc-2',
+    'DeepLoc-10',
+    'solubility',
+    'temperature-stability',
+    'material-production',
+    'fitness-prediction',
+    'number-of-folds',
+    'cloning-clf',
+    'stability-prediction',
+    'ec-active',
+    # taxonomy
+    'taxon_domain',
+    'taxon_kingdom',
+    'taxon_phylum',
+    'taxon_class',
+    'taxon_order',
+    'taxon_family',
+    'taxon_genus',
+    'taxon_species',
+    'diff_phylogeny',
+    # ppi
+    'shs27-ppi-raw',
+    'shs148-ppi-raw',
+    'plm-interact',
+    'gold-ppi',
+    'string-ppi-bfs',
+    ### regression
+    'enzyme-kcat',
+    'optimal-temperature',
+    'optimal-ph',
+    'million_full',
+    # ppi
+    'PPA-ppi',  
 ]
 
 
-residue_wise_problems = [
-    'SecondaryStructure-3',
-    'SecondaryStructure-8',
-    'fluorescence-prediction',
+testing = [
+    'EC', # multilabel
+    'DeepLoc-2', # singlelabel
+    'DeepLoc-10', # multiclass
+    'enzyme-kcat', # regression
+    'human-ppi', # ppi
+    'plddt', # tokenwise regression
+    'SecondaryStructure-3', # tokenwise classification
 ]

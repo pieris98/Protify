@@ -15,8 +15,9 @@ currently_supported_models = [
     'Random-ESM2-650',
     'ESMC-300',
     'ESMC-600',
-    'ESM2-diff-150',
-    'ESM2-diffAV-150',
+    'E1-150',
+    'E1-300',
+    'E1-600',
     'ProtBert',
     'ProtBert-BFD',
     'ProtT5',
@@ -36,7 +37,6 @@ currently_supported_models = [
     'DSM-150',
     'DSM-650',
     'DSM-PPI',
-    'ProtCLM-1b',
     'OneHot-Protein',
     'OneHot-DNA',
     'OneHot-RNA',
@@ -46,6 +46,9 @@ currently_supported_models = [
 ]
 
 standard_models = [
+    'Random',
+    'Random-Transformer',
+    'OneHot-Protein',
     'ESM2-8',
     'ESM2-35',
     'ESM2-150',
@@ -53,12 +56,21 @@ standard_models = [
     'ESM2-3B',
     'ESMC-300',
     'ESMC-600',
+    'E1-150',
+    'E1-300',
+    'E1-600',
+    'DSM-150',
+    'DSM-650',
+    'DSM-PPI',
     'ProtBert',
+    'ProtBert-BFD',
     'ProtT5',
-    'GLM2-150',
-    'GLM2-650',
     'ANKH-Base',
     'ANKH-Large',
+    'ANKH2-Large',
+    'GLM2-150',
+    'GLM2-650',
+    'GLM2-GAIA',
     'DPLM-150',
     'DPLM-650',
     'DSM-150',
@@ -84,8 +96,12 @@ class BaseModelArguments:
             self.model_names = model_names
 
 
-def get_base_model(model_name: str, masked_lm: bool = False):
-    if 'random' in model_name.lower():
+def get_base_model(model_name: str):
+    if 'custom' in model_name.lower():
+        model_path = model_name.split('---')[-1]
+        from .custom_model import build_custom_model
+        return build_custom_model(model_path)
+    elif 'random' in model_name.lower():
         from .random import build_random_model
         return build_random_model(model_name, masked_lm=masked_lm)
     elif 'esm2' in model_name.lower() or 'dsm' in model_name.lower():
@@ -118,6 +134,13 @@ def get_base_model(model_name: str, masked_lm: bool = False):
     elif 'amplify' in model_name.lower():
         from .amplify import build_amplify_model
         return build_amplify_model(model_name, masked_lm=masked_lm)
+    elif 'e1' in model_name.lower():
+        from .e1 import build_e1_model
+        return build_e1_model(model_name)
+    elif 'custom' in model_name.lower():
+        model_path = model_name.split('---')[-1]
+        from .custom_model import build_custom_model
+        return build_custom_model(model_path)
     else:
         raise ValueError(f"Model {model_name} not supported")
 
@@ -144,6 +167,9 @@ def get_base_model_for_training(model_name: str, tokenwise: bool = False, num_la
     elif 'dplm' in model_name.lower():
         from .dplm import get_dplm_for_training
         return get_dplm_for_training(model_name, tokenwise, num_labels, hybrid)
+    elif 'e1' in model_name.lower():
+        from .e1 import get_e1_for_training
+        return get_e1_for_training(model_name, tokenwise, num_labels, hybrid)
     elif 'protclm' in model_name.lower():
         from .protCLM import get_protCLM_for_training
         return get_protCLM_for_training(model_name, tokenwise, num_labels, hybrid)
@@ -155,6 +181,10 @@ def get_base_model_for_training(model_name: str, tokenwise: bool = False, num_la
 
 
 def get_tokenizer(model_name: str):
+    if 'custom' in model_name.lower():
+        model_path = model_name.split('---')[-1]
+        from .custom_model import build_custom_tokenizer
+        return build_custom_tokenizer(model_path)
     if 'esm2' in model_name.lower() or 'random' in model_name.lower() or 'dsm' in model_name.lower():
         from .esm2 import get_esm2_tokenizer
         return get_esm2_tokenizer(model_name)
@@ -176,6 +206,9 @@ def get_tokenizer(model_name: str):
     elif 'dplm' in model_name.lower():
         from .dplm import get_dplm_tokenizer
         return get_dplm_tokenizer(model_name)
+    elif 'e1' in model_name.lower():
+        from .e1 import get_e1_tokenizer
+        return get_e1_tokenizer(model_name)
     elif 'protclm' in model_name.lower():
         from .protCLM import get_protCLM_tokenizer
         return get_protCLM_tokenizer(model_name)

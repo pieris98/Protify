@@ -7,7 +7,7 @@ import pandas as pd
 import time
 from types import SimpleNamespace
 
-
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -28,15 +28,15 @@ def parse_arguments():
     parser.add_argument("--results_dir", type=str, default="results", help="Path to the results directory.")
     parser.add_argument("--model_save_dir", default="weights", help="Directory to save models.")
     parser.add_argument("--embedding_save_dir", default="embeddings", help="Directory to save embeddings.")
-    parser.add_argument("--download_dir", default="Synthyra/mean_pooled_embeddings", help="Directory to download embeddings to.")
+    parser.add_argument("--download_dir", default="Synthyra/vector_embeddings", help="Directory to download embeddings to.")
     parser.add_argument("--plots_dir", default="plots", help="Directory to save plots.")
     parser.add_argument("--replay_path", type=str, default=None, help="Path to the replay file.")
     parser.add_argument("--pretrained_probe_path", type=str, default=None) # TODO not used right now
-
+    
     # ----------------- DataArguments ----------------- #
     parser.add_argument("--delimiter", default=",", help="Delimiter for data.")
-    parser.add_argument("--col_names", nargs="+", default=["seqs", "labels"], help="Column names.")
-    parser.add_argument("--max_length", type=int, default=1024, help="Maximum sequence length.")
+    parser.add_argument("--col_names", nargs="+", default=["seqs", "labels"], help="Column names.") # DEPRECATED, found automatically now
+    parser.add_argument("--max_length", type=int, default=2048, help="Maximum sequence length.")
     parser.add_argument("--trim", action="store_true", default=False,
                         help="Whether to trim sequences (default: False). If False, sequences are removed from the dataset if they are longer than max length. If True, they are truncated to max length."
                         )
@@ -44,7 +44,7 @@ def parse_arguments():
     parser.add_argument("--data_dirs", nargs="+", default=[], help="List of local data directories.")
 
     # ----------------- BaseModelArguments ----------------- #
-    parser.add_argument("--model_names", nargs="+", default=["ESM2-8"], help="List of model names to use.")
+    parser.add_argument("--model_names", nargs="+", default=["ESM2-8"], help="List of model names to use. To use a custom model, use the format 'custom---<path_to_model>'.")
 
     # ----------------- ProbeArguments ----------------- #
     parser.add_argument("--probe_type", choices=["linear", "transformer", "retrievalnet", "lyra"], default="linear", help="Type of probe.")
@@ -55,13 +55,13 @@ def parse_arguments():
     parser.add_argument("--n_layers", type=int, default=1, help="Number of layers.")
     parser.add_argument("--pre_ln", action="store_false", default=True,
                         help="Disable pre-layernorm (default: enabled). Use --pre_ln to toggle off.")
-    parser.add_argument("--classifier_dim", type=int, default=4096, help="Feed-forward dimension.")
+    parser.add_argument("--classifier_size", type=int, default=4096, help="Feed-forward dimension.")
     parser.add_argument("--transformer_dropout", type=float, default=0.1, help="Dropout rate for the transformer layers.")
     parser.add_argument("--classifier_dropout", type=float, default=0.2, help="Dropout rate for the classifier.")
     parser.add_argument("--n_heads", type=int, default=4, help="Number of heads in multi-head attention.")
     parser.add_argument("--rotary", action="store_false", default=True,
                         help="Disable rotary embeddings (default: enabled). Use --rotary to toggle off.")
-    parser.add_argument("--probe_pooling_types", nargs="+", default=["cls", "mean"], help="Pooling types to use.")
+    parser.add_argument("--probe_pooling_types", nargs="+", default=["mean", "var"], help="Pooling types to use.")
     parser.add_argument("--save_model", action="store_true", default=False, help="Save trained model (default: False).")
     parser.add_argument("--production_model", action="store_true", default=False, help="Production model (default: False).")
     parser.add_argument("--lora", action="store_true", default=False, help="Use LoRA (default: False).")
@@ -71,24 +71,27 @@ def parse_arguments():
     parser.add_argument("--sim_type", choices=["dot", "euclidean", "cosine"], default="dot", help="Cross-attention mechanism for token-parameter-attention")
     parser.add_argument("--token_attention", action="store_true", default=False, help="If true, use TokenFormer instead of Transformer blocks")
 
-    # ----------------- ScikitArguments ----------------- # # TODO add to GUI
+    # ----------------- ScikitArguments ----------------- #
     parser.add_argument("--scikit_n_iter", type=int, default=10, help="Number of iterations for scikit model.")
     parser.add_argument("--scikit_cv", type=int, default=3, help="Number of cross-validation folds for scikit model.")
-    parser.add_argument("--scikit_random_state", type=int, default=42, help="Random state for scikit model.")
+    parser.add_argument("--scikit_random_state", type=int, default=None, help="Random state for scikit model (if None, uses global seed).")
     parser.add_argument("--scikit_model_name", type=str, default=None, help="Name of the scikit model to use.")
     parser.add_argument("--use_scikit", action="store_true", default=False, help="Use scikit model (default: False).")
     parser.add_argument("--n_jobs", type=int, default=1, help="Number of processes to use in scikit.") # TODO integrate with GUI and main
 
     # ----------------- EmbeddingArguments ----------------- #
-    parser.add_argument("--embedding_batch_size", type=int, default=4, help="Batch size for embedding generation.")
+    parser.add_argument("--embedding_batch_size", type=int, default=16, help="Batch size for embedding generation.")
     parser.add_argument("--num_workers", type=int, default=0, help="Number of worker processes for data loading.")
     parser.add_argument("--download_embeddings", action="store_true", default=False, help="Whether to download embeddings (default: False).")
     parser.add_argument("--matrix_embed", action="store_true", default=False, help="Use matrix embedding (default: False).")
-    parser.add_argument("--embedding_pooling_types", nargs="+", default=["mean"], help="Pooling types for embeddings.")
+    parser.add_argument("--embedding_pooling_types", nargs="+", default=["mean", "var"], help="Pooling types for embeddings.")
     parser.add_argument("--save_embeddings", action="store_true", default=False, help="Save computed embeddings (default: False).")
     parser.add_argument("--embed_dtype", default="float32", help="Data type for embeddings.")
     parser.add_argument("--sql", action="store_true", default=False, help="Whether to use SQL storage (default: False).")
     parser.add_argument("--read_scaler", type=int, default=100, help="Read scaler for SQL storage.")
+    
+    # ----------------- Multi-Column Sequences ----------------- #
+    parser.add_argument("--multi_column", nargs="+", default=None, help="If set, list of sequence column names to combine per sample.")
 
     # ----------------- TrainerArguments ----------------- #
     parser.add_argument("--num_epochs", type=int, default=200, help="Number of epochs to train for.")
@@ -104,7 +107,9 @@ def parse_arguments():
     #parser.add_argument("--optimizer", type=str, default='adamw', help='Optimizer.')
     parser.add_argument("--weight_decay", type=float, default=0.00, help="Weight decay.")
     parser.add_argument("--patience", type=int, default=1, help="Patience for early stopping.")
-    parser.add_argument("--seed", type=int, default=42, help="Seed for random number generation.")
+    parser.add_argument("--seed", type=int, default=None, help="Seed for reproducibility (if omitted, current time is used).")
+    parser.add_argument("--deterministic", action="store_true", default=False,
+                        help="Enable deterministic behavior for reproducibility (will slow down training).")
     parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning (default: False).")
     parser.add_argument("--hybrid_probe", action="store_true", default=False, help="Hybrid probe (default: False).")
     
@@ -127,7 +132,16 @@ def parse_arguments():
 
     if args.hf_token is not None:
         from huggingface_hub import login
+        # Override environment variable to ensure this token is used
+        os.environ["HF_TOKEN"] = args.hf_token
         login(args.hf_token)
+        print(f"Logged in to HuggingFace Hub with token from arguments")
+    else:
+        # Check if token exists in environment (from Modal secret or other source)
+        hf_token_env = os.environ.get("HF_TOKEN")
+        if hf_token_env:
+            print(f"Note: HF_TOKEN found in environment (from Modal secret or other source)")
+            print(f"Note: This token will be used for read operations only unless overridden")
     if args.wandb_api_key is not None:
         print_message('Wandb not integrated yet')
     if args.synthyra_api_key is not None:
@@ -155,7 +169,9 @@ def parse_arguments():
     else:
         return args
 
+
 if __name__ == "__main__":
+    # Settings that need to happen pre-imports
     args = parse_arguments()
 
     # Require that either datasets are specified or a ProteinGym experiment is chosen
@@ -182,6 +198,12 @@ if __name__ == "__main__":
         print(f"TRANSFORMERS_CACHE: {os.environ['TRANSFORMERS_CACHE']}")
         print(f"HF_HUB_CACHE: {os.environ['HF_HUB_CACHE']}")
 
+    # Set global seed before doing anything else
+    # If seed is None, set_global_seed will derive it from current time
+    if args.deterministic:
+        from seed_utils import set_determinism
+        set_determinism()
+
 
 import torch
 from torchinfo import summary
@@ -193,13 +215,14 @@ from base_models.utils import wrap_lora
 from data.data_mixin import DataMixin, DataArguments
 from probes.trainers import TrainerMixin, TrainerArguments
 from probes.scikit_classes import ScikitArguments, ScikitProbe
-from embedder import EmbeddingArguments, Embedder
+from embedder import EmbeddingArguments, Embedder, get_embedding_filename
 from logger import MetricsLogger, log_method_calls
 from utils import torch_load, print_message, expand_dms_ids_all
 from visualization.plot_result import create_plots
 from benchmarks.proteingym.zero_shot import run_zero_shot
 from benchmarks.proteingym.scoring_utils import collect_proteingym_spearman
 from benchmarks.proteingym.compare_scoring_methods import compare_scoring_methods
+from seed_utils import set_global_seed
 
 
 class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
@@ -236,6 +259,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         self._trim = self.full_args.trim
         self._delimiter = self.full_args.delimiter
         self._col_names = self.full_args.col_names
+        self._multi_column = getattr(self.full_args, 'multi_column', None)
 
     @log_method_calls
     def get_datasets(self):
@@ -423,25 +447,32 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             tokenizer = get_tokenizer(model_name)
 
             # get embedding size
+            pooling_types = self.embedding_args.pooling_types
             if self._sql:
                 # for sql, the embeddings will be gathered in real time during training
-                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.db')
-                input_dim = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
+                filename = get_embedding_filename(model_name, self._full, pooling_types, 'db')
+                save_path = os.path.join(self.embedding_args.embedding_save_dir, filename)
+                input_size = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
                 emb_dict = None
             else:
                 # for pth, the embeddings are loaded entirely into RAM and accessed during training
-                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.pth')
+                filename = get_embedding_filename(model_name, self._full, pooling_types, 'pth')
+                save_path = os.path.join(self.embedding_args.embedding_save_dir, filename)
                 emb_dict = torch_load(save_path)
-                input_dim = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
+                input_size = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
+
+            # Adjust input dim for multi-column vector embeddings
+            if (not self._full) and getattr(self.full_args, 'multi_column', None):
+                input_size = input_size * len(self.full_args.multi_column)
 
             # for each dataset, gather the settings and train the probe
             for data_name, dataset in self.datasets.items():
                 self.logger.info(f"Processing dataset: {data_name}")
                 train_set, valid_set, test_set, num_labels, label_type, ppi = dataset
                 if ppi and not self._full:
-                    probe_args.input_dim = input_dim * 2
+                    probe_args.input_size = input_size * 2
                 else:
-                    probe_args.input_dim = input_dim
+                    probe_args.input_size = input_size
             
                 self.probe_args.num_labels = num_labels
                 self.probe_args.task_type = label_type
@@ -479,38 +510,50 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             # get tokenizer
             tokenizer = get_tokenizer(model_name)
 
+            if 'custom' in model_name.lower():
+                clean_model_name = model_name.split('---')[-1].split('/')[-1]
+            else:
+                clean_model_name = model_name
+
             # get embedding size
+            pooling_types = self.embedding_args.pooling_types
             if self._sql:
                 # for sql, the embeddings will be gathered in real time during training
-                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.db')
-                input_dim = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
+                filename = get_embedding_filename(clean_model_name, self._full, pooling_types, 'db')
+                save_path = os.path.join(self.embedding_args.embedding_save_dir, filename)
+                input_size = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
                 emb_dict = None
             else:
                 # for pth, the embeddings are loaded entirely into RAM and accessed during training
-                save_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{self._full}.pth')
+                filename = get_embedding_filename(clean_model_name, self._full, pooling_types, 'pth')
+                save_path = os.path.join(self.embedding_args.embedding_save_dir, filename)
                 emb_dict = torch_load(save_path)
-                input_dim = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
+                input_size = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
 
-            print(f'Input dim: {input_dim}')
+            # Adjust input dim for multi-column vector embeddings
+            if (not self._full) and getattr(self.full_args, 'multi_column', None):
+                input_size = input_size * len(self.full_args.multi_column)
+
+            print(f'Input dim: {input_size}')
 
             # for each dataset, gather the settings and train the probe
             for data_name, dataset in self.datasets.items():
                 self.logger.info(f"Processing dataset: {data_name}")
                 train_set, valid_set, test_set, num_labels, label_type, ppi = dataset
                 if ppi and not self._full:
-                    probe_args.input_dim = input_dim * 2
+                    probe_args.input_size = input_size * 2
                 else:
-                    probe_args.input_dim = input_dim
+                    probe_args.input_size = input_size
             
                 self.probe_args.num_labels = num_labels
                 self.probe_args.task_type = label_type
                 ### TODO we currently need both, settings should probably be consolidated
                 self.trainer_args.task_type = label_type
-                self.logger.info(f'Training probe for {data_name} with {model_name}')
+                self.logger.info(f'Training probe for {data_name} with {clean_model_name}')
                 ### TODO eventually add options for optimizers and schedulers
                 ### TODO here is probably where we can differentiate between the different training schemes
                 _ = self._run_nn_probe(
-                    model_name=model_name,
+                    model_name=clean_model_name,
                     data_name=data_name,
                     train_set=train_set,
                     valid_set=valid_set,
@@ -625,11 +668,25 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             print_message(f"Failed to compute benchmark performance: {e}")
 
 def main(args: SimpleNamespace):
+    chosen_seed = set_global_seed(args.seed)
+    args.seed = chosen_seed
+
     if args.replay_path is not None:
         from logger import LogReplayer
         replayer = LogReplayer(args.replay_path)
         replay_args = replayer.parse_log()
         replay_args.replay_path = args.replay_path
+        # Re-apply seed using the replayed settings to ensure exact reproducibility
+        try:
+            # If no seed is present in replay, fall back to time-based seed
+            if not hasattr(replay_args, 'seed') or replay_args.seed is None:
+                replay_args.seed = None
+            if not hasattr(replay_args, 'deterministic') or replay_args.deterministic is None:
+                replay_args.deterministic = getattr(args, 'deterministic', False)
+            chosen_seed = set_global_seed(replay_args.seed, deterministic=replay_args.deterministic)
+            replay_args.seed = chosen_seed
+        except Exception:
+            pass
         main = MainProcess(replay_args, GUI=False)
         for k, v in main.full_args.__dict__.items():
             print(f"{k}:\t{v}")

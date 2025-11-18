@@ -147,6 +147,3 @@ class T5ForTokenClassification(T5EncoderModel):
             loss=loss,
             logits=logits,
         )
-    
-class T5ForMaskedLM(T5EncoderModel):
-    

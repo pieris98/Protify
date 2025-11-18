@@ -7,30 +7,6 @@ from typing import Dict, List, Optional, Tuple
 import torch
 
 
-def label_row(wt: str, pos: int, mt: str, sequence: str, token_probs: torch.Tensor, tokenizer) -> float:
-    """
-    Compute delta log-prob at a position within a sequence window.
-
-    - wt, mt: single-letter amino acids
-    - pos: index within `sequence`
-    - token_probs: log-probs over vocab, shape [1, len(sequence), vocab_size]
-    """
-    assert 0 <= pos < len(sequence), f"Index {pos} out of range for length {len(sequence)}"
-    assert token_probs.shape[1] == len(sequence), (
-        f"token_probs length {token_probs.shape[1]} must match sequence length {len(sequence)}"
-    )
-
-    wt_id = tokenizer.convert_tokens_to_ids(wt)
-    mt_id = tokenizer.convert_tokens_to_ids(mt)
-    unk_id = getattr(tokenizer, "unk_token_id", None)
-
-    if wt_id is None or mt_id is None or (unk_id is not None and (wt_id == unk_id or mt_id == unk_id)):
-        raise ValueError(f"WT or MT is not in vocab: {wt} or {mt}")
-
-    score = token_probs[0, pos, mt_id] - token_probs[0, pos, wt_id]
-    return score.item()
-
-
 def get_optimal_window(mutation_position_relative: int, seq_len_wo_special: int, model_window: int) -> list[int]:
     """
     Helper function that selects an optimal sequence window that fits the maximum model context size.
@@ -106,15 +82,6 @@ def get_sequence_slices(df, target_seq, model_context_len, start_idx=1, scoring_
         df = df[keep_cols]
     return df.reset_index(drop=True)
 
-def _apply_mutations_to_sequence(wt_seq: str, mutations: List[Tuple[str, int, str]]) -> str:
-    """Apply mutations to wildtype sequence."""
-    mutant_seq = list(wt_seq)
-    for wt, pos, mt in mutations:
-        assert 0 <= pos < len(mutant_seq), f"Mutation position {pos} out of range [0, {len(mutant_seq)})"
-        if mutant_seq[pos] != wt:
-            raise ValueError(f"WT mismatch at pos {pos}: expected {wt}, found {mutant_seq[pos]}")
-        mutant_seq[pos] = mt
-    return ''.join(mutant_seq)
     
 def _parse_mutant_string(mutant: str) -> List[Tuple[str, int, str]]:
     """
@@ -303,44 +270,6 @@ def _position_log_probs(
             all_log_probs.append(log_probs)
     
     return all_log_probs 
-
-
-@torch.inference_mode()
-def get_sequence_log_probability(sequence, tokenizer, model, device: torch.device, model_name: str):
-    """Compute the log probability of the unmasked sequence"""
-    tokens = tokenizer(sequence, return_tensors='pt', add_special_tokens=False)
-    input_ids = tokens['input_ids'][0].to(device)
-    attention_mask = tokens['attention_mask'][0].to(device)
-    
-    # GLM2 does not append EOS
-    if model_name in ["GLM2-150", "GLM2-650", "GLM2-GAIA"]:
-        expected_len = len(sequence) + 1
-        assert input_ids.shape[0] == expected_len, (
-            f"Tokenized length {input_ids.shape[0]} must equal len(sequence)+1 ({expected_len}) for GLM2"
-        )
-    else:
-        expected_len = len(sequence) + 2
-        assert input_ids.shape[0] == expected_len, (
-            f"Tokenized length {input_ids.shape[0]} must equal len(sequence)+2 ({expected_len})"
-        )
-    
-    output = model(input_ids.unsqueeze(0), attention_mask=attention_mask.unsqueeze(0))
-    logits = output["logits"]
-    log_probs = torch.log_softmax(logits.float(), dim=-1)
-    
-    # Use torch.gather to extract log probabilities for actual tokens
-    seq_start = 1 # skip the first special token (CLS/<+>)
-    seq_end = input_ids.size(0) - 1 if model_name not in ["GLM2-150", "GLM2-650", "GLM2-GAIA"] else input_ids.size(0)
-    
-    # Get the token IDs for the sequence positions
-    token_ids = input_ids[seq_start:seq_end].unsqueeze(0).unsqueeze(-1)  # Shape: [1, seq_len, 1]
-    
-    # Extract log probabilities for the actual tokens
-    selected_log_probs = torch.gather(log_probs[0, seq_start:seq_end], dim=-1, index=token_ids.squeeze(0))
-    
-    # Sum them
-    seq_log_prob = selected_log_probs.sum().item()
-    return seq_log_prob
 
 @torch.inference_mode()
 def calculate_pll_batched(

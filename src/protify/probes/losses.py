@@ -28,7 +28,6 @@ def get_loss_fct(task_type, tokenwise: bool = False):
         loss_fct = SoftBCELoss()
     else:
         print_message(f'Specified wrong classification type {task_type}')
-    print(f'Loss function: {loss_fct.__class__.__name__}')
     return loss_fct
 
 

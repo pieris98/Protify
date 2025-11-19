@@ -9,7 +9,8 @@ from .FastPLMs.e1.modeling_e1 import (
     E1Model,
     E1ForSequenceClassification,
     E1ForTokenClassification,
-    E1BatchPreparer
+    E1BatchPreparer,
+    E1ForMaskedLM,
 )
 from .base_tokenizer import BaseSequenceTokenizer
 
@@ -54,8 +55,12 @@ def get_e1_tokenizer(preset: str):
     return E1TokenizerWrapper(tokenizer)
 
 
-def build_e1_model(preset: str):
-    model = E1ForEmbedding(presets[preset]).eval()
+def build_e1_model(preset: str, masked_lm: bool = False, **kwargs):
+    model_path = presets[preset]
+    if masked_lm:
+        model = E1ForMaskedLM.from_pretrained(model_path, dtype=torch.bfloat16).eval()
+    else:
+        model = E1ForEmbedding(model_path).eval()
     tokenizer = get_e1_tokenizer(preset)
     return model, tokenizer
 

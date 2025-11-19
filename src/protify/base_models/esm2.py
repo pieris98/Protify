@@ -10,6 +10,7 @@ from .FastPLMs.esm2.modeling_fastesm import (
     FastEsmModel,
     FastEsmForSequenceClassification,
     FastEsmForTokenClassification,
+    FastEsmForMaskedLM,
 )
 from .base_tokenizer import BaseSequenceTokenizer
 
@@ -62,7 +63,7 @@ def get_esm2_tokenizer(preset: str):
     return ESM2TokenizerWrapper(EsmTokenizer.from_pretrained('facebook/esm2_t6_8M_UR50D'))
 
 
-def build_esm2_model(preset: str, masked_lm: bool = False):
+def build_esm2_model(preset: str, masked_lm: bool = False, **kwargs):
     if masked_lm:
         model = FastEsmForMaskedLM.from_pretrained(presets[preset]).eval()
     else:

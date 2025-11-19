@@ -45,6 +45,7 @@ class AnkhForEmbedding(nn.Module):
         else:
             return self.plm(input_ids, attention_mask=attention_mask).last_hidden_state
 
+
 class AnkhForProteinGym(nn.Module):
     def __init__(self, model_path: str):
         super().__init__()
@@ -109,14 +110,15 @@ class AnkhForProteinGym(nn.Module):
         log_probs = torch.log_softmax(logits[0, -1, :], dim=-1)
         return log_probs
 
+
 def get_ankh_tokenizer(preset: str):
     return ANKHTokenizerWrapper(AutoTokenizer.from_pretrained('Synthyra/ANKH_base'))
 
 
-def build_ankh_model(preset: str, masked_lm: bool = False):
+def build_ankh_model(preset: str, masked_lm: bool = False, **kwargs):
     model_path = presets[preset]
     if masked_lm:
-        model = AnkhForConditionalGeneration(model_path).eval()
+        model = T5ForConditionalGeneration(model_path).eval()
     else:
         model = AnkhForEmbedding(model_path).eval()
     tokenizer = get_ankh_tokenizer(preset)

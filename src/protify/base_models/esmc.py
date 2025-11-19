@@ -58,7 +58,7 @@ def get_esmc_tokenizer(preset: str):
     return ESMTokenizerWrapper(tokenizer)
 
 
-def build_esmc_model(preset: str, masked_lm: bool = False):
+def build_esmc_model(preset: str, masked_lm: bool = False, **kwargs):
     if masked_lm:
         model = ESMplusplusForMaskedLM.from_pretrained(presets[preset]).eval()
     else:

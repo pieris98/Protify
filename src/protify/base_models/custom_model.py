@@ -7,13 +7,13 @@ They should return embeddings from their forward pass.
 """
 
 
-def build_custom_model(model_path: str):
+def build_custom_model(model_path: str, **kwargs):
     model = AutoModel.from_pretrained(model_path, trust_remote_code=True).eval()
     tokenizer = model.tokenizer
     return model, tokenizer
 
 
-def build_custom_tokenizer(model_path: str):
+def build_custom_tokenizer(model_path: str, **kwargs):
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     return tokenizer
 

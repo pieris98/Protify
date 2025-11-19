@@ -364,7 +364,7 @@ def get_dplm_tokenizer(preset: str):
     return DPLMTokenizerWrapper(EsmTokenizer.from_pretrained('facebook/esm2_t6_8M_UR50D'))
 
 
-def build_dplm_model(preset: str, masked_lm: bool = False):
+def build_dplm_model(preset: str, masked_lm: bool = False, **kwargs):
     model = DPLMForEmbedding(presets[preset], return_logits=masked_lm).eval()
     tokenizer = get_dplm_tokenizer(preset)
     return model, tokenizer

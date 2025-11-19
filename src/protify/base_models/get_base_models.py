@@ -96,12 +96,8 @@ class BaseModelArguments:
             self.model_names = model_names
 
 
-def get_base_model(model_name: str):
-    if 'custom' in model_name.lower():
-        model_path = model_name.split('---')[-1]
-        from .custom_model import build_custom_model
-        return build_custom_model(model_path)
-    elif 'random' in model_name.lower():
+def get_base_model(model_name: str, masked_lm: bool = False):
+    if 'random' in model_name.lower():
         from .random import build_random_model
         return build_random_model(model_name, masked_lm=masked_lm)
     elif 'esm2' in model_name.lower() or 'dsm' in model_name.lower():
@@ -115,10 +111,10 @@ def get_base_model(model_name: str):
         return build_protbert_model(model_name, masked_lm=masked_lm)
     elif 'prott5' in model_name.lower():
         from .prott5 import build_prott5_model
-        return build_prott5_model(model_name)
+        return build_prott5_model(model_name, masked_lm=masked_lm)
     elif 'ankh' in model_name.lower():
         from .ankh import build_ankh_model
-        return build_ankh_model(model_name)
+        return build_ankh_model(model_name, masked_lm=masked_lm)
     elif 'glm' in model_name.lower():
         from .glm import build_glm2_model
         return build_glm2_model(model_name, masked_lm=masked_lm)
@@ -127,16 +123,16 @@ def get_base_model(model_name: str):
         return build_dplm_model(model_name, masked_lm=masked_lm)
     elif 'protclm' in model_name.lower():
         from .protCLM import build_protCLM
-        return build_protCLM(model_name)
+        return build_protCLM(model_name, masked_lm=masked_lm)
     elif 'onehot' in model_name.lower():
         from .one_hot import build_one_hot_model
-        return build_one_hot_model(model_name)
+        return build_one_hot_model(model_name, masked_lm=masked_lm)
     elif 'amplify' in model_name.lower():
         from .amplify import build_amplify_model
         return build_amplify_model(model_name, masked_lm=masked_lm)
     elif 'e1' in model_name.lower():
         from .e1 import build_e1_model
-        return build_e1_model(model_name)
+        return build_e1_model(model_name, masked_lm=masked_lm)
     elif 'custom' in model_name.lower():
         model_path = model_name.split('---')[-1]
         from .custom_model import build_custom_model

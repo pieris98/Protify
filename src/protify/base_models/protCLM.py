@@ -51,17 +51,18 @@ class ProtCLMForEmbedding(nn.Module):
         return out.last_hidden_state
 
 
-
 def get_protCLM_tokenizer(preset: str) -> BaseSequenceTokenizer:
     return ProtCLMTokenizerWrapper(
         AutoTokenizer.from_pretrained(presets[preset], trust_remote_code=True)
     )
+
 
 def build_protCLM(preset: str) -> Tuple[AutoModel, BaseSequenceTokenizer]:
     model_path = presets[preset]
     model = ProtCLMForEmbedding(model_path, trust_remote_code=True).eval()
     tokenizer = get_protCLM_tokenizer(preset)
     return model, tokenizer
+
 
 def get_protCLM_for_training(
     preset: str,
@@ -83,6 +84,7 @@ def get_protCLM_for_training(
             ).eval()
     tokenizer = get_protCLM_tokenizer(preset)
     return model, tokenizer
+
 
 if __name__ == "__main__":
     # py -m src.protify.base_models.protCLM

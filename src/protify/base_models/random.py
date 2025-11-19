@@ -60,7 +60,7 @@ class RandomTransformer(nn.Module):
             return self.transformer(input_ids, attention_mask).last_hidden_state
 
 
-def build_random_model(preset: str, masked_lm: bool = False):
+def build_random_model(preset: str, masked_lm: bool = False, **kwargs):
     tokenizer = EsmTokenizer.from_pretrained('facebook/esm2_t12_35M_UR50D')
     if preset == 'Random':
         model = RandomModel(EsmConfig.from_pretrained('facebook/esm2_t12_35M_UR50D'))

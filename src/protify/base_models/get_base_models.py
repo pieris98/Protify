@@ -76,8 +76,6 @@ standard_models = [
     'DSM-150',
     'DSM-650',
     'DSM-PPI',
-    'Random',
-    'Random-Transformer',
     'AMPLIFY-120',
     'AMPLIFY-350',
 ]

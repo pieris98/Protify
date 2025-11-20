@@ -158,7 +158,7 @@ class HyperoptModule:
             tokenizer = get_tokenizer(model_name)
             test_seq = mp.all_seqs[0]
 
-            if "random" in model_name.lower():
+            if "random" in model_name.lower() or "onehot" in model_name.lower():
                 print_message(f"Skipping hyperparameter optimization for {model_name}.")
 
                 for data_name, dataset in mp.datasets.items():

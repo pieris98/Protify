@@ -30,6 +30,19 @@ def print_done():
     print(pyfiglet.figlet_format('== Done ==', font='js_stick_letters'))
 
 
+def expand_dms_ids_all(dms_ids, mode: str = None):
+    """
+    Expand 'all' to actual DMS IDs from benchmarks.proteingym.dms_ids.
+    """
+    if any(str(x).lower() == 'all' for x in dms_ids):
+        if mode == 'indels':
+            from benchmarks.proteingym.dms_ids import ALL_INDEL_DMS_IDS
+            dms_ids = list(ALL_INDEL_DMS_IDS)
+        else:
+            from benchmarks.proteingym.dms_ids import ALL_SUBSTITUTION_DMS_IDS
+            dms_ids = list(ALL_SUBSTITUTION_DMS_IDS)
+    return dms_ids
+
 if __name__ == '__main__':
     folders_to_clean = ['logs', 'results', 'plots', 'embeddings', 'weights']
     

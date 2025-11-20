@@ -1,12 +1,17 @@
 """
-We use the FastESM2 implementation of ESM2, which is exactly equivalent but uses FlashAttention2.
+We use the FastESM2 implementation of ESM2.
 """
 import torch
 import torch.nn as nn
 from typing import Optional, Union, List, Dict
 from transformers import EsmTokenizer
 
-from .FastPLMs.modeling_fastesm import FastEsmModel, FastEsmForSequenceClassification, FastEsmForTokenClassification
+from .FastPLMs.esm2.modeling_fastesm import (
+    FastEsmModel,
+    FastEsmForSequenceClassification,
+    FastEsmForTokenClassification,
+    FastEsmForMaskedLM,
+)
 from .base_tokenizer import BaseSequenceTokenizer
 
 
@@ -58,8 +63,11 @@ def get_esm2_tokenizer(preset: str):
     return ESM2TokenizerWrapper(EsmTokenizer.from_pretrained('facebook/esm2_t6_8M_UR50D'))
 
 
-def build_esm2_model(preset: str):
-    model = FastEsmForEmbedding(presets[preset]).eval()
+def build_esm2_model(preset: str, masked_lm: bool = False, **kwargs):
+    if masked_lm:
+        model = FastEsmForMaskedLM.from_pretrained(presets[preset]).eval()
+    else:
+        model = FastEsmForEmbedding(presets[preset]).eval()
     tokenizer = get_esm2_tokenizer(preset)
     return model, tokenizer
 

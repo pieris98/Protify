@@ -118,7 +118,8 @@ class TransformerConfig(PretrainedConfig):
         expansion_ratio: float = 8 / 3,
         dropout: float = 0.1,
         rotary: bool = True,
-        **kwargs
+        attn_implementation: str = 'sdpa',
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.hidden_size = hidden_size
@@ -128,8 +129,8 @@ class TransformerConfig(PretrainedConfig):
         self.dropout = dropout
         self.rotary = rotary
         self.vocab_size = vocab_size
-
-
+        self.attn_implementation = attn_implementation
+        
 @dataclass
 class TransformerOutput(ModelOutput):
     """Output type for ESM++ models."""

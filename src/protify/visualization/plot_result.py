@@ -25,6 +25,9 @@ MODEL_NAMES = {
     'ESM2-diffAV-150': r'$ESM2_{diffAV-150M}$',
     'ESMC-300': r'$ESMC_{300M}$',
     'ESMC-600': r'$ESMC_{600M}$',
+    'E1-150': r'$E1_{150M}$',
+    'E1-300': r'$E1_{300M}$',
+    'E1-600': r'$E1_{600M}$',
     'ProtBert': r'$ProtBert_{420M}$',
     'ProtBert-BFD': r'$ProtBert_{BFD}$',
     'ProtT5': r'ProtT5-enc$_{3B}$',
@@ -70,33 +73,40 @@ DATASET_NAMES = {
     'optimal_temperature': 'optimal temperature',
     'optimal_ph': 'optimal pH',
     'material_production': 'material production',
-    'fitness_prediction': 'fitness',
     'fold_prediction': 'folds',
     'cloning_clf': 'cloning',
     'stability_prediction': 'stability',
     
     # Protein-protein interactions
-    'HPPI': 'Human-PPI',
-    'HPPI_PiNUI': r'$Human-PPI_{PiNUI}$',
-    'YPPI_PiNUI': r'$Yeast-PPI_{PiNUI}$',
-    'peptide_HLA_MHC_affinity_ppi': 'peptide HLA MHC affinity',
-    'SHS27k': r'$SHS_{27k}$',
-    'SHS148k': r'$SHS_{148k}$',
-    'ProteinProteinAffinity': r'$PPI affinity_{bindwell}$',
-    'bernett_gold_ppi': r'$Human PPI_{bernett}$',
-    'ppi_set_v5': r'$PPI_{synthyra}$',
+    'human-ppi-saprot': r'$Human-PPI_{saprot}$',
+    'human-ppi-pinui': r'$Human-PPI_{PiNUI}$',
+    'yeast-ppi-pinui': r'$Yeast-PPI_{PiNUI}$',
+    'peptide-HLA-MHC-affinity': 'peptide HLA MHC affinity',
+    'shs27-ppi-raw': r'$SHS_{27k}-raw$',
+    'shs148-ppi-raw': r'$SHS_{148k}-raw$',
+    'shs27-ppi-random': r'$SHS_{27k}-random$',
+    'shs148-ppi-random': r'$SHS_{148k}-random$',
+    'shs27-ppi-dfs': r'$SHS_{27k}-dfs$',
+    'shs148-ppi-dfs': r'$SHS_{148k}-dfs$',
+    'shs27-ppi-bfs': r'$SHS_{27k}-bfs$',
+    'shs148-ppi-bfs': r'$SHS_{148k}-bfs$',
+    'gold-ppi': r'$Human PPI_{bernett}$',
+    'plm-interact': r'$PLM-Interact_{human / cross}$',
     
     # Secondary structure
     'SS3': r'$SS_{3}$',
     'SS8': r'$SS_{8}$',
+    
+    # "Fitness"
     'fluorescence_prediction': 'fluorescence',
-    
+    'fitness_prediction': 'fitness',
+    'millionfull_round_1_oct_2025': r'$AtOMT1_{millionfull}$',
+
     # Special datasets
-    'plastic_degradation_benchmark': r'$plastic degradation_{benchmark}$',
-    'foldseek_dataset': 'foldseek',
-    'ec_active': 'EC active',
-    'bernett_processed': 'bernett processed',
-    
+    'plastic': r'$plastic degradation_{benchmark}$',
+    'foldseek-fold': 'foldseek fold',
+    'foldseek-inverse': 'foldseek inverse',
+    'ec-active': 'EC singlelabel',
     
     # Taxonomic datasets (alternative naming with full prefix)
     'taxonomy_domain': r'$taxonomy_{domain}$',
@@ -107,40 +117,7 @@ DATASET_NAMES = {
     'taxonomy_family': r'$taxonomy_{family}$',
     'taxonomy_genus': r'$taxonomy_{genus}$',
     'taxonomy_species': r'$taxonomy_{species}$',
-    
-    # Alternative naming patterns (for backwards compatibility)
-    'EC': 'EC',
-    'GO-CC': r'$GO_{CC}$',
-    'GO-BP': r'$GO_{BP}$',
-    'GO-MF': r'$GO_{MF}$',
-    'MB': 'MB',
-    'DeepLoc-2': r'$DL_{2}$',
-    'DeepLoc-10': r'$DL_{10}$',
-    'Subcellular': 'Subcellular',
-    'enzyme-kcat': r'$k_{cat}$',
-    'temperature-stability': 'temperature stability',
-    'peptide-HLA-MHC-affinity': 'peptide HLA MHC affinity',
-    'optimal-temperature': 'optimal temperature',
-    'optimal-ph': 'optimal pH',
-    'material-production': 'material production',
-    'fitness-prediction': 'fitness',
-    'number-of-folds': 'folds',
-    'cloning-clf': 'cloning',
-    'stability-prediction': 'stability',
-    'human-ppi': 'Human-PPI',
-    'human-ppi-pinui': r'$Human-PPI_{PiNUI}$',
-    'yeast-ppi-pinui': r'$Yeast-PPI_{PiNUI}$',
-    'shs27-ppi': r'$SHS_{27k}$',
-    'shs148-ppi': r'$SHS_{148k}$',
-    'PPA-ppi': r'$PPI affinity_{bindwell}$',
-    'gold-ppi': r'$Human PPI_{bernett}$',
-    'SecondaryStructure-3': r'$SS_{3}$',
-    'SecondaryStructure-8': r'$SS_{8}$',
-    'fluorescence-prediction': 'fluorescence',
-    'plastic': r'$plastic degradation_{benchmark}$',
-    'foldseek-fold': 'foldseek fold',
-    'foldseek-inverse': 'foldseek inverse',
-    'ec-active': 'EC active',
+    'diff_phylogeny': r'$taxonomy_{different}$',
 }
 
 
@@ -160,7 +137,10 @@ def is_regression(metrics: Dict[str, float]) -> bool:
     """Heuristic based on key names."""
     reg = ("spearman", "pearson", "r_squared", "rmse", "mse")
     cls = ("accuracy", "f1", "mcc", "auc", "precision", "recall")
-    keys = {k.lower() for k in metrics}
+    # Filter out time-related metrics
+    filtered_metrics = {k: v for k, v in metrics.items() 
+                       if 'training_time' not in k.lower() and 'time_seconds' not in k.lower()}
+    keys = {k.lower() for k in filtered_metrics}
     if any(k for k in keys if any(r in k for r in reg)):
         return True
     if any(k for k in keys if any(c in k for c in cls)):
@@ -172,6 +152,9 @@ def pick_metric(metrics: Dict[str, float], prefs: List[Tuple[str, str]]) -> Tupl
     """Return (key, pretty_name) for the first preference present in metrics."""
     for k, nice in prefs:
         for mk in metrics:
+            # Skip time-related metrics
+            if 'training_time' in mk.lower() or 'time_seconds' in mk.lower():
+                continue
             if mk.lower().endswith(k):
                 return k, nice
     raise KeyError("No preferred metric found.")
@@ -180,6 +163,9 @@ def pick_metric(metrics: Dict[str, float], prefs: List[Tuple[str, str]]) -> Tupl
 def get_metric_value(metrics: Dict[str, float], key_suffix: str) -> float:
     """Fetch metric value case-/prefix-insensitively; NaN if absent."""
     for k, v in metrics.items():
+        # Skip time-related metrics
+        if 'training_time' in k.lower() or 'time_seconds' in k.lower():
+            continue
         if k.lower().endswith(key_suffix):
             return v
     return math.nan
@@ -206,7 +192,7 @@ def plot_radar(*,
 
     if normalize:
         arr = np.asarray(data)
-        rng = np.where(arr.ptp(0) == 0, 1, arr.ptp(0))
+        rng = np.where(np.ptp(arr, axis=0) == 0, 1, np.ptp(arr, axis=0))
         data = (arr - arr.min(0)) / rng
         # Convert back to list of lists for consistency
         data = data.tolist()
@@ -480,7 +466,7 @@ def create_plots(tsv: str, outdir: str):
     # Normalized bar plot
     # For bar plot normalization, use min-max per dataset (column-wise normalization)
     arr = np.asarray(sorted_plot_matrix)
-    rng = np.where(arr.ptp(0) == 0, 1, arr.ptp(0))
+    rng = np.where(np.ptp(arr, axis=0) == 0, 1, np.ptp(arr, axis=0))
     arr_norm = (arr - arr.min(0)) / rng
     bar_plot(datasets, sorted_models, arr_norm.tolist(), metric_name + " (Normalized)", bar_path_norm)
     # Heatmap
@@ -537,7 +523,7 @@ if __name__ == "__main__":
     print(f"Bar plot test passed: {bar_path}")
     # Normalized bar plot
     arr = np.asarray(data)
-    rng = np.where(arr.ptp(0) == 0, 1, arr.ptp(0))
+    rng = np.where(np.ptp(arr, axis=0) == 0, 1, np.ptp(arr, axis=0))
     arr_norm = (arr - arr.min(0)) / rng
     bar_path_norm = tmpdir / "test_bar_normalized.png"
     bar_plot(categories, models, arr_norm.tolist(), "Test Metric (Normalized)", bar_path_norm)

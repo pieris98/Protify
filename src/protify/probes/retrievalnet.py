@@ -4,8 +4,21 @@ from typing import Optional
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import SequenceClassifierOutput
 
-from model_components.attention import AttentionLogitsSequence, AttentionLogitsToken, Linear
-from model_components.transformer import TokenFormer, Transformer
+try:
+    from ..model_components.attention import AttentionLogitsSequence, AttentionLogitsToken, Linear
+except ImportError:
+    try:
+        from protify.model_components.attention import AttentionLogitsSequence, AttentionLogitsToken, Linear
+    except ImportError:
+        from model_components.attention import AttentionLogitsSequence, AttentionLogitsToken, Linear
+
+try:
+    from ..model_components.transformer import TokenFormer, Transformer
+except ImportError:
+    try:
+        from protify.model_components.transformer import TokenFormer, Transformer
+    except ImportError:
+        from model_components.transformer import TokenFormer, Transformer
 from .losses import get_loss_fct
 
 
@@ -13,7 +26,7 @@ class RetrievalNetConfig(PretrainedConfig):
     model_type = "retrievalnet"
     def __init__(
             self,
-            input_dim: int = 768,
+            input_size: int = 768,
             hidden_size: int = 512,
             dropout: float = 0.2,
             num_labels: int = 2,
@@ -27,7 +40,7 @@ class RetrievalNetConfig(PretrainedConfig):
     ):
         super().__init__(**kwargs)
         assert task_type != 'regression' or num_labels == 1, "Regression task must have exactly one label"
-        self.input_dim = input_dim
+        self.input_size = input_size
         self.hidden_size = hidden_size
         self.dropout = dropout
         self.task_type = task_type
@@ -45,7 +58,7 @@ class RetrievalNetForSequenceClassification(PreTrainedModel):
         super().__init__(config)
         # If n_layers == 0, only learn how to distribute labels over the raw embeddings
         if config.n_layers > 0:
-            self.input_proj = nn.Linear(config.input_dim, config.hidden_size)
+            self.input_proj = nn.Linear(config.input_size, config.hidden_size)
         
             transformer_class = TokenFormer if config.token_attention else Transformer
             self.transformer = transformer_class(
@@ -58,7 +71,7 @@ class RetrievalNetForSequenceClassification(PreTrainedModel):
             )
             
         self.get_logits = AttentionLogitsSequence(
-            hidden_size=config.hidden_size if config.n_layers > 0 else config.input_dim,
+            hidden_size=config.hidden_size if config.n_layers > 0 else config.input_size,
             num_labels=config.num_labels,
             sim_type=config.sim_type,
         )
@@ -83,9 +96,13 @@ class RetrievalNetForSequenceClassification(PreTrainedModel):
             x = embeddings
 
         logits, sims, x = self.get_logits(x, attention_mask) # (bs, num_labels)
+        if self.task_type == 'sigmoid_regression':
+            logits = logits.sigmoid()
         loss = None
         if labels is not None:
             if self.task_type == 'regression':
+                loss = self.loss_fct(logits.flatten(), labels.view(-1).float())
+            elif self.task_type == 'sigmoid_regression':
                 loss = self.loss_fct(logits.flatten(), labels.view(-1).float())
             elif self.task_type == 'multilabel':
                 loss = self.loss_fct(logits, labels.float())
@@ -105,7 +122,7 @@ class RetrievalNetForTokenClassification(PreTrainedModel):
     def __init__(self, config: RetrievalNetConfig):
         super().__init__(config)
         if config.n_layers > 0:
-            self.input_proj = nn.Linear(config.input_dim, config.hidden_size)
+            self.input_proj = nn.Linear(config.input_size, config.hidden_size)
             self.transformer = TokenFormer(
                 hidden_size=config.hidden_size,
                 n_heads=config.n_heads,
@@ -116,7 +133,7 @@ class RetrievalNetForTokenClassification(PreTrainedModel):
             )
 
         self.get_logits = AttentionLogitsToken(
-            hidden_size=config.hidden_size if config.n_layers > 0 else config.input_dim,
+            hidden_size=config.hidden_size if config.n_layers > 0 else config.input_size,
             num_labels=config.num_labels,
             sim_type=config.sim_type,
         )
@@ -140,10 +157,14 @@ class RetrievalNetForTokenClassification(PreTrainedModel):
             x = embeddings
 
         logits = self.get_logits(x, attention_mask)
+        if self.task_type == 'sigmoid_regression':
+            logits = logits.sigmoid()
 
         loss = None
         if labels is not None:
             if self.task_type == 'regression':
+                loss = self.loss_fct(logits.flatten(), labels.view(-1).float())
+            elif self.task_type == 'sigmoid_regression':
                 loss = self.loss_fct(logits.flatten(), labels.view(-1).float())
             elif self.task_type == 'multilabel':
                 loss = self.loss_fct(logits, labels.float())

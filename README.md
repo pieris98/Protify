@@ -50,6 +50,18 @@
       </ul>
     </li>
     <li><a href="#usage">Usage</a></li>
+    <li>
+      <a href="#hyperparameter-optimization">Hyperparameter Optimization</a>
+      <ul>
+        <li><a href="#key-features">Key Features</a></li>
+        <li><a href="#quick-start">Quick Start</a></li>
+        <li><a href="#configuration">Configuration</a></li>
+        <li><a href="#cli-arguments">CLI Arguments</a></li>
+        <li><a href="#available-metrics">Available Metrics</a></li>
+        <li><a href="#workflow">Workflow</a></li>
+        <li><a href="#best-practices">Best Practices</a></li>
+      </ul>
+    </li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#built-with">Built With</a></li>
     <li><a href="#license">License</a></li>
@@ -83,13 +95,13 @@ Protify is currently in beta. We're actively working to enhance features and doc
 
   | Model Name | Description | Size (parameters) | Type |
   |------------|-------------|------|------|
-  | ESM2-8 | Small pLM from Meta AI that learns evolutionary information from millions of protein sequences. | 8M | pLM |
-  | ESM2-35 | Medium-sized pLM trained on evolutionary data. | 35M | pLM |
-  | ESM2-150 | Large pLM with improved protein structure prediction capabilities. | 150M | pLM |
-  | ESM2-650 | Very large pLM offering state-of-the-art performance on many protein prediction tasks. | 650M | pLM |
+  | ESM2-8 | Very small pLM from Meta AI that learns evolutionary information from millions of protein sequences. | 8M | pLM |
+  | ESM2-35 | Small-sized pLM trained on evolutionary data. | 35M | pLM |
+  | ESM2-150 | Medium-sized pLM with improved protein structure prediction capabilities. | 150M | pLM |
+  | ESM2-650 | Large pLM offering state-of-the-art performance on many protein prediction tasks. | 650M | pLM |
   | ESM2-3B | Largest ESM2 pLM with exceptional capability for protein structure and function prediction. | 3B | pLM |
-  | ESMC-300 | pLM optimized for classification tasks. | 300M | pLM |
-  | ESMC-600 | Larger pLM for classification. | 600M | pLM |
+  | ESMC-300 | pLM optimized for representation learning. | 300M | pLM |
+  | ESMC-600 | Larger pLM for representations. | 600M | pLM |
   | ProtBert | BERT-based pLM trained on protein sequences from UniRef. | 420M | pLM |
   | ProtBert-BFD | BERT-based pLM trained on BFD database with improved performance. | 420M | pLM |
   | ProtT5 | T5-based pLM capable of both encoding and generation tasks. | 3B | pLM |
@@ -98,12 +110,12 @@ Protify is currently in beta. We're actively working to enhance features and doc
   | ANKH2-Large | Improved second generation ANKH pLM. | 1.2B | pLM |
   | GLM2-150 | Medium-sized general language model adapted for protein sequences. | 150M | pLM |
   | GLM2-650 | Large general language model adapted for protein sequences. | 650M | pLM |
-  | GLM2-GAIA | Specialized GLM pLM with GAIA architecture improvements. | 650M | pLM |
-  | DPLM-150 | Deep protein language model focused on protein structure. | 150M | pLM |
-  | DPLM-650 | Larger deep protein language model. | 650M | pLM |
+  | GLM2-GAIA | Specialized GLM pLM fine-tuned with contrastive learning. | 650M | pLM |
+  | DPLM-150 | Diffusion pLM focused on protein structure. | 150M | pLM |
+  | DPLM-650 | Larger diffusion pLM focused on protein structure. | 650M | pLM |
   | DPLM-3B | Largest deep protein language model in the DPLM family. | 3B | pLM |
-  | DSM-150 | Deep language model for proteins. | 150M | pLM |
-  | DSM-650 | Deep language model for proteins. | 650M | pLM |
+  | DSM-150 | Diffusion sequence model 150 parameter version. | 150M | pLM |
+  | DSM-650 | Diffusion sequence model 650 parameter version. | 650M | pLM |
   | DSM-PPI | DSM model optimized for protein-protein interactions. | Varies | pLM |
   | ProtCLM-1b | Causal (auto regressive) pLM. | 1B | pLM |
   | OneHot-Protein | One-hot encoding baseline for protein sequences. | N/A | Baseline |
@@ -119,9 +131,11 @@ Protify is currently in beta. We're actively working to enhance features and doc
 <details>
   <summary>Click to expand dataset list</summary>
   
-  BC - Binary Classification | MCC - Multi-Class Classification | MLC - Multi-Label Classification | R - Regression | PPI - Protein-Protein Interaction
+  BC - Binary Classification | SLC - Single-Label Classification | MLC - Multi-Label Classification | R - Regression
 
-  | Dataset Name | Description | Type | Task | Tokenwise | Dual inputs |
+  TC - Tokenwise classification | TR - Tokenwise regression
+
+  | Dataset Name | Description | Type | Task | Tokenwise | Multiple inputs |
   |--------------|-------------|------|------|-----------|-------------|
   | EC | Enzyme Commission numbers dataset for predicting enzyme function classification. | MLC | Protein function prediction | No | No |
   | GO-CC | Gene Ontology Cellular Component dataset for predicting protein localization in cells. | MLC | Protein localization prediction | No | No |
@@ -146,18 +160,27 @@ Protify is currently in beta. We're actively working to enhance features and doc
   | SecondaryStructure-8 | Dataset for predicting protein secondary structure in 8 classes. | MCC | Protein structure prediction | Yes | No |
   | fluorescence-prediction | Dataset for predicting protein fluorescence properties. | R | Protein property prediction | Yes | No |
   | plastic | Dataset for predicting protein capability for plastic degradation. | BC | Enzyme function prediction | No | No |
-  | human-ppi | Dataset for predicting human protein-protein interactions. | PPI | PPI prediction | No | Yes |
-  | human-ppi-pinui | Human protein-protein interaction dataset from PiNUI. | PPI | PPI prediction | No | Yes |
-  | yeast-ppi-pinui | Yeast protein-protein interaction dataset from PiNUI. | PPI | PPI prediction | No | Yes |
-  | peptide-HLA-MHC-affinity | Dataset for predicting peptide binding affinity to HLA/MHC complexes. | PPI | Binding affinity prediction | No | Yes |
-  | gold-ppi | Gold standard dataset for protein-protein interaction prediction. | PPI | PPI prediction | No | Yes |
-  | shs27-ppi | SHS27k dataset containing 27,000 protein-protein interactions. | PPI | PPI prediction | No | Yes |
-  | shs148-ppi | SHS148k dataset containing 148,000 protein-protein interactions. | PPI | PPI prediction | No | Yes |
-  | PPA-ppi | Protein-Protein Affinity dataset for quantitative binding predictions. | PPI | PPI affinity prediction | No | Yes |
+  | gold-ppi | Gold standard dataset for protein-protein interaction prediction. | SLC | PPI prediction | No | Yes |
+  | human-ppi-saprot | Human protein-protein interaction dataset from SAProt paper. | SLC | PPI prediction | No | Yes |
+  | human-ppi-pinui | Human protein-protein interaction dataset from PiNUI. | SLC | PPI prediction | No | Yes |
+  | yeast-ppi-pinui | Yeast protein-protein interaction dataset from PiNUI. | SLC | PPI prediction | No | Yes |
+  | peptide-HLA-MHC-affinity | Dataset for predicting peptide binding affinity to HLA/MHC complexes. | SLC | Binding affinity prediction | No | Yes |
+  | shs27-ppi-raw | Raw SHS27k with single-label labels. | SLC | PPI type prediction | No | Yes |
+  | shs148-ppi-raw | Raw SHS148k with single-label labels. | SLC | PPI type prediction | No | Yes |
+  | shs27-ppi-random | SHS27k  | MLC | PPI prediction | No | Yes |
+  | shs148-ppi-random | SHS148k CD-Hit 40%, multi-label lables, randomized data splits. | MLC | PPI type prediction | No | Yes |
+  | shs27-ppi-dfs | SHS27k CD-Hit 40%, multi-label lables, data splits via depth first search. | MLC | PPI type prediction | No | Yes |
+  | shs148-ppi-dfs | SHS148k CD-Hit 40%, multi-label lables, data splits via depth first search. | MLC | PPI type prediction | No | Yes |
+  | shs27-ppi-bfs | SHS27k CD-Hit 40%, multi-label lables, data splits via breadth first search. | MLC | PPI type prediction | No | Yes |
+  | shs148-ppi-bfs | SHS148k CD-Hit 40%, multi-label lables, data splits via breadth first search. | MLC | PPI type prediction | No | Yes |
+  | string-ppi-random | STRING CD-Hit 40%, multi-label lables, randomized data splits. | MLC | PPI type prediction | No | Yes |
+  | string-ppi-dfs | STRING CD-Hit 40%, multi-label lables, data splits via depth first search. | MLC | PPI type prediction | No | Yes |
+  | string-ppi-bfs | STRING CD-Hit 40%, multi-label lables, data splits via breadth first search. | MLC | PPI type prediction | No | Yes |
+  | ppi-mutation-effect | Compare wild type, mutated, and target sequence to determine if PPI is stronger or not. | SLC | PPI effect prediction | No | Yes |
+  | PPA-ppi | Protein-Protein Affinity dataset from Bindwell. | R | protein-protein affinity prediction | No | Yes |
   | foldseek-fold | Dataset for protein fold classification using Foldseek. | MCC | Protein structure prediction | No | No |
   | foldseek-inverse | Inverse protein fold prediction dataset. | MCC | Protein structure prediction | No | No |
   | ec-active | Dataset for predicting active enzyme classes. | MCC | Enzyme function prediction | No | No |
-  | bernett_processed | Processed Bernett dataset for protein analysis. | Various | Protein analysis | No | No |
   | taxon_domain | Taxonomic classification at domain level. | MCC | Taxonomic prediction | No | No |
   | taxon_kingdom | Taxonomic classification at kingdom level. | MCC | Taxonomic prediction | No | No |
   | taxon_phylum | Taxonomic classification at phylum level. | MCC | Taxonomic prediction | No | No |
@@ -166,6 +189,10 @@ Protify is currently in beta. We're actively working to enhance features and doc
   | taxon_family | Taxonomic classification at family level. | MCC | Taxonomic prediction | No | No |
   | taxon_genus | Taxonomic classification at genus level. | MCC | Taxonomic prediction | No | No |
   | taxon_species | Taxonomic classification at species level. | MCC | Taxonomic prediction | No | No |
+  | diff_phylogeny | Differential phylogeny dataset. | Various | Phylogeny prediction | No | No |
+  | plddt | AlphaFold pLDDT confidence score prediction. | TR | Confidence prediction | Yes | No |
+  | realness | Protein realness dataset. | BC | Authenticity prediction | No | No |
+  | million_full | Large-scale enzyme variant dataset, from Millionfull preprint October 2025 | R | Protein fitness prediction | No | No |
 </details>
 
 For more details about supported models and datasets, including programmatic access and command-line utilities, see the [Resource Listing Documentation](docs/resource_listing.md).
@@ -179,6 +206,7 @@ For more details about supported models and datasets, including programmatic acc
   - Coming soon: Full model fine-tuning, hybrid probing, and LoRA
 - **Automated model selection**: Find optimal scikit-learn models for your data with LazyPredict, enhanced by automatic hyperparameter optimization
   - Coming soon: GPU acceleration
+- **Hyperparameter optimization**: Integrated Weights & Biases sweeps that conducts a hyperparameter search and trains the final version based on the best hyperparameters
 - **Complete reproducibility**: Every session generates a detailed log that can be used to reproduce your entire workflow
 - **Publication-ready visualizations**: Generate cross-model and dataset comparisons with radar and bar plots, embedding analysis with PCA, t-SNE, and UMAP, and statistically sound confidence interval plots
 - **Extensive dataset support**: Access 46+ protein datasets by default, or easily integrate your own local or private datasets
@@ -200,16 +228,17 @@ From pip
 `pip install Protify`
 
 To get started locally
-```console
-git clone https://@github.com/Gleghorn-Lab/Protify.git
+```bash
+git clone https://github.com/Gleghorn-Lab/Protify.git
 cd Protify
-python -m pip install -r requirements.txt
 git submodule update --init --remote --recursive
+python -m pip install -r requirements.txt
 cd src/protify
 ```
+
 With a Python VM (linux)
-```console
-git clone https://@github.com/Gleghorn-Lab/Protify.git
+```bash
+git clone https://github.com/Gleghorn-Lab/Protify.git
 cd Protify
 git submodule update --init --remote --recursive
 chmod +x setup_protify.sh
@@ -217,6 +246,16 @@ chmod +x setup_protify.sh
 source ~/protify_venv/bin/activate
 cd src/protify
 ```
+
+With Docker
+```bash
+git clone https://github.com/Gleghorn-Lab/Protify.git
+cd Protify
+git submodule update --init --remote --recursive
+docker build -t protify-env:latest .
+docker run --rm --gpus all -v ${PWD}:/workspace protify-env:latest python -m main
+```
+Note: You may need to include `sudo` before the docker commands.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -227,7 +266,7 @@ cd src/protify
   
   To launch the gui, run
   
-  ```console
+  ```bash
   python -m gui
   ```
   
@@ -300,6 +339,160 @@ cd src/protify
 
 </details>
 
+## Hyperparameter Optimization
+
+Protify uses Weights & Biases (W&B) for automated hyperparameter optimization across all training modes (neural network probes, full fine-tuning, and hybrid probes). This feature allows you to systematically search for optimal hyperparameters to maximize model performance.
+
+### Overview
+
+- **Multiple search methods**: Choose from Bayesian, grid, or random search
+- **Flexible configuration**: Customize which hyperparameters to optimize via the YAML file
+- **Automatic best model selection**: After sweep completion, the best configuration is automatically applied and used for final training
+- **Comprehensive logging**: All trials are logged to W&B and saved locally as CSV files for later analysis
+- **Works with all training modes**: Neural network probes, full fine-tuning, and hybrid probes
+
+### Quick Start
+
+To use W&B hyperparameter optimization, simply add the `--use_wandb_hyperopt` flag to any run:
+
+```bash
+python -m main \
+  --use_wandb_hyperopt \
+  --model_names ESM2-8 ESM2-35 \
+  --data_names DeepLoc-2 MB
+```
+
+That's it! The sweep will use default settings (Bayesian search, 10 trials, minimize validation loss). To customize these defaults, see the Configuration section below.
+
+### Configuration
+ 
+Hyperparameter sweeps are configured via the `sweep.yaml` file (located in `src/protify/yamls/sweep.yaml`), as well as the CLI. Here's the default configuration:
+
+```yaml
+early_terminate: {type: hyperband, min_iter: 10}  # early stopping (stops underperforming trials)
+
+parameters:
+  # Common parameters for all training modes
+  lr:
+    distribution: log_uniform_values
+    min: 0.000001
+    max: 0.01
+  weight_decay:
+    distribution: log_uniform_values
+    min: 0.000001
+    max: 0.1
+  
+  # Full finetuning specific parameters
+  base_batch_size:
+    values: [4, 8, 16]
+  base_grad_accum:
+    values: [4, 8, 16]
+  
+  # Probe specific parameters
+  probe_batch_size:
+    values: [16, 32, 64, 128]
+  dropout:
+    distribution: uniform
+    min: 0.0
+    max: 0.5
+  hidden_size:
+    values: [512, 1024, 2048, 4096, 8192]
+  n_layers:
+    values: [1, 2, 3]
+  probe_pooling_types:
+    values: ["cls", "mean"]
+  
+  # Transformer probe specific parameters
+  transformer_dropout:
+    distribution: uniform
+    min: 0.0
+    max: 0.5
+  classifier_dropout:
+    distribution: uniform
+    min: 0.0
+    max: 0.5
+  pre_ln:
+    values: [True, False]
+  classifier_dim:
+    values: [4096, 8192]
+  n_heads:  # number of attention heads
+    values: [2, 4, 8]
+  
+  # LoRA parameters
+  lora_r:
+    values: [8, 16, 32]
+  lora_alpha:
+    values: [16, 32, 64]
+  lora_dropout:
+    values: [0.0, 0.01, 0.05]
+```    
+### CLI Arguments
+
+The following arguments control hyperparameter optimization:
+
+- `--use_wandb_hyperopt`: Enable W&B hyperparameter optimization (flag)
+- `--wandb_api_key`: Your Weights & Biases API key (alternatively set via environment variable, or the terminal when prompted)
+- `--wandb_project`: W&B project name (default: "Protify")
+- `--wandb_entity`: W&B team/user entity (optional)
+- `--sweep_config_path`: Path to sweep configuration YAML (default: "yamls/sweep.yaml")
+- `--sweep_count`: Number of trials to run (default: 10)
+- `--sweep_method`: Search method - "bayes", "grid", or "random" (default: "bayes")
+- `--sweep_metric_cls`: Classification metric to optimize during sweep (default: "eval_loss")
+- `--sweep_metric_reg`: Regression metric to optimize during sweep (default: "eval_loss")
+- `--sweep_goal`: Optimization goal - "maximize" or "minimize" (default: "minimize")
+
+- **NOTE**: The default optimization strategy is to minimize the eval_loss. If you would like to choose a different metric via the `--sweep_metric_cls` and `--sweep_metric_reg` arguments, make sure you ALSO change `--sweep_goal` to **maximize**.
+
+Common metrics you can optimize for:
+
+- **Classification**: `eval_accuracy`, `eval_mcc`, `eval_f1`, `eval_precision`, `eval_recall`
+- **Regression**: `eval_r_squared`, `eval_pearson_rho`, `eval_spearman_rho`
+
+### Workflow
+
+1. **Initialization**: Protify reads your sweep configuration and initializes a W&B sweep
+2. **Trials**: For each trial, W&B suggests hyperparameters based on the search method
+3. **Training**: A model is trained with the suggested hyperparameters
+4. **Evaluation**: Validation metrics are computed and reported to W&B
+5. **Selection**: After all trials, the best configuration is automatically selected
+6. **Final training**: The model is retrained with the best hyperparameters and evaluated on the test set
+7. **Results**: All results and plots are reported based on final test set performance. Top 5 W&B trials are saved to a CSV file (`logs/YOUR_ID_sweep_DATASET_MODEL.csv`) 
+### ProteinGym Benchmarking
+
+Protify includes a zero-shot pipeline for the ProteinGym DMS benchmark with a standardized performance summary.
+
+- Run zero-shot scoring on ProteinGym substitutions
+  ```console
+  python -m main --proteingym \
+    --model_names ESM2-8 ESM2-35 ProtBert \
+    --dms_ids all \
+    --scoring_method masked_marginal \
+    --scoring_window optimal \
+  ```
+  - Outputs per-assay CSVs at `results/proteingym/*__zs_masked_marginal.csv`
+  - After scoring, a standardized performance summary is written to `results/proteingym/benchmark_performance/`
+    - This summary exactly matches the format expected by the ProteinGym repository for adding scores for a new model (ready to use in a PR)
+
+  Available options
+  - dms_ids. By default, all 217 substitution assays are used. You can specify DMS_ids by name to only use a subset.
+  - scoring_method
+    - masked_marginal (default): Mask mutated positions in the wild-type window; score Δlog p(mutant) − log p(wildtype) at those positions
+    - wildtype_marginal: Unmasked wild-type context; score Δlog p(mutant) − log p(wildtype) at mutated positions
+    - mutant_marginal: Unmasked mutant context; score Δlog p(mutant) − log p(wildtype) at mutated positions
+    - pll: Pseudo log-likelihood obtained by masking each position and summing true-token log-likelihoods (indels are scored with a length-normalized PLL across windows)
+    - global_log_prob: Unmasked log-probability of the entire mutated sequence/window
+  - scoring_window
+    - optimal (default): Single window (≤ model context) centered around the mutation barycenter
+    - sliding: Non-overlapping contiguous windows across the full sequence (default for indels)
+
+- Compare performance & time for each scoring method for one or more models
+  ```console
+  python -m main --proteingym --compare_scoring_methods \
+    --model_names ESM2-650 \
+    --dms_ids AACC1_PSEAI_Dandage_2018 A4_HUMAN_Seuma_2022 \
+    --results_dir results
+  ```
+  - Saves a summary CSV to `results/scoring_methods_comparison.csv`
 
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -329,6 +522,7 @@ For bugs and general suggestions please use [GitHub issues](https://github.com/G
 * [![Einops][Einops-badge]][Einops-url]
 * [![PAUC][PAUC-badge]][PAUC-url]
 * [![LazyPredict][LazyPredict-badge]][LazyPredict-url]
+* [![Weights & Biases][WandB-badge]][WandB-url]
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -403,3 +597,6 @@ If you use this package, please cite the following papers. (Coming soon)
 
 [Einops-badge]: https://img.shields.io/badge/Einops-Transform-4B8BBE?style=for-the-badge&logo=python&logoColor=white  
 [Einops-url]: https://github.com/arogozhnikov/einops
+
+[WandB-badge]: https://img.shields.io/badge/Weights_&_Biases-FFBE00?style=for-the-badge&logo=WeightsAndBiases&logoColor=white  
+[WandB-url]: https://wandb.ai

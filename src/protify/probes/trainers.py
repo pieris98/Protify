@@ -1,6 +1,7 @@
 import torch
 import os
 import numpy as np
+from copy import deepcopy
 from typing import Optional
 from transformers import Trainer, TrainingArguments, EarlyStoppingCallback
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ from data.dataset_classes import (
     PairEmbedsLabelsDataset,
     StringLabelDataset,
     PairStringLabelDataset,
+    MultiEmbedsLabelsDatasetFromDisk,
+    MultiEmbedsLabelsDataset,
 )
 from data.data_collators import (
     EmbedsLabelsCollator,
@@ -132,7 +135,8 @@ class TrainerMixin:
             probe: Optional[bool] = True,
         ):
         task_type = self.trainer_args.task_type
-        compute_metrics = get_compute_metrics(task_type)
+        tokenwise = self.probe_args.tokenwise
+        compute_metrics = get_compute_metrics(task_type, tokenwise=tokenwise)
         self.trainer_args.train_data_size = len(train_dataset)
         hf_trainer_args = self.trainer_args(probe=probe)
         ### TODO add options for optimizers and schedulers
@@ -161,6 +165,13 @@ class TrainerMixin:
             y_true = y_true[0]
 
         y_pred, y_true = y_pred.astype(np.float32), y_true.astype(np.float32)
+        
+        # Remove singleton dimension if present
+        if y_pred.ndim == 3 and y_pred.shape[1] == 1:
+            y_pred = y_pred.squeeze(1)
+        if y_true.ndim == 3 and y_true.shape[1] == 1:
+            y_true = y_true.squeeze(1)
+        
         print_message(f'y_pred: {y_pred.shape}\ny_true: {y_true.shape}\nFinal test metrics: \n{test_metrics}\n')
 
         if self.trainer_args.make_plots and self.trainer_args.plots_dir is not None:
@@ -176,10 +187,38 @@ class TrainerMixin:
 
         if self.trainer_args.save:
             try:
-                hub_path = os.path.join(self.full_args.hf_username, f"{data_name}_{model_name}_{log_id}")
-                trainer.model.push_to_hub(hub_path, private=True)
+                # Ensure hf_username is set and valid
+                hf_username = getattr(self.full_args, 'hf_username', None)
+                if not hf_username:
+                    print_message(f'Warning: hf_username is not set. Cannot save model to HuggingFace Hub.')
+                    print_message(f'Available full_args attributes: {list(self.full_args.__dict__.keys())}')
+                else:
+                    # Format: username/repo-name (not using os.path.join as it uses OS-specific separators)
+                    repo_id = f"{hf_username}/{data_name}_{model_name}_{log_id}"
+                    print_message(f'Attempting to push model to HuggingFace Hub: {repo_id}')
+                    print_message(f'save_model flag: {self.trainer_args.save}, hf_username: {hf_username}')
+                    
+                    # Get token from full_args if available, otherwise use environment
+                    hf_token = getattr(self.full_args, 'hf_token', None)
+                    if not hf_token:
+                        hf_token = os.environ.get("HF_TOKEN")
+                    
+                    if hf_token:
+                        print_message(f'Using HuggingFace token from config/environment for push_to_hub')
+                        # Explicitly pass token to ensure correct authentication
+                        trainer.model.push_to_hub(repo_id, private=True, token=hf_token)
+                    else:
+                        print_message(f'Warning: No HuggingFace token found, using default authentication')
+                        trainer.model.push_to_hub(repo_id, private=True)
+                    
+                    print_message(f'Successfully pushed model to HuggingFace Hub: {repo_id}')
             except Exception as e:
-                print_message(f'Error saving model: {e}')
+                import traceback
+                error_trace = traceback.format_exc()
+                print_message(f'Error saving model to HuggingFace Hub: {e}')
+                print_message(f'Error traceback: {error_trace}')
+                print_message(f'hf_username: {getattr(self.full_args, "hf_username", "NOT SET")}')
+                print_message(f'save_model flag: {self.trainer_args.save}')
 
         model = trainer.model.cpu()
         trainer.accelerator.free_memory()
@@ -201,11 +240,14 @@ class TrainerMixin:
         ):
         batch_size = self.trainer_args.probe_batch_size
         read_scaler = self.trainer_args.read_scaler
-        input_dim = self.probe_args.input_dim
+        input_size = self.probe_args.input_size
         task_type = self.probe_args.task_type
+        tokenwise = self.probe_args.tokenwise
+        print(f'task_type: {task_type}')
         full = self.embedding_args.matrix_embed
         db_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{full}.db')
 
+        use_multi = getattr(self.full_args, 'multi_column', None)
         if self.embedding_args.sql:
             print('SQL enabled')
             if ppi:
@@ -213,6 +255,9 @@ class TrainerMixin:
                     raise ValueError('Full matrix embeddings not currently supported for SQL and PPI') # TODO: Implement
                 DatasetClass = PairEmbedsLabelsDatasetFromDisk
                 CollatorClass = PairEmbedsLabelsCollator
+            elif use_multi:
+                DatasetClass = MultiEmbedsLabelsDatasetFromDisk
+                CollatorClass = EmbedsLabelsCollator
             else:
                 DatasetClass = EmbedsLabelsDatasetFromDisk
                 CollatorClass = EmbedsLabelsCollator
@@ -221,6 +266,9 @@ class TrainerMixin:
             if ppi:
                 DatasetClass = PairEmbedsLabelsDataset
                 CollatorClass = PairEmbedsLabelsCollator
+            elif use_multi:
+                DatasetClass = MultiEmbedsLabelsDataset
+                CollatorClass = EmbedsLabelsCollator
             else:
                 DatasetClass = EmbedsLabelsDataset
                 CollatorClass = EmbedsLabelsCollator
@@ -228,43 +276,44 @@ class TrainerMixin:
         """
         For collator need to pass tokenizer, full, task_type
         For dataset need to pass
-        hf_dataset, col_a, col_b, label_col, input_dim, task_type, db_path, emb_dict, batch_size, read_scaler, full, train
+        hf_dataset, col_a, col_b, label_col, input_size, task_type, db_path, emb_dict, batch_size, read_scaler, full, train
         """
 
-        data_collator = CollatorClass(tokenizer=tokenizer, full=full, task_type=task_type)
-        train_dataset = DatasetClass(
+        data_collator = CollatorClass(tokenizer=tokenizer, full=full, task_type=task_type, tokenwise=tokenwise)
+        common_kwargs = dict(
             hf_dataset=train_dataset,
-            input_dim=input_dim,
+            input_size=input_size,
             task_type=task_type,
             db_path=db_path,
             emb_dict=emb_dict,
             batch_size=batch_size,
             read_scaler=read_scaler,
             full=full,
-            train=True
+            train=True,
         )
-        valid_dataset = DatasetClass(
-            hf_dataset=valid_dataset,
-            input_dim=input_dim,
-            task_type=task_type,
-            db_path=db_path,
-            emb_dict=emb_dict,
-            batch_size=batch_size,
-            read_scaler=read_scaler,
-            full=full,
-            train=False
-        )
-        test_dataset = DatasetClass(
-            hf_dataset=test_dataset,
-            input_dim=input_dim,
-            task_type=task_type,
-            db_path=db_path,
-            emb_dict=emb_dict,
-            batch_size=batch_size,
-            read_scaler=read_scaler,
-            full=full,
-            train=False
-        )
+        if use_multi:
+            train_dataset = DatasetClass(seq_cols=use_multi, **deepcopy(common_kwargs))
+        else:
+            train_dataset = DatasetClass(**deepcopy(common_kwargs))
+        
+        # BUG FIX: Update hf_dataset in common_kwargs before creating validation and test datasets.
+        # Previously, common_kwargs['hf_dataset'] was set to train_dataset and never updated,
+        # causing valid_dataset and test_dataset to incorrectly use training data. This resulted
+        # in valid_metrics and test_metrics being identical since they were computed on the same
+        # (training) dataset. The fix ensures each dataset uses the correct HuggingFace dataset.
+        # We use deepcopy to ensure each dataset gets an independent copy of the kwargs dictionary
+        # to prevent any potential shared state issues.
+        common_kwargs['train'] = False
+        common_kwargs['hf_dataset'] = valid_dataset
+        if use_multi:
+            valid_dataset = DatasetClass(seq_cols=use_multi, **deepcopy(common_kwargs))
+        else:
+            valid_dataset = DatasetClass(**deepcopy(common_kwargs))
+        common_kwargs['hf_dataset'] = test_dataset
+        if use_multi:
+            test_dataset = DatasetClass(seq_cols=use_multi, **deepcopy(common_kwargs))
+        else:
+            test_dataset = DatasetClass(**deepcopy(common_kwargs))
         return self._train(
             model=model,
             train_dataset=train_dataset,
@@ -290,6 +339,7 @@ class TrainerMixin:
             log_id=None,
         ):
         task_type = self.probe_args.task_type
+        tokenwise = self.probe_args.tokenwise
 
         if ppi:
             DatasetClass = PairStringLabelDataset
@@ -298,7 +348,7 @@ class TrainerMixin:
             DatasetClass = StringLabelDataset
             CollatorClass = StringLabelsCollator
 
-        data_collator = CollatorClass(tokenizer=tokenizer, task_type=task_type)
+        data_collator = CollatorClass(tokenizer=tokenizer, task_type=task_type, tokenwise=tokenwise)
 
         train_dataset = DatasetClass(hf_dataset=train_dataset, train=True)
         valid_dataset = DatasetClass(hf_dataset=valid_dataset, train=False)
@@ -361,9 +411,3 @@ class TrainerMixin:
                 ppi=ppi,
                 log_id=log_id,
             )
-
-
-
-
-
-

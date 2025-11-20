@@ -18,13 +18,13 @@ source ~/protify_venv/bin/activate
 echo "Upgrading pip and setuptools..."
 pip install --upgrade pip setuptools
 
-# Install torch and torchvision
-echo "Installing torch and torchvision..."
-pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128
-
 # Install requirements with force reinstall
 echo "Installing requirements"
 pip install -r requirements.txt
+
+# Install torch and torchvision
+echo "Installing torch and torchvision..."
+pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128 -U
 
 # List installed packages for verification
 echo -e "\nInstalled packages:"

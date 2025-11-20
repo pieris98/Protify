@@ -1,63 +1,180 @@
 import os
+import argparse
 import numpy as np
 import umap
 import matplotlib.pyplot as plt
 import seaborn as sns
-from dataclasses import dataclass
+import torch
+from dataclasses import dataclass, field
 from sklearn.decomposition import PCA as SklearnPCA
 from sklearn.manifold import TSNE as SklearnTSNE
 from typing import Optional, Union, List
 from matplotlib.colors import LinearSegmentedColormap
+
 from utils import torch_load, print_message
+from seed_utils import get_global_seed, set_global_seed, set_determinism
+from data.data_mixin import DataMixin, DataArguments
+from embedder import Embedder, EmbeddingArguments, get_embedding_filename
+
+
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
 
 @dataclass
 class VisualizationArguments:
+    # Paths
     embedding_save_dir: str = "embeddings"
+    fig_dir: str = "figures"
+    
+    # Model and embedding settings
     model_name: str = "ESM2-8"
     matrix_embed: bool = False
     sql: bool = False
+    
+    # Embedding arguments (defaults from main.py)
+    embedding_batch_size: int = 16
+    num_workers: int = 0
+    download_embeddings: bool = False
+    download_dir: str = "Synthyra/vector_embeddings"
+    embedding_pooling_types: List[str] = field(default_factory=lambda: ["mean"])
+    save_embeddings: bool = False
+    embed_dtype: str = "float32"  # Will be converted to torch dtype
+    
+    # Dimensionality reduction settings
     n_components: int = 2
     perplexity: float = 30.0  # for t-SNE
     n_neighbors: int = 15     # for UMAP
     min_dist: float = 0.1     # for UMAP
-    seed: int = 42
+    
+    # Visualization settings
+    seed: Optional[int] = None  # If None, will use current time
+    deterministic: bool = False
     fig_size: tuple = (10, 10)
     save_fig: bool = True
-    fig_dir: str = "figures"
     task_type: str = "singlelabel"  # singlelabel, multilabel, regression
 
 
-class DimensionalityReducer:
+class DimensionalityReducer(DataMixin):
     """Base class for dimensionality reduction techniques"""
     def __init__(self, args: VisualizationArguments):
+        # Initialize DataMixin without data_args since we're not loading datasets
+        super().__init__(data_args=None)
         self.args = args
         self.embeddings = None
         self.labels = None
+        # Set DataMixin instance variables based on args
+        self._sql = args.sql
+        self._full = args.matrix_embed
         
-    def load_embeddings(self, sequences: List[str], labels: Optional[List[Union[int, float, List[int]]]] = None):
-        """Load embeddings from file"""
-        if self.args.sql:
+    def _check_and_embed(self, sequences: List[str]):
+        """Check if embeddings exist, and embed sequences if they don't"""
+        # Ensure embedding save directory exists
+        os.makedirs(self.args.embedding_save_dir, exist_ok=True)
+        
+        # Check if we need to embed (similar to Embedder._read_embeddings_from_disk)
+        pooling_types = self.args.embedding_pooling_types
+        filename_pth = get_embedding_filename(self.args.model_name, self.args.matrix_embed, pooling_types, 'pth')
+        filename_db = get_embedding_filename(self.args.model_name, self.args.matrix_embed, pooling_types, 'db')
+        save_path = os.path.join(self.args.embedding_save_dir, filename_pth)
+        db_path = os.path.join(self.args.embedding_save_dir, filename_db)
+        
+        if self._sql:
+            # Check SQL database
             import sqlite3
-            save_path = os.path.join(self.args.embedding_save_dir, 
-                                   f'{self.args.model_name}_{self.args.matrix_embed}.db')
-            embeddings = []
+            if os.path.exists(db_path):
+                conn = sqlite3.connect(db_path)
+                c = conn.cursor()
+                c.execute('CREATE TABLE IF NOT EXISTS embeddings (sequence text PRIMARY KEY, embedding blob)')
+                c.execute("SELECT sequence FROM embeddings")
+                already_embedded = set(row[0] for row in c.fetchall())
+                conn.close()
+                to_embed = [seq for seq in sequences if seq not in already_embedded]
+            else:
+                to_embed = sequences
+        else:
+            # Check PyTorch file
+            if os.path.exists(save_path):
+                emb_dict = torch_load(save_path)
+                to_embed = [seq for seq in sequences if seq not in emb_dict]
+            else:
+                to_embed = sequences
+        
+        # If there are sequences to embed, do it
+        if len(to_embed) > 0:
+            print_message(f"Embedding {len(to_embed)} sequences that are not yet embedded")
+            # Convert embed_dtype string to torch dtype
+            dtype_map = {
+                "float32": torch.float32,
+                "float16": torch.float16,
+                "bfloat16": torch.bfloat16,
+            }
+            embed_dtype = dtype_map.get(self.args.embed_dtype, torch.float32)
+            
+            # Create EmbeddingArguments matching VisualizationArguments
+            embedding_args = EmbeddingArguments(
+                embedding_batch_size=self.args.embedding_batch_size,
+                embedding_num_workers=self.args.num_workers,
+                download_embeddings=self.args.download_embeddings,
+                download_dir=self.args.download_dir,
+                matrix_embed=self.args.matrix_embed,
+                embedding_pooling_types=self.args.embedding_pooling_types,
+                save_embeddings=True,  # Always save embeddings when auto-embedding
+                embed_dtype=embed_dtype,
+                sql=self.args.sql,
+                embedding_save_dir=self.args.embedding_save_dir
+            )
+            # Initialize embedder with all sequences (it will only embed missing ones)
+            embedder = Embedder(embedding_args, sequences)
+            # Embed using the model name - embedder handles checking what needs embedding internally
+            embedder(self.args.model_name)
+            print_message(f"Finished embedding sequences")
+        else:
+            print_message(f"All {len(sequences)} sequences are already embedded")
+    
+    def load_embeddings(self, sequences: List[str], labels: Optional[List[Union[int, float, List[int]]]] = None):
+        """Load embeddings from file using DataMixin functionality"""
+        # First check if embeddings exist and embed if needed
+        self._check_and_embed(sequences)
+        
+        embeddings = []
+        
+        pooling_types = self.args.embedding_pooling_types
+        if self._sql:
+            import sqlite3
+            filename = get_embedding_filename(self.args.model_name, self.args.matrix_embed, pooling_types, 'db')
+            save_path = os.path.join(self.args.embedding_save_dir, filename)
             with sqlite3.connect(save_path) as conn:
                 c = conn.cursor()
                 for seq in sequences:
-                    c.execute("SELECT embedding FROM embeddings WHERE sequence = ?", (seq,))
-                    embedding = c.fetchone()[0]
-                    embedding = np.frombuffer(embedding, dtype=np.float32)
+                    # Use DataMixin's _select_from_sql method
+                    embedding = self._select_from_sql(c, seq, cast_to_torch=False)
+                    # Reshape to 1D if needed (DataMixin returns shape (1, dim) or (seq_len, dim))
+                    if len(embedding.shape) > 1:
+                        if self._full:
+                            # Average over sequence length
+                            embedding = embedding.mean(axis=0)
+                        else:
+                            # Already averaged, just squeeze
+                            embedding = embedding.squeeze(0)
                     embeddings.append(embedding)
         else:
-            save_path = os.path.join(self.args.embedding_save_dir,
-                                   f'{self.args.model_name}_{self.args.matrix_embed}.pth')
-            embeddings = []
+            filename = get_embedding_filename(self.args.model_name, self.args.matrix_embed, pooling_types, 'pth')
+            save_path = os.path.join(self.args.embedding_save_dir, filename)
             emb_dict = torch_load(save_path)
             for seq in sequences:
-                embedding = emb_dict[seq].numpy()
-                if self.args.matrix_embed:
-                    embedding = embedding.mean(axis=0)
+                # Use DataMixin's _select_from_pth method
+                embedding = self._select_from_pth(emb_dict, seq, cast_to_np=True)
+                # Reshape to 1D if needed
+                if len(embedding.shape) > 1:
+                    if self._full:
+                        # Average over sequence length
+                        embedding = embedding.mean(axis=0)
+                    else:
+                        # Already averaged, just squeeze
+                        embedding = embedding.squeeze(0)
                 embeddings.append(embedding)
 
         print_message(f"Loaded {len(embeddings)} embeddings")
@@ -167,7 +284,7 @@ class DimensionalityReducer:
 class PCA(DimensionalityReducer):
     def __init__(self, args: VisualizationArguments):
         super().__init__(args)
-        self.pca = SklearnPCA(n_components=args.n_components, random_state=args.seed)
+        self.pca = SklearnPCA(n_components=args.n_components, random_state=get_global_seed() or args.seed)
         
     def fit_transform(self):
         return self.pca.fit_transform(self.embeddings)
@@ -179,7 +296,7 @@ class TSNE(DimensionalityReducer):
         self.tsne = SklearnTSNE(
             n_components=self.args.n_components,
             perplexity=self.args.perplexity,
-            random_state=self.args.seed
+            random_state=get_global_seed() or self.args.seed
         )
         
     def fit_transform(self):
@@ -193,39 +310,168 @@ class UMAP(DimensionalityReducer):
             n_components=self.args.n_components,
             n_neighbors=self.args.n_neighbors,
             min_dist=self.args.min_dist,
-            random_state=self.args.seed
+            random_state=get_global_seed() or self.args.seed
         )
         
     def fit_transform(self):
         return self.umap.fit_transform(self.embeddings)
 
 
+def parse_arguments():
+    """Parse command line arguments for visualization"""
+    parser = argparse.ArgumentParser(description="Dimensionality reduction visualization for protein embeddings")
+    
+    # ----------------- Paths ----------------- #
+    parser.add_argument("--embedding_save_dir", type=str, default="embeddings", 
+                       help="Directory to save/load embeddings.")
+    parser.add_argument("--fig_dir", type=str, default="figures", 
+                       help="Directory to save figures.")
+    
+    # ----------------- Model and Embedding Settings ----------------- #
+    parser.add_argument("--model_name", type=str, default="ESM2-8", 
+                       help="Model name to use for embeddings.")
+    parser.add_argument("--matrix_embed", action="store_true", default=False,
+                       help="Use matrix embedding (per-residue embeddings).")
+    parser.add_argument("--sql", action="store_true", default=False,
+                       help="Use SQL storage for embeddings.")
+    
+    # ----------------- Embedding Arguments ----------------- #
+    parser.add_argument("--embedding_batch_size", type=int, default=16,
+                       help="Batch size for embedding generation.")
+    parser.add_argument("--num_workers", type=int, default=0,
+                       help="Number of worker processes for data loading.")
+    parser.add_argument("--download_embeddings", action="store_true", default=False,
+                       help="Download embeddings from HuggingFace hub.")
+    parser.add_argument("--download_dir", type=str, default="Synthyra/vector_embeddings",
+                       help="Directory to download embeddings from.")
+    parser.add_argument("--embedding_pooling_types", nargs="+", default=["mean", "var"],
+                       help="Pooling types for embeddings.")
+    parser.add_argument("--save_embeddings", action="store_true", default=False,
+                       help="Save computed embeddings (auto-enabled when embedding).")
+    parser.add_argument("--embed_dtype", type=str, default="float32", 
+                       choices=["float32", "float16", "bfloat16"],
+                       help="Data type for embeddings.")
+    
+    # ----------------- Data Arguments ----------------- #
+    parser.add_argument("--data_names", nargs="+", default=["EC"],
+                       help="List of dataset names to visualize.")
+    parser.add_argument("--max_length", type=int, default=1024,
+                       help="Maximum sequence length.")
+    parser.add_argument("--trim", action="store_true", default=False,
+                       help="Trim sequences to max_length instead of removing them.")
+    
+    # ----------------- Dimensionality Reduction Settings ----------------- #
+    parser.add_argument("--n_components", type=int, default=2,
+                       help="Number of components for dimensionality reduction.")
+    parser.add_argument("--perplexity", type=float, default=30.0,
+                       help="Perplexity parameter for t-SNE.")
+    parser.add_argument("--n_neighbors", type=int, default=15,
+                       help="Number of neighbors for UMAP.")
+    parser.add_argument("--min_dist", type=float, default=0.1,
+                       help="Minimum distance for UMAP.")
+    
+    # ----------------- Visualization Settings ----------------- #
+    parser.add_argument("--seed", type=int, default=None,
+                       help="Seed for reproducibility (if omitted, current time is used).")
+    parser.add_argument("--deterministic", action="store_true", default=False,
+                       help="Enable deterministic behavior (slower but reproducible).")
+    parser.add_argument("--fig_size", nargs=2, type=int, default=[10, 10],
+                       help="Figure size (width height).")
+    parser.add_argument("--save_fig", action="store_true", default=True,
+                       help="Save figures to disk.")
+    parser.add_argument("--task_type", type=str, default=None,
+                       choices=["singlelabel", "multilabel", "regression"],
+                       help="Task type (auto-detected from dataset if not specified).")
+    
+    # ----------------- Reduction Methods ----------------- #
+    parser.add_argument("--methods", nargs="+", 
+                       choices=["PCA", "TSNE", "UMAP"], 
+                       default=["PCA", "TSNE", "UMAP"],
+                       help="Dimensionality reduction methods to use.")
+    
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
     # py -m visualization.reduce_dim
-    ### TODO update with datamixin
-    from data.hf_data import HFDataArguments, get_hf_data
+    # Parse arguments
+    args = parse_arguments()
     
-    # Get some example data
-    data_args = HFDataArguments(data_paths=["EC"])
-    datasets, all_seqs = get_hf_data(data_args)
+    # Set deterministic behavior if requested (must be before torch imports)
+    if args.deterministic:
+        set_determinism()
+    
+    # Set global seed before doing anything else
+    chosen_seed = set_global_seed(args.seed)
+    args.seed = chosen_seed
+    print_message(f"Using seed: {chosen_seed}")
+    
+    # Get data using DataMixin
+    data_args = DataArguments(
+        data_names=args.data_names,
+        max_length=args.max_length,
+        trim=args.trim
+    )
+    data_mixin = DataMixin(data_args=data_args)
+    datasets, all_seqs = data_mixin.get_data()
     
     # Get sequences and labels from first dataset
     dataset_name = list(datasets.keys())[0]
-    train_set = datasets[dataset_name][0]
-    sequences = train_set["seqs"]
-    labels = train_set["labels"]  # Could be single label, multi-label, etc.
+    train_set, valid_set, test_set, num_labels, label_type, ppi = datasets[dataset_name]
     
-    # If you know your dataset is multi-label, specify it here
+    # Determine task_type from label_type if not specified
+    if args.task_type is None:
+        if label_type == "multilabel":
+            task_type = "multilabel"
+        elif label_type in ["regression", "sigmoid_regression"]:
+            task_type = "regression"
+        else:
+            task_type = "singlelabel"
+    else:
+        task_type = args.task_type
+    
+    sequences = list(train_set["seqs"])
+    labels = list(train_set["labels"])
+    
+    # Create VisualizationArguments from parsed args
     vis_args = VisualizationArguments(
-        embedding_save_dir="embeddings",
-        model_name="ESMV",
-        matrix_embed=False,
-        sql=False,
-        task_type="multilabel",  # Switch to 'multilabel'
-        save_fig=True
+        embedding_save_dir=args.embedding_save_dir,
+        fig_dir=args.fig_dir,
+        model_name=args.model_name,
+        matrix_embed=args.matrix_embed,
+        sql=args.sql,
+        embedding_batch_size=args.embedding_batch_size,
+        num_workers=args.num_workers,
+        download_embeddings=args.download_embeddings,
+        download_dir=args.download_dir,
+        embedding_pooling_types=args.embedding_pooling_types,
+        save_embeddings=args.save_embeddings,
+        embed_dtype=args.embed_dtype,
+        n_components=args.n_components,
+        perplexity=args.perplexity,
+        n_neighbors=args.n_neighbors,
+        min_dist=args.min_dist,
+        seed=args.seed,
+        deterministic=args.deterministic,
+        fig_size=tuple(args.fig_size),
+        save_fig=args.save_fig,
+        task_type=task_type
     )
     
-    for Reducer in [PCA, TSNE, UMAP]:
+    # Map method names to classes
+    method_map = {
+        "PCA": PCA,
+        "TSNE": TSNE,
+        "UMAP": UMAP
+    }
+    
+    # Run specified reduction methods
+    for method_name in args.methods:
+        if method_name not in method_map:
+            print_message(f"Unknown method: {method_name}, skipping")
+            continue
+        
+        Reducer = method_map[method_name]
         print_message(f"Running {Reducer.__name__}")
         reducer = Reducer(vis_args)
         print_message("Loading embeddings")

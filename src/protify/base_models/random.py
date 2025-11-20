@@ -3,6 +3,8 @@ import torch.nn as nn
 from typing import Optional
 from transformers import EsmTokenizer, EsmConfig
 from model_components.transformer import TransformerForMaskedLM, TransformerConfig
+from transformers.utils import ModelOutput
+from dataclasses import dataclass
 
 
 presets = {
@@ -14,6 +16,10 @@ presets = {
     'Random-ESM2-650': 'facebook/esm2_t36_650M_UR50D',
 }
 
+@dataclass
+class RandomModelOutput(ModelOutput):
+    last_hidden_state: torch.FloatTensor = None
+    logits: torch.FloatTensor = None
 
 class RandomModel(nn.Module):
     def __init__(self, config: EsmConfig):
@@ -21,15 +27,23 @@ class RandomModel(nn.Module):
         self.config = config
         self.hidden_size = config.hidden_size
         self.holder_param = torch.nn.Parameter(torch.randn(1, 1, self.hidden_size))
+        # Simple projection head to produce token logits
+        self.lm_head = nn.Linear(self.hidden_size, config.vocab_size)
 
     def forward(
-            self,
-            input_ids: torch.Tensor,
-            attention_mask: Optional[torch.Tensor] = None,
-        ) -> torch.Tensor:
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        return_logits: bool = False,
+    ):
         device = self.holder_param.device
-        last_hidden_state = torch.randn(input_ids.shape[0], input_ids.shape[1], self.hidden_size, device=device)
-        return last_hidden_state
+        B, T = input_ids.shape
+        last_hidden_state = torch.randn(B, T, self.hidden_size, device=device, dtype=self.holder_param.dtype)
+        if return_logits:
+            logits = self.lm_head(last_hidden_state)  # (B, T, vocab)
+            return RandomModelOutput(last_hidden_state=last_hidden_state, logits=logits)
+        else:
+            return last_hidden_state
 
 
 class RandomTransformer(nn.Module):
@@ -46,7 +60,7 @@ class RandomTransformer(nn.Module):
             return self.transformer(input_ids, attention_mask).last_hidden_state
 
 
-def build_random_model(preset: str):
+def build_random_model(preset: str, masked_lm: bool = False, **kwargs):
     tokenizer = EsmTokenizer.from_pretrained('facebook/esm2_t12_35M_UR50D')
     if preset == 'Random':
         model = RandomModel(EsmConfig.from_pretrained('facebook/esm2_t12_35M_UR50D'))

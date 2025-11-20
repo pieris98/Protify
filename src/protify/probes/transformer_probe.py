@@ -3,9 +3,29 @@ from torch import nn
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import SequenceClassifierOutput, TokenClassifierOutput
 from typing import List, Optional
-from pooler import Pooler
-from model_components.mlp import intermediate_correction_fn
-from model_components.transformer import Transformer, TokenFormer
+
+
+try:
+    from ..pooler import Pooler
+except ImportError:
+    try:
+        from protify.pooler import Pooler
+    except ImportError:
+        from pooler import Pooler
+try:
+    from ..model_components.mlp import intermediate_correction_fn
+except ImportError:
+    try:
+        from protify.model_components.mlp import intermediate_correction_fn
+    except ImportError:
+        from model_components.mlp import intermediate_correction_fn
+try:
+    from ..model_components.transformer import Transformer, TokenFormer
+except ImportError:
+    try:
+        from protify.model_components.transformer import Transformer, TokenFormer
+    except ImportError:
+        from model_components.transformer import Transformer, TokenFormer
 from .losses import get_loss_fct
 
 
@@ -13,9 +33,9 @@ class TransformerProbeConfig(PretrainedConfig):
     model_type = "probe"
     def __init__(
             self,
-            input_dim: int = 768,
+            input_size: int = 768,
             hidden_size: int = 512,
-            classifier_dim: int = 4096,
+            classifier_size: int = 4096,
             transformer_dropout: float = 0.1,
             classifier_dropout: float = 0.2,
             num_labels: int = 2,
@@ -29,9 +49,9 @@ class TransformerProbeConfig(PretrainedConfig):
             **kwargs,
     ):
         super().__init__(**kwargs)
-        self.input_dim = input_dim
+        self.input_size = input_size
         self.hidden_size = hidden_size
-        self.classifier_dim = classifier_dim
+        self.classifier_size = classifier_size
         self.transformer_dropout = transformer_dropout
         self.classifier_dropout = classifier_dropout
         self.task_type = task_type
@@ -52,15 +72,15 @@ class TransformerForSequenceClassification(PreTrainedModel):
         self.task_type = config.task_type
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels
-        self.input_dim = config.input_dim
+        self.input_size = config.input_size
 
         if config.pre_ln:
             self.input_layer = nn.Sequential(
-                nn.LayerNorm(config.input_dim),
-                nn.Linear(config.input_dim, config.hidden_size)
+                nn.LayerNorm(config.input_size),
+                nn.Linear(config.input_size, config.hidden_size)
             )
         else:
-            self.input_layer = nn.Linear(config.input_dim, config.hidden_size)
+            self.input_layer = nn.Linear(config.input_size, config.hidden_size)
 
         transformer_class = TokenFormer if config.token_attention else Transformer
         self.transformer = transformer_class(
@@ -72,14 +92,14 @@ class TransformerForSequenceClassification(PreTrainedModel):
             rotary=True,
         )
 
-        classifier_input_dim = config.hidden_size * len(config.pooling_types)
+        classifier_input_size = config.hidden_size * len(config.pooling_types)
         proj_dim = intermediate_correction_fn(expansion_ratio=2, hidden_size=config.num_labels)
         self.classifier = nn.Sequential(
-            nn.LayerNorm(classifier_input_dim),
-            nn.Linear(classifier_input_dim, config.classifier_dim),
+            nn.LayerNorm(classifier_input_size),
+            nn.Linear(classifier_input_size, config.classifier_size),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
-            nn.Linear(config.classifier_dim, proj_dim),
+            nn.Linear(config.classifier_size, proj_dim),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
             nn.Linear(proj_dim, config.num_labels)
@@ -97,10 +117,14 @@ class TransformerForSequenceClassification(PreTrainedModel):
         x = self.transformer(x, attention_mask)
         x = self.pooler(x, attention_mask)
         logits = self.classifier(x)
+        if self.task_type == 'sigmoid_regression':
+            logits = logits.sigmoid()
         loss = None
         if labels is not None:
             if self.task_type == 'regression':
-                loss = self.loss_fct(logits.flatten(), labels.view(-1).float())
+                loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
+            elif self.task_type == 'sigmoid_regression':
+                loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
             elif self.task_type == 'multilabel':
                 loss = self.loss_fct(logits, labels.float())
             else:
@@ -122,8 +146,8 @@ class TransformerForTokenClassification(PreTrainedModel):
         self.task_type = config.task_type
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels
-        self.input_dim = config.input_dim
-        self.input_layer = nn.Linear(config.input_dim, config.hidden_size)
+        self.input_size = config.input_size
+        self.input_layer = nn.Linear(config.input_size, config.hidden_size)
 
         transformer_class = TokenFormer if config.token_attention else Transformer
         self.transformer = transformer_class(
@@ -138,10 +162,10 @@ class TransformerForTokenClassification(PreTrainedModel):
         proj_dim = intermediate_correction_fn(expansion_ratio=2, hidden_size=config.num_labels)
         self.classifier = nn.Sequential(
             nn.LayerNorm(config.hidden_size),
-            nn.Linear(config.hidden_size, config.classifier_dim),
+            nn.Linear(config.hidden_size, config.classifier_size),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
-            nn.Linear(config.classifier_dim, proj_dim),
+            nn.Linear(config.classifier_size, proj_dim),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
             nn.Linear(proj_dim, proj_dim),
@@ -159,9 +183,20 @@ class TransformerForTokenClassification(PreTrainedModel):
         x = self.input_layer(embeddings)
         x = self.transformer(x, attention_mask)
         logits = self.classifier(x)
+        if self.task_type == 'sigmoid_regression':
+            logits = logits.sigmoid()
         loss = None
         if labels is not None:
-            loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            if self.task_type == 'regression':
+                loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
+            elif self.task_type == 'sigmoid_regression':
+                
+                loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
+            elif self.task_type == 'multilabel':
+                loss = self.loss_fct(logits, labels.float())
+            else:
+                loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1).long())
+
         return TokenClassifierOutput(
             loss=loss,
             logits=logits,

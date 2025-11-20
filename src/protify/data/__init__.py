@@ -4,7 +4,6 @@ from .supported_datasets import (
     possible_with_vector_reps,
     standard_data_benchmark,
     testing,
-    residue_wise_problems
 )
 
 try:

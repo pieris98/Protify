@@ -1,7 +1,5 @@
-
 # Copyright (c) 2024 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: Apache-2.0
-
 """
 This is a modified version of the DPLM model from https://github.com/bytedance/dplm/blob/main/src/byprot/models/lm/esm_dplm.py
 """
@@ -236,7 +234,7 @@ class ModifiedEsmModel(EsmModel):
             position_ids=position_ids,
             attention_mask=attention_mask,
             inputs_embeds=inputs_embeds,
-            past_key_values_length=past_key_values_length,
+            #past_key_values_length=past_key_values_length,  TODO: This causes an error when using any DPLM model
         )
         encoder_outputs = self.encoder(
             embedding_output,
@@ -340,9 +338,10 @@ class DPLMTokenizerWrapper(BaseSequenceTokenizer):
 
 
 class DPLMForEmbedding(nn.Module):
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, return_logits: bool = False):
         super().__init__()
         self.dplm = EsmForDPLM.from_pretrained(model_path)
+        self.return_logits = return_logits
 
     def forward(
             self,
@@ -354,15 +353,19 @@ class DPLMForEmbedding(nn.Module):
             out = self.dplm(input_ids, attention_mask=attention_mask, output_attentions=output_attentions)
             return out.last_hidden_state, out.attentions
         else:
-            return self.dplm(input_ids, attention_mask=attention_mask)['last_hidden_state']
+            if self.return_logits:
+                out = self.dplm(input_ids, attention_mask=attention_mask)
+                return out.last_hidden_state, out.logits
+            else:
+                return self.dplm(input_ids, attention_mask=attention_mask)['last_hidden_state']
 
 
 def get_dplm_tokenizer(preset: str):
     return DPLMTokenizerWrapper(EsmTokenizer.from_pretrained('facebook/esm2_t6_8M_UR50D'))
 
 
-def build_dplm_model(preset: str):
-    model = DPLMForEmbedding(presets[preset]).eval()
+def build_dplm_model(preset: str, masked_lm: bool = False, **kwargs):
+    model = DPLMForEmbedding(presets[preset], return_logits=masked_lm).eval()
     tokenizer = get_dplm_tokenizer(preset)
     return model, tokenizer
 

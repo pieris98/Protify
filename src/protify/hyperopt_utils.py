@@ -177,6 +177,37 @@ class HyperoptModule:
             raise ValueError(f"Sweep config file not found: {sweep_config_path}")
 
         params_to_hyperopt = sweep_config.get("parameters", {})
+        
+        # Filter parameters based on probe type and LoRA settings
+        probe_type = getattr(mp.probe_args, 'probe_type', 'linear')
+        use_lora = getattr(mp.probe_args, 'lora', False)
+        
+        # Define which parameters are relevant for each probe type
+        linear_probe_params = {'lr', 'weight_decay', 'hidden_size', 'n_layers', 'dropout', 'pre_ln'}
+        transformer_probe_params = {'lr', 'weight_decay', 'hidden_size', 'n_layers', 'dropout', 'pre_ln', 
+                                     'classifier_dropout', 'classifier_dim'}
+        lora_params = {'lora_r', 'lora_alpha', 'lora_dropout'}
+        
+        # Determine which parameters to include
+        if probe_type == 'linear':
+            relevant_params = linear_probe_params
+        elif probe_type == 'transformer':
+            relevant_params = transformer_probe_params
+        else:
+            # For other probe types, include all common params
+            relevant_params = linear_probe_params | transformer_probe_params
+        
+        # Add LoRA parameters only if LoRA is enabled
+        if use_lora:
+            relevant_params = relevant_params | lora_params
+        
+        # Filter the parameters dictionary
+        filtered_params = {k: v for k, v in params_to_hyperopt.items() if k in relevant_params}
+        params_to_hyperopt = filtered_params
+        
+        # Log which parameters are being swept
+        mp.logger.info(f"Probe type: {probe_type}, LoRA enabled: {use_lora}")
+        mp.logger.info(f"Sweeping over {len(params_to_hyperopt)} parameters: {list(params_to_hyperopt.keys())}")
 
         method = mp.full_args.sweep_method
         early_term = sweep_config.get("early_terminate", None)

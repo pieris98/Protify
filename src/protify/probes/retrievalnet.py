@@ -89,10 +89,15 @@ class RetrievalNetForSequenceClassification(PreTrainedModel):
             output_attentions: Optional[bool] = False,
             output_hidden_states: Optional[bool] = False,
     ) -> SequenceClassifierOutput:
+        # Convert embeddings to match model's dtype to avoid dtype mismatch errors
+        # This handles cases where embeddings are fp32 but model is fp16 (or vice versa)
         if self.n_layers > 0:
+            embeddings = embeddings.to(next(self.input_proj.parameters()).dtype)
             x = self.input_proj(embeddings) # (bs, seq_len, hidden_size)
             x = self.transformer(x, attention_mask) # (bs, seq_len, hidden_size)
         else:
+            # If no layers, still need to match dtype for get_logits
+            embeddings = embeddings.to(next(self.get_logits.parameters()).dtype)
             x = embeddings
 
         logits, sims, x = self.get_logits(x, attention_mask) # (bs, num_labels)
@@ -150,10 +155,15 @@ class RetrievalNetForTokenClassification(PreTrainedModel):
             labels: Optional[torch.Tensor] = None,
             **kwargs,
     ) -> SequenceClassifierOutput:
+        # Convert embeddings to match model's dtype to avoid dtype mismatch errors
+        # This handles cases where embeddings are fp32 but model is fp16 (or vice versa)
         if self.n_layers > 0:
+            embeddings = embeddings.to(next(self.input_proj.parameters()).dtype)
             x = self.input_proj(embeddings) # (bs, seq_len, hidden_size)
             x = self.transformer(x, attention_mask) # (bs, seq_len, hidden_size)
         else:
+            # If no layers, still need to match dtype for get_logits
+            embeddings = embeddings.to(next(self.get_logits.parameters()).dtype)
             x = embeddings
 
         logits = self.get_logits(x, attention_mask)

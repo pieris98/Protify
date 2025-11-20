@@ -112,6 +112,9 @@ class TrainerArguments:
             label_names=['labels'],
             dataloader_num_workers=self.num_workers,
             dataloader_prefetch_factor=2 if self.num_workers > 0 else None,
+            # Explicitly disable mixed precision training to prevent automatic fp16 conversion
+            fp16=False,
+            bf16=False,
             **eval_strats
         )
 

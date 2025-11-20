@@ -298,6 +298,9 @@ class LyraForSequenceClassification(PreTrainedModel):
             attention_mask: Optional[torch.Tensor] = None,
             labels: Optional[torch.Tensor] = None,
     ) -> SequenceClassifierOutput:
+        # Convert embeddings to match model's dtype to avoid dtype mismatch errors
+        # This handles cases where embeddings are fp32 but model is fp16 (or vice versa)
+        embeddings = embeddings.to(next(self.lyra.parameters()).dtype)
         x = self.lyra(embeddings)
         x = self.pooler(x, attention_mask)
         logits = self.classifier(x)
@@ -351,6 +354,9 @@ class LyraForTokenClassification(PreTrainedModel):
             attention_mask: Optional[torch.Tensor] = None,
             labels: Optional[torch.Tensor] = None,
     ) -> TokenClassifierOutput:
+        # Convert embeddings to match model's dtype to avoid dtype mismatch errors
+        # This handles cases where embeddings are fp32 but model is fp16 (or vice versa)
+        embeddings = embeddings.to(next(self.lyra.parameters()).dtype)
         x = self.lyra(embeddings)
         logits = self.classifier(x)
         loss = None

@@ -51,7 +51,7 @@ class HyperoptModule:
             if k in self.trainer_keys and hasattr(self.mp.trainer_args, k):
                 setattr(self.mp.trainer_args, k, v)
 
-    def _train(self, sweep_mode=True):
+    def train_model(self, sweep_mode=True):
         train_set, valid_set, test_set, _, _, ppi = self.dataset
         
         if self.mp.full_args.full_finetuning:
@@ -103,7 +103,7 @@ class HyperoptModule:
         self.mp.trainer_args.make_plots = False
         self.mp.trainer_args.sweep_mode = True
         
-        _, valid_metrics, test_metrics = self.optimize_model(sweep_mode=True)
+        _, valid_metrics, test_metrics = self.train_model(sweep_mode=True)
         
         # Choose task-specific metric to optimize
         label_type = self.mp.probe_args.task_type
@@ -265,4 +265,4 @@ class HyperoptModule:
                 mp.trainer_args.make_plots = True
 
                 # Run best model with the best hyperparameters, log metrics, create plots
-                hyperopt_module.optimize_model(sweep_mode=False)
+                hyperopt_module.train_model(sweep_mode=False)

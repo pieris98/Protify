@@ -352,7 +352,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             input_dim = self.get_embedding_dim_pth(emb_for_training, subtrain_seqs[0], tokenizer)
         
         # Configure probe for regression
-        self.probe_args.input_dim = input_dim
+        self.probe_args.input_size = input_dim
         self.probe_args.task_type = 'regression'
         self.probe_args.num_labels = 1
         self.trainer_args.task_type = 'regression'

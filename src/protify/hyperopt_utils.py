@@ -179,7 +179,7 @@ class HyperoptModule:
                             save_path = os.path.join(mp.embedding_args.embedding_save_dir, filename)
                             emb_dict = torch_load(save_path)
                             input_dim = mp.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
-                        mp.probe_args.input_dim = input_dim * 2 if (ppi and not mp._full) else input_dim
+                        mp.probe_args.input_size = input_dim * 2 if (ppi and not mp._full) else input_dim
                     if mp.full_args.full_finetuning:
                         _ = mp._run_full_finetuning(model_name, data_name, train_set, valid_set, test_set, ppi, sweep_mode=False)
                     elif mp.full_args.hybrid_probe:
@@ -206,7 +206,7 @@ class HyperoptModule:
                         save_path = os.path.join(mp.embedding_args.embedding_save_dir, filename)
                         emb_dict = torch_load(save_path)
                         input_dim = mp.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
-                    mp.probe_args.input_dim = input_dim * 2 if (ppi and not mp._full) else input_dim
+                    mp.probe_args.input_size = input_dim * 2 if (ppi and not mp._full) else input_dim
 
                 # Save base args for restoring after each trial
                 base_probe = copy.deepcopy(mp.probe_args.__dict__)

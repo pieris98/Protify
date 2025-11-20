@@ -63,7 +63,7 @@ class HyperoptModule:
              return model, valid_metrics, test_metrics
 
         elif self.mp.full_args.hybrid_probe:
-            tokenizer = self.mp.get_tokenizer(self.model_name)
+            tokenizer = get_tokenizer(self.model_name)
             model, valid_metrics, test_metrics = self.mp._run_hybrid_probe(
                 self.model_name, self.data_name,
                 train_set, valid_set, test_set,
@@ -75,7 +75,7 @@ class HyperoptModule:
             return model, valid_metrics, test_metrics
 
         else:
-            tokenizer = self.mp.get_tokenizer(self.model_name)
+            tokenizer = get_tokenizer(self.model_name)
             probe, valid_metrics, test_metrics = self.mp._run_nn_probe(
                 self.model_name, self.data_name,
                 train_set, valid_set, test_set,
@@ -186,7 +186,7 @@ class HyperoptModule:
                 continue
 
             for data_name, dataset in mp.datasets.items():
-                print_message(f"Sweeping over {data_name} with {model_name}")
+                mp.logger.info(f"Sweeping over {data_name} with {model_name}")
                 train_set, _, _, num_labels, label_type, ppi = dataset
                 mp.probe_args.num_labels = num_labels
                 mp.probe_args.task_type = label_type

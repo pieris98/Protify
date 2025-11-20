@@ -46,6 +46,26 @@ class HyperoptModule:
         self.mp.probe_args.__dict__.update(copy.deepcopy(self.base_probe_args))
         self.mp.trainer_args.__dict__.update(copy.deepcopy(self.base_trainer_args))
         
+        # Constraint some of the hypers to be multiples of 8 or 4
+        if 'hidden_size' in cfg:
+            val = float(cfg['hidden_size'])
+            val = int(round(val / 8) * 8)
+            val = max(8, val)
+            cfg['hidden_size'] = val
+            
+            n_heads = max(1, val // 64)
+            cfg['n_heads'] = n_heads
+            
+        for key in ['lora_r', 'lora_alpha']:
+            if key in cfg:
+                val = float(cfg[key])
+                val = int(round(val / 4) * 4)
+                val = max(4, val)
+                cfg[key] = val
+                
+        if 'dropout' in cfg:
+            cfg['transformer_dropout'] = cfg['dropout']
+
         for k, v in cfg.items():
             if k in self.probe_keys and hasattr(self.mp.probe_args, k):
                 setattr(self.mp.probe_args, k, v)

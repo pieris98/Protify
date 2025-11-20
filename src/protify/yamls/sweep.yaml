@@ -10,32 +10,20 @@ parameters:
     distribution: log_uniform_values
     min: 0.000001
     max: 0.1
-  
-  # Full finetuning specific parameters
-  base_batch_size:
-    values: [4, 8, 16]
-  base_grad_accum:
-    values: [4, 8, 16]
-  
-  # Probe specific parameters
-  probe_batch_size:
-    values: [16, 32, 64, 128]
+  hidden_size:
+    distribution: uniform
+    min: 64
+    max: 16384
+  n_layers:
+    distribution: uniform
+    min: 1
+    max: 12
   dropout:
     distribution: uniform
     min: 0.0
     max: 0.5
-  hidden_size:
-    values: [512, 1024, 2048, 4096, 8192]
-  n_layers:
-    values: [1, 2, 3]
-  probe_pooling_types:
-    values: ["cls", "mean"]
   
   # Transformer probe specific parameters
-  transformer_dropout:
-    distribution: uniform
-    min: 0.0
-    max: 0.5
   classifier_dropout:
     distribution: uniform
     min: 0.0
@@ -43,16 +31,20 @@ parameters:
   pre_ln:
     values: [True, False]
   classifier_dim:
-    values: [4096, 8192]
-  n_heads:
-    values: [2, 4, 8]
+    distribution: uniform
+    min: 64
+    max: 16384
   
   # LoRA parameters
-  lora:
-    values: [True, False]
   lora_r:
-    values: [8, 16, 32]
+    distribution: uniform
+    min: 4
+    max: 128
   lora_alpha:
-    values: [16, 32, 64]
+    distribution: uniform
+    min: 4
+    max: 128
   lora_dropout:
-    values: [0.0, 0.01, 0.05]
+    distribution: uniform
+    min: 0.0
+    max: 0.5

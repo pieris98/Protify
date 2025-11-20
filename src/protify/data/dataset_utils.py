@@ -4,8 +4,8 @@ from .supported_datasets import (
     possible_with_vector_reps,
     standard_data_benchmark,
     testing,
-    residue_wise_problems
 )
+
 
 def list_supported_datasets(with_descriptions=True):
     """
@@ -48,10 +48,7 @@ def list_supported_datasets(with_descriptions=True):
     print("\n=== Standard Benchmark Datasets ===\n")
     for dataset_name in standard_data_benchmark:
         print(f"- {dataset_name}")
-    
-    print("\n=== Residue-wise Datasets ===\n")
-    for dataset_name in residue_wise_problems:
-        print(f"- {dataset_name}")
+
 
 def get_dataset_info(dataset_name):
     """
@@ -74,6 +71,7 @@ def get_dataset_info(dataset_name):
         return {"name": dataset_name, "source": supported_datasets[dataset_name]}
     
     return None
+
 
 if __name__ == "__main__":
     import sys

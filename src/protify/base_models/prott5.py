@@ -55,7 +55,7 @@ def get_prott5_tokenizer(preset: str):
     return T5TokenizerWrapper(T5Tokenizer.from_pretrained(presets[preset]))
 
 
-def build_prott5_model(preset: str):
+def build_prott5_model(preset: str, masked_lm: bool = False, **kwargs):
     model_path = presets[preset]
     model = Prott5ForEmbedding(model_path).eval()
     tokenizer = get_prott5_tokenizer(preset)

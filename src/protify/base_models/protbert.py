@@ -2,8 +2,13 @@ import torch
 import torch.nn as nn
 import re
 from typing import Optional, Union, List, Dict
-from transformers import BertModel, BertTokenizer, BertForSequenceClassification, BertForTokenClassification
-
+from transformers import (
+    BertModel,
+    BertTokenizer,
+    BertForSequenceClassification,
+    BertForTokenClassification,
+    BertForMaskedLM,
+)
 from .base_tokenizer import BaseSequenceTokenizer
 
 
@@ -51,9 +56,12 @@ def get_protbert_tokenizer(preset: str):
     return BERTTokenizerWrapper(BertTokenizer.from_pretrained('Rostlab/prot_bert'))
 
 
-def build_protbert_model(preset: str):
+def build_protbert_model(preset: str, masked_lm: bool = False, **kwargs):
     model_path = presets[preset]
-    model = ProtBertForEmbedding(model_path).eval()
+    if masked_lm:
+        model = BertForMaskedLM.from_pretrained(model_path, attn_implementation="sdpa").eval()
+    else:
+        model = ProtBertForEmbedding(model_path).eval()
     tokenizer = get_protbert_tokenizer(preset)
     return model, tokenizer
 

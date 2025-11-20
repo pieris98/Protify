@@ -8,6 +8,7 @@ from tqdm.auto import tqdm
 from dataclasses import dataclass
 from typing import Optional, Callable, List
 from huggingface_hub import hf_hub_download
+from seed_utils import seed_worker, dataloader_generator, get_global_seed
 
 from data.dataset_classes import SimpleProteinDataset
 from base_models.get_base_models import get_base_model
@@ -22,6 +23,27 @@ def build_collator(tokenizer) -> Callable[[List[str]], tuple[torch.Tensor, torch
     return _collate_fn
 
 
+def get_embedding_filename(model_name: str, matrix_embed: bool, pooling_types: List[str], extension: str = 'pth') -> str:
+    """
+    Generate embedding filename with pooling types for vector embeddings.
+    
+    Args:
+        model_name: Name of the model
+        matrix_embed: Whether embeddings are matrices (True) or vectors (False)
+        pooling_types: List of pooling types used (only relevant for vector embeddings)
+        extension: File extension ('pth' or 'db')
+    
+    Returns:
+        Filename string in format: {model_name}_{matrix_embed}[_{pooling_types}].{extension}
+    """
+    base_name = f'{model_name}_{matrix_embed}'
+    if not matrix_embed and pooling_types:
+        # For vector embeddings, include pooling types in filename
+        pooling_str = '_'.join(sorted(pooling_types))  # Sort for consistency
+        base_name = f'{base_name}_{pooling_str}'
+    return f'{base_name}.{extension}'
+
+
 @dataclass
 class EmbeddingArguments:
     def __init__(
@@ -29,7 +51,7 @@ class EmbeddingArguments:
             embedding_batch_size: int = 4,
             embedding_num_workers: int = 0,
             download_embeddings: bool = False,
-            download_dir: str = 'Synthyra/mean_pooled_embeddings',
+            download_dir: str = 'Synthyra/vector_embeddings',
             matrix_embed: bool = False,
             embedding_pooling_types: List[str] = ['mean'],
             save_embeddings: bool = False,
@@ -72,10 +94,11 @@ class Embedder:
         # download from download_dir
         # unzip
         # move to embedding_save_dir
+        filename = get_embedding_filename(model_name, self.matrix_embed, self.pooling_types, 'pth')
         try:
             local_path = hf_hub_download(
                 repo_id=self.download_dir,
-                filename=f'embeddings/{model_name}_{self.matrix_embed}.pth.gz',
+                filename=f'embeddings/{filename}.gz',
                 repo_type='dataset'
             )
         except:
@@ -89,7 +112,7 @@ class Embedder:
                 f_out.write(f_in.read())
         # move to embedding_save_dir
         unzipped_path = local_path.replace('.gz', '')
-        final_path = os.path.join(self.embedding_save_dir, f'{model_name}_{self.matrix_embed}.pth')
+        final_path = os.path.join(self.embedding_save_dir, filename)
         
         if os.path.exists(final_path):
             print_message(f'Found existing embeddings in {final_path}')
@@ -134,7 +157,8 @@ class Embedder:
 
     def _read_embeddings_from_disk(self, model_name: str):
         if self.sql:
-            save_path = os.path.join(self.embedding_save_dir, f'{model_name}_{self.matrix_embed}.db')
+            filename = get_embedding_filename(model_name, self.matrix_embed, self.pooling_types, 'db')
+            save_path = os.path.join(self.embedding_save_dir, filename)
             if os.path.exists(save_path):
                 conn = sqlite3.connect(save_path)
                 c = conn.cursor()
@@ -149,7 +173,8 @@ class Embedder:
 
         else:
             embeddings_dict = {}
-            save_path = os.path.join(self.embedding_save_dir, f'{model_name}_{self.matrix_embed}.pth')
+            filename = get_embedding_filename(model_name, self.matrix_embed, self.pooling_types, 'pth')
+            save_path = os.path.join(self.embedding_save_dir, filename)
             if os.path.exists(save_path):
                 print_message(f"Loading embeddings from {save_path}")
                 embeddings_dict = torch_load(save_path)
@@ -163,6 +188,7 @@ class Embedder:
                 print_message(f"No embeddings found in {save_path}")
                 return self.all_seqs, save_path, {}
 
+    @torch.inference_mode()
     def _embed_sequences(
             self,
             to_embed: List[str],
@@ -172,7 +198,11 @@ class Embedder:
             embeddings_dict: dict[str, torch.Tensor]) -> Optional[dict[str, torch.Tensor]]:
         os.makedirs(self.embedding_save_dir, exist_ok=True)
         model = embedding_model.to(self.device).eval()
-        torch.compile(model)
+        if os.name == 'posix':
+            try:
+                torch.compile(model)
+            except:
+                print_message("Model cannot be compiled")
         device = self.device
         collate_fn = build_collator(tokenizer)
         print_message(f'Pooling types: {self.pooling_types}')
@@ -199,7 +229,9 @@ class Embedder:
             prefetch_factor=2 if self.num_workers > 0 else None,
             collate_fn=collate_fn,
             shuffle=False,
-            pin_memory=True
+            pin_memory=True,
+            worker_init_fn=seed_worker,
+            generator=dataloader_generator(get_global_seed())
         )
 
         if self.sql:
@@ -207,36 +239,42 @@ class Embedder:
             c = conn.cursor()
             c.execute('CREATE TABLE IF NOT EXISTS embeddings (sequence text PRIMARY KEY, embedding blob)')
 
-        with torch.no_grad():
-            for i, batch in tqdm(enumerate(dataloader), total=len(dataloader), desc='Embedding batches'):
-                seqs = to_embed[i * self.batch_size:(i + 1) * self.batch_size]
-                input_ids, attention_mask = batch['input_ids'].to(device), batch['attention_mask'].to(device)
-                if 'parti' in self.pooling_types:
-                    try:
-                        residue_embeddings, attentions = model(input_ids, attention_mask, output_attentions=True)
-                        embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask, attentions=attentions).cpu()
-                    except Exception as e:
-                        print_message(f"Error in parti pooling: {e}\nDefaulting to mean pooling")
-                        self.pooling_types = ['mean']
-                        pooler = Pooler(self.pooling_types)
-                        residue_embeddings = model(input_ids, attention_mask)
-                        embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask).cpu()
-                else:
-                    residue_embeddings = model(input_ids, attention_mask)
-                    embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask).cpu()
+        for i, batch in tqdm(enumerate(dataloader), total=len(dataloader), desc='Embedding batches'):
+            seqs = to_embed[i * self.batch_size:(i + 1) * self.batch_size]
+            batch = {k: v.to(device) for k, v in batch.items() if isinstance(v, torch.Tensor)}
+            if 'attention_mask' in batch:
+                attention_mask = batch['attention_mask']
+            elif 'sequence_ids' in batch:
+                attention_mask = (batch['sequence_ids'] != -1).long().to(device)
+            else:
+                attention_mask = torch.ones_like(batch['input_ids'], device=device)
 
-                for seq, emb, mask in zip(seqs, embeddings, attention_mask.cpu()):
-                    if self.matrix_embed:
-                        emb = emb[mask.bool()]
-                    
-                    if self.sql:
-                        c.execute("INSERT OR REPLACE INTO embeddings VALUES (?, ?)", 
-                                (seq, emb.numpy().tobytes())) # only supports float32
-                    else:
-                        embeddings_dict[seq] = emb.to(self.embed_dtype)
+            if 'parti' in self.pooling_types:
+                try:
+                    residue_embeddings, attentions = model(**batch, output_attentions=True)
+                    embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask, attentions=attentions).cpu()
+                except Exception as e:
+                    print_message(f"Error in parti pooling: {e}\nDefaulting to mean pooling")
+                    self.pooling_types = ['mean']
+                    pooler = Pooler(self.pooling_types)
+                    residue_embeddings = model(**batch)
+                    embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask).cpu()
+            else:
+                residue_embeddings = model(**batch)
+                embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask).cpu()
+
+            for seq, emb, mask in zip(seqs, embeddings, attention_mask.cpu()):
+                if self.matrix_embed:
+                    emb = emb[mask.bool()]
                 
-                if (i + 1) % 100 == 0 and self.sql:
-                    conn.commit()
+                if self.sql:
+                    c.execute("INSERT OR REPLACE INTO embeddings VALUES (?, ?)", 
+                            (seq, emb.numpy().tobytes())) # only supports float32
+                else:
+                    embeddings_dict[seq] = emb.to(self.embed_dtype)
+            
+            if (i + 1) % 100 == 0 and self.sql:
+                conn.commit()
 
         if self.sql:
             conn.commit()
@@ -250,19 +288,25 @@ class Embedder:
         return embeddings_dict
 
     def __call__(self, model_name: str):
+        if 'custom' in model_name.lower():
+            clean_model_name = model_name.split('---')[-1].split('/')[-1]
+        else:
+            clean_model_name = model_name
+
         if self.download_embeddings:
-            self._download_embeddings(model_name)
+            self._download_embeddings(clean_model_name)
 
         if self.device == 'cpu':
             warnings.warn("Downloading embeddings is recommended for CPU usage - Embedding on CPU will be extremely slow!")
-        to_embed, save_path, embeddings_dict = self._read_embeddings_from_disk(model_name)
+        to_embed, save_path, embeddings_dict = self._read_embeddings_from_disk(clean_model_name)
         
         if len(to_embed) > 0:
-            print_message(f"Embedding {len(to_embed)} sequences with {model_name}")
-            model, tokenizer = get_base_model(model_name)
+            print_message(f"Embedding {len(to_embed)} sequences with {clean_model_name}")
+            model, tokenizer = get_base_model(model_name) # get base model takes raw model name
+
             return self._embed_sequences(to_embed, save_path, model, tokenizer, embeddings_dict)
         else:
-            print_message(f"No sequences to embed with {model_name}")
+            print_message(f"No sequences to embed with {clean_model_name}")
             return None
 
 
@@ -274,17 +318,22 @@ if __name__ == '__main__':
     from data.supported_datasets import possible_with_vector_reps
     from data.data_mixin import DataArguments, DataMixin
     from base_models.get_base_models import BaseModelArguments, get_base_model
+    from seed_utils import set_global_seed
 
     os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1' # prevent cache warning on Windows machines
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--token', default=None, help='Huggingface token')
-    parser.add_argument('--batch_size', type=int, default=4)
-    parser.add_argument('--num_workers', type=int, default=0)
+    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--embed_dtype', type=str, default='float16')
+    parser.add_argument('--model_names', nargs='+', default=['standard'])
     parser.add_argument('--embedding_save_dir', type=str, default='embeddings')
-    parser.add_argument('--download_dir', type=str, default='Synthyra/mean_pooled_embeddings')
+    parser.add_argument('--download_dir', type=str, default='Synthyra/vector_embeddings')
+    parser.add_argument('--embedding_pooling_types', nargs='+', default=['mean', 'var'], help='Pooling types for embeddings.')
     args = parser.parse_args()
+
+    chosen_seed = set_global_seed()
 
     if args.token is not None:
         login(args.token)
@@ -312,7 +361,7 @@ if __name__ == '__main__':
         num_workers=args.num_workers,
         download_embeddings=True,
         matrix_embed=False,
-        pooling_types=['mean'],
+        embedding_pooling_types=args.embedding_pooling_types,
         save_embeddings=True,
         embed_dtype=dtype,
         sql=False,
@@ -321,10 +370,11 @@ if __name__ == '__main__':
     embedder = Embedder(embedder_args, all_seqs)
 
     # Embed for each model
-    model_args = BaseModelArguments(model_names=['standard'])
+    model_args = BaseModelArguments(model_names=args.model_names)
     for model_name in model_args.model_names:
         _ = embedder(model_name)
-        save_path = os.path.join(args.embedding_save_dir, f'{model_name}_False.pth')
+        filename = get_embedding_filename(model_name, False, embedder_args.pooling_types, 'pth')
+        save_path = os.path.join(args.embedding_save_dir, filename)
         
         compressed_path = f"{save_path}.gz"
         print(f"Compressing {save_path} to {compressed_path}")
@@ -332,7 +382,7 @@ if __name__ == '__main__':
             with gzip.open(compressed_path, 'wb') as f_out:
                 f_out.write(f_in.read())
         upload_path = compressed_path
-        path_in_repo = f'embeddings/{model_name}_False.pth.gz'
+        path_in_repo = f'embeddings/{filename}.gz'
 
             
         upload_file(

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from typing import Optional, Tuple, Union, List, Dict
-from transformers import AutoTokenizer, AutoModel, AutoModelForTokenClassification, AutoModelForSequenceClassification
+from typing import Optional, Union, List, Dict
+from transformers import AutoTokenizer, AutoModel, AutoModelForTokenClassification, AutoModelForSequenceClassification, AutoModelForMaskedLM
 
 from .base_tokenizer import BaseSequenceTokenizer
 
@@ -49,7 +49,31 @@ class gLM2ForEmbedding(nn.Module):
 
         out = self.glm2(
             input_ids=input_ids,
-            attention_mask=attention_mask,
+            attention_mask=attention_mask
+        )
+        
+        return out.last_hidden_state
+
+class gLM2GAIAForEmbedding(nn.Module):
+    def __init__(self, model_path: str):
+        super().__init__()
+        self.glm2_embed = AutoModel.from_pretrained(model_path, trust_remote_code=True)
+        self.glm2 = self.glm2_embed.glm2
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = False,
+    ) -> torch.Tensor:
+        assert not output_attentions or not output_hidden_states, (
+            "output_attentions=True and output_hidden_states=True are not supported by gLM2ForEmbedding."
+        )
+
+        out = self.glm2(
+            input_ids=input_ids,
+            attention_mask=attention_mask
         )
         return out.last_hidden_state
 
@@ -58,9 +82,15 @@ def get_glm2_tokenizer(preset: str):
     return GLMTokenizerWrapper(AutoTokenizer.from_pretrained(presets[preset], trust_remote_code=True))
 
 
-def build_glm2_model(preset: str) -> Tuple[gLM2ForEmbedding, AutoTokenizer]:
+def build_glm2_model(preset: str, masked_lm: bool = False, **kwargs):
     model_path = presets[preset]
-    model = gLM2ForEmbedding(model_path).eval()
+    if masked_lm:
+        model = AutoModelForMaskedLM.from_pretrained(model_path, trust_remote_code=True).eval()
+    else:
+        if preset == "GLM2-GAIA":
+            model = gLM2GAIAForEmbedding(model_path).eval()
+        else:
+            model = gLM2ForEmbedding(model_path).eval()
     tokenizer = get_glm2_tokenizer(preset)
     return model, tokenizer
 

@@ -20,7 +20,4 @@ src/protify/private_yamls
 !yamls/sweep_full.yaml
 !yamls/sweep_probe.yaml
 !yamls/sweep_transformer_probe.yaml
-/outputs/*
-src/protify/benchmarks/proteingym/scores_old/*
-src/protify/results/*
 /.cache

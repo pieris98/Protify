@@ -23,3 +23,5 @@ src/protify/private_yamls
 outputs/
 src/protify/benchmarks/proteingym/
 src/protify/results/
+*.lock
+/.cache

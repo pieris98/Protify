@@ -11,11 +11,12 @@ parameters:
     min: 0.000001
     max: 0.1
   hidden_size:
-    distribution: uniform
+    distribution: q_uniform
     min: 64
     max: 16384
+    q: 8
   n_layers:
-    distribution: uniform
+    distribution: int_uniform
     min: 1
     max: 12
   dropout:
@@ -31,19 +32,22 @@ parameters:
   pre_ln:
     values: [True, False]
   classifier_dim:
-    distribution: uniform
+    distribution: q_uniform
     min: 64
     max: 16384
+    q: 8
   
   # LoRA parameters
   lora_r:
-    distribution: uniform
+    distribution: q_uniform
     min: 4
     max: 128
+    q: 4
   lora_alpha:
-    distribution: uniform
+    distribution: q_uniform
     min: 4
     max: 128
+    q: 4
   lora_dropout:
     distribution: uniform
     min: 0.0

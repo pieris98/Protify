@@ -33,7 +33,7 @@ class HyperoptModule:
         
         self.probe_keys = {
             'hidden_size','dropout','n_layers','pre_ln','classifier_dim',
-            'transformer_dropout','classifier_dropout','n_heads','rotary',
+            'classifier_dropout','n_heads','rotary',
             'lora','lora_r','lora_alpha','lora_dropout','probe_type','tokenwise'
         }
         self.trainer_keys = {
@@ -41,27 +41,27 @@ class HyperoptModule:
             'base_batch_size','probe_grad_accum','base_grad_accum',
             'patience','seed'
         }
+        self.int_keys = {
+            'hidden_size', 'n_layers', 'classifier_dim', 'n_heads', 
+            'lora_r', 'lora_alpha', 'num_epochs', 'probe_batch_size',
+            'base_batch_size', 'probe_grad_accum', 'base_grad_accum',
+            'patience', 'seed'
+        }
 
     def apply_config(self, cfg: Dict[str, Any]):
         self.mp.probe_args.__dict__.update(copy.deepcopy(self.base_probe_args))
         self.mp.trainer_args.__dict__.update(copy.deepcopy(self.base_trainer_args))
         
-        # Constraint some of the hypers to be multiples of 8 or 4
+        # Ensure integer parameters are actually integers
+        for key in self.int_keys:
+            if key in cfg:
+                cfg[key] = int(cfg[key])
+        
         if 'hidden_size' in cfg:
-            val = float(cfg['hidden_size'])
-            val = int(round(val / 8) * 8)
-            val = max(8, val)
-            cfg['hidden_size'] = val
-            
+            val = cfg['hidden_size']
+            # Automatically set n_heads based on hidden_size
             n_heads = max(1, val // 64)
             cfg['n_heads'] = n_heads
-            
-        for key in ['lora_r', 'lora_alpha']:
-            if key in cfg:
-                val = float(cfg[key])
-                val = int(round(val / 4) * 4)
-                val = max(4, val)
-                cfg[key] = val
                 
         if 'dropout' in cfg:
             cfg['transformer_dropout'] = cfg['dropout']

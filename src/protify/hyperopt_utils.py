@@ -107,8 +107,17 @@ class HyperoptModule:
             )
             return probe, valid_metrics, test_metrics
 
-    def select_metric(self, metrics: Dict[str, Any], sweep_metric: str) -> float:
-        return float(metrics[sweep_metric])
+    def select_metric(self, valid_metrics: Dict[str, Any], test_metrics: Dict[str, Any], sweep_metric: str) -> float:
+        if valid_metrics and sweep_metric in valid_metrics:
+            return float(valid_metrics[sweep_metric])
+        elif test_metrics and sweep_metric in test_metrics:
+            return float(test_metrics[sweep_metric])
+        
+        # Raise a helpful error if metric was not found
+        available_keys = []
+        if valid_metrics: available_keys.extend(valid_metrics.keys())
+        if test_metrics: available_keys.extend(test_metrics.keys())
+        raise KeyError(f"Metric '{sweep_metric}' not found in validation or test metrics. Available metrics: {available_keys}")
 
     def objective(self):
         run = wandb.init(
@@ -141,7 +150,7 @@ class HyperoptModule:
                 all_metrics[f"{k}"] = v
         wandb.log(all_metrics)
         
-        metric_value = self.select_metric(valid_metrics, dataset_metric)
+        metric_value = self.select_metric(valid_metrics, test_metrics, dataset_metric)
         
         self.results_list.append({
             "wandb_run_id": run.id,

@@ -135,8 +135,8 @@ def parse_arguments():
     parser.add_argument("--sweep_config_path", type=str, default="yamls/sweep.yaml", help="Path to W&B sweep config YAML.")
     parser.add_argument("--sweep_count", type=int, default=10, help="Number of hyperparameter trials to run in the sweep.")
     parser.add_argument("--sweep_method", type=str, default="bayes", choices=["bayes", "grid", "random"], help="Sweep method for hyperparameter optimization.")
-    parser.add_argument("--sweep_metric_cls",type=str,default="eval_loss", help="Classification metric to optimize during sweep (e.g., eval_f1, eval_accuracy, eval_mcc)")
-    parser.add_argument("--sweep_metric_reg",type=str,default="eval_loss", help="Regression metric to optimize during sweep (e.g., eval_r_squared, eval_spearman_rho, eval_pearson_rho)")
+    parser.add_argument("--sweep_metric_cls",type=str,default="test_loss", help="Classification metric to optimize during sweep (e.g., test_f1, test_accuracy, test_mcc)")
+    parser.add_argument("--sweep_metric_reg",type=str,default="test_loss", help="Regression metric to optimize during sweep (e.g., test_r_squared, test_spearman_rho, test_pearson_rho)")
     parser.add_argument("--sweep_goal", type=str, default='minimize', choices=['maximize', 'minimize'], help="Goal for the sweep metric (maximize/minimize)")
     args = parser.parse_args()
 

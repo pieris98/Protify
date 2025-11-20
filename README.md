@@ -437,16 +437,16 @@ The following arguments control hyperparameter optimization:
 - `--sweep_config_path`: Path to sweep configuration YAML (default: "yamls/sweep.yaml")
 - `--sweep_count`: Number of trials to run (default: 10)
 - `--sweep_method`: Search method - "bayes", "grid", or "random" (default: "bayes")
-- `--sweep_metric_cls`: Classification metric to optimize during sweep (default: "eval_loss")
-- `--sweep_metric_reg`: Regression metric to optimize during sweep (default: "eval_loss")
+- `--sweep_metric_cls`: Classification metric to optimize during sweep (default: "test_loss")
+- `--sweep_metric_reg`: Regression metric to optimize during sweep (default: "test_loss")
 - `--sweep_goal`: Optimization goal - "maximize" or "minimize" (default: "minimize")
 
 - **NOTE**: The default optimization strategy is to minimize the eval_loss. If you would like to choose a different metric via the `--sweep_metric_cls` and `--sweep_metric_reg` arguments, make sure you ALSO change `--sweep_goal` to **maximize**.
 
 Common metrics you can optimize for:
 
-- **Classification**: `eval_accuracy`, `eval_mcc`, `eval_f1`, `eval_precision`, `eval_recall`
-- **Regression**: `eval_r_squared`, `eval_pearson_rho`, `eval_spearman_rho`
+- **Classification**: `test_accuracy`, `test_mcc`, `test_f1`, `test_precision`, `test_recall`
+- **Regression**: `test_r_squared`, `test_pearson_rho`, `test_spearman_rho`
 
 ### Workflow
 

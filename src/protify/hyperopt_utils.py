@@ -6,6 +6,7 @@ import json
 import csv
 from typing import Dict, Any, List, Tuple
 from utils import torch_load, print_message
+from embedder import get_embedding_filename
 from base_models.get_base_models import get_tokenizer
 
 class HyperoptModule:
@@ -170,10 +171,12 @@ class HyperoptModule:
                     emb_dict = None
                     if not mp.full_args.full_finetuning:
                         if mp._sql:
-                            save_path = os.path.join(mp.embedding_args.embedding_save_dir, f'{model_name}_{mp._full}.db')
+                            filename = get_embedding_filename(model_name, mp._full, mp.embedding_args.pooling_types, 'db')
+                            save_path = os.path.join(mp.embedding_args.embedding_save_dir, filename)
                             input_dim = mp.get_embedding_dim_sql(save_path, test_seq, tokenizer)
                         else:
-                            save_path = os.path.join(mp.embedding_args.embedding_save_dir, f'{model_name}_{mp._full}.pth')
+                            filename = get_embedding_filename(model_name, mp._full, mp.embedding_args.pooling_types, 'pth')
+                            save_path = os.path.join(mp.embedding_args.embedding_save_dir, filename)
                             emb_dict = torch_load(save_path)
                             input_dim = mp.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
                         mp.probe_args.input_dim = input_dim * 2 if (ppi and not mp._full) else input_dim
@@ -195,10 +198,12 @@ class HyperoptModule:
                 emb_dict = None
                 if not mp.full_args.full_finetuning:
                     if mp._sql:
-                        save_path = os.path.join(mp.embedding_args.embedding_save_dir, f'{model_name}_{mp._full}.db')
+                        filename = get_embedding_filename(model_name, mp._full, mp.embedding_args.pooling_types, 'db')
+                        save_path = os.path.join(mp.embedding_args.embedding_save_dir, filename)
                         input_dim = mp.get_embedding_dim_sql(save_path, test_seq, tokenizer)
                     else:
-                        save_path = os.path.join(mp.embedding_args.embedding_save_dir, f'{model_name}_{mp._full}.pth')
+                        filename = get_embedding_filename(model_name, mp._full, mp.embedding_args.pooling_types, 'pth')
+                        save_path = os.path.join(mp.embedding_args.embedding_save_dir, filename)
                         emb_dict = torch_load(save_path)
                         input_dim = mp.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
                     mp.probe_args.input_dim = input_dim * 2 if (ppi and not mp._full) else input_dim

@@ -479,7 +479,7 @@ class DataMixin:
             if 'valid' not in dataset:
                 seed = get_global_seed() if get_global_seed() is not None else 42
                 train_set = dataset['train']
-                train_valid_set = train_set.train_test_split(test_size=0.1, seed=seed + 1)['test']
+                train_valid_set = train_set.train_test_split(test_size=0.1, seed=seed + 1)
                 train_set = train_valid_set['train']
                 valid_set = train_valid_set['test']
                 test_set = dataset['test']
@@ -487,7 +487,7 @@ class DataMixin:
             elif 'test' not in dataset:
                 seed = get_global_seed() if get_global_seed() is not None else 42
                 train_set = dataset['train']
-                train_test_set = train_set.train_test_split(test_size=0.1, seed=seed + 2)['test']
+                train_test_set = train_set.train_test_split(test_size=0.1, seed=seed + 2)
                 test_set = train_test_set['test']
                 train_set = train_test_set['train']
                 valid_set = dataset['valid']

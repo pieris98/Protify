@@ -471,16 +471,21 @@ class DataMixin:
             if not ppi:
                 ppi = self._is_ppi_from_columns(dataset['train'].column_names)
             print_message(f'PPI (or dual sequence input dataset): {ppi}')
-            try:
-                train_set, valid_set, test_set = dataset['train'], dataset['valid'], dataset['test']
-            except:
-                # No valid or test set, make 10% splits randomly
+
+            assert 'train' in dataset, f'{data_name} does not have a train set'
+            assert 'valid' in dataset or 'test' in dataset, f'{data_name} does not have a valid or test set, needs at least one'
+            
+            if 'valid' not in dataset:
                 seed = get_global_seed() if get_global_seed() is not None else 42
-                train_set = dataset['train'].train_test_split(test_size=0.2, seed=seed + 1)
-                valid_set = train_set['test']
-                train_set = train_set['train']
-                test_set = train_set.train_test_split(test_size=0.5, seed=seed + 2)
-                test_set = test_set['test']
+                dataset = dataset.train_test_split(test_size=0.1, seed=seed + 1)
+                valid_set = dataset['test']
+                train_set = dataset['train']
+            
+            if 'test' not in dataset:
+                seed = get_global_seed() if get_global_seed() is not None else 42
+                dataset = dataset.train_test_split(test_size=0.1, seed=seed + 2)
+                test_set = dataset['test']
+                train_set = dataset['train']
 
             if ppi:
                 # Standardize PPI columns to 'SeqA', 'SeqB', and 'labels'

@@ -74,6 +74,7 @@ class AMPLIFYConfig(PretrainedConfig):
         self.pad_token_id = pad_token_id
         self.max_length = max_length
 
+
 class EncoderBlock(nn.Module):
     """Transformer encoder block."""
 

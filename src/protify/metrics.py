@@ -8,7 +8,6 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     roc_auc_score,
-    average_precision_score,
     precision_recall_curve,
     auc,
     matthews_corrcoef,
@@ -160,6 +159,114 @@ def max_metrics(ss: torch.Tensor, labels: torch.Tensor, increment: float = 0.01)
     return f1s[max_index].item(), precision[max_index].item(), recall[max_index].item(), cutoffs[max_index].item()
 
 
+
+def calculate_robust_roc_auc_multiclass(y_true: np.ndarray, probs: np.ndarray) -> float:
+    """
+    Robust ROC AUC for multi-class (single-label) tasks.
+    Handles missing classes in y_true by ignoring them in the weighted average.
+    """
+    # Check for NaNs in probs
+    if np.isnan(probs).any():
+        probs = np.nan_to_num(probs, nan=0.0)
+        
+    n_classes = probs.shape[1]
+    try:
+        if n_classes == 2:
+            if len(np.unique(y_true)) == 2:
+                return roc_auc_score(y_true, probs[:, 1])
+            return -100.0
+        
+        y_true_onehot = np.eye(n_classes)[y_true]
+        scores = []
+        weights = []
+        for i in range(n_classes):
+            # Only calculate if both positive and negative samples exist
+            if len(np.unique(y_true_onehot[:, i])) == 2:
+                scores.append(roc_auc_score(y_true_onehot[:, i], probs[:, i]))
+                weights.append(np.sum(y_true_onehot[:, i]))
+                
+        if not scores:
+            return -100.0
+            
+        return float(np.average(scores, weights=weights))
+    except Exception:
+        return -100.0
+
+
+def calculate_robust_pr_auc_multiclass(y_true: np.ndarray, probs: np.ndarray) -> float:
+    """
+    Robust PR AUC for multi-class (single-label) tasks.
+    """
+    # Check for NaNs in probs
+    if np.isnan(probs).any():
+        probs = np.nan_to_num(probs, nan=0.0)
+
+    n_classes = probs.shape[1]
+    try:
+        if n_classes == 2:
+            if len(np.unique(y_true)) == 2:
+                precision, recall, _ = precision_recall_curve(y_true, probs[:, 1])
+                return auc(recall, precision)
+            return -100.0
+
+        y_true_onehot = np.eye(n_classes)[y_true]
+        scores = []
+        weights = []
+        for i in range(n_classes):
+            if len(np.unique(y_true_onehot[:, i])) == 2:
+                precision, recall, _ = precision_recall_curve(y_true_onehot[:, i], probs[:, i])
+                scores.append(auc(recall, precision))
+                weights.append(np.sum(y_true_onehot[:, i]))
+                
+        if not scores:
+            return -100.0
+            
+        return float(np.average(scores, weights=weights))
+    except Exception:
+        return -100.0
+
+
+def calculate_robust_roc_auc_multilabel(y_true: np.ndarray, probs: np.ndarray) -> float:
+    """
+    Robust ROC AUC for multi-label tasks (macro average).
+    """
+    if np.isnan(probs).any():
+        probs = np.nan_to_num(probs, nan=0.0)
+
+    scores = []
+    try:
+        for i in range(y_true.shape[1]):
+            if len(np.unique(y_true[:, i])) == 2:
+                scores.append(roc_auc_score(y_true[:, i], probs[:, i]))
+        
+        if not scores:
+            return -100.0
+        return float(np.mean(scores))
+    except Exception:
+        return -100.0
+
+
+def calculate_robust_pr_auc_multilabel(y_true: np.ndarray, probs: np.ndarray) -> float:
+    """
+    Robust PR AUC for multi-label tasks (macro average).
+    """
+    if np.isnan(probs).any():
+        probs = np.nan_to_num(probs, nan=0.0)
+
+    scores = []
+    try:
+        for i in range(y_true.shape[1]):
+            if len(np.unique(y_true[:, i])) == 2:
+                precision, recall, _ = precision_recall_curve(y_true[:, i], probs[:, i])
+                scores.append(auc(recall, precision))
+        
+        if not scores:
+            return -100.0
+        return float(np.mean(scores))
+    except Exception:
+        return -100.0
+
+
 def compute_single_label_classification_metrics(p: EvalPrediction) -> dict[str, float]:
     """
     Compute comprehensive metrics for single-label classification tasks.
@@ -193,43 +300,10 @@ def compute_single_label_classification_metrics(p: EvalPrediction) -> dict[str, 
     probs = softmax(logits)
 
     # Calculate ROC AUC
-    try:
-        # binary
-        if len(np.unique(y_true)) == 2:
-            # For binary, use probabilities of positive class
-            roc_auc = roc_auc_score(y_true, probs[:, 1] if probs.shape[1] == 2 else probs.flatten())
-        else:
-            # multi-class
-            n_classes = probs.shape[1]
-            y_true_onehot = np.eye(n_classes)[y_true]
-            roc_auc = roc_auc_score(y_true_onehot, probs, multi_class='ovr', average='weighted')
-    except:
-        roc_auc = -100.0
+    roc_auc = calculate_robust_roc_auc_multiclass(y_true, probs)
     
     # Calculate PR AUC (true AUC of Precision-Recall curve)
-    try:
-        # binary
-        if len(np.unique(y_true)) == 2:
-            # For binary, use probabilities of positive class
-            y_scores = probs[:, 1] if probs.shape[1] == 2 else probs.flatten()
-            precision, recall, _ = precision_recall_curve(y_true, y_scores)
-            pr_auc = auc(recall, precision)
-        else:
-            # multi-class: compute PR AUC for each class and average
-            n_classes = probs.shape[1]
-            y_true_onehot = np.eye(n_classes)[y_true]
-            pr_aucs = []
-            for i in range(n_classes):
-                precision, recall, _ = precision_recall_curve(y_true_onehot[:, i], probs[:, i])
-                pr_aucs.append(auc(recall, precision))
-            # Weighted average by class support
-            class_weights = y_true_onehot.sum(axis=0)
-            if class_weights.sum() > 0:
-                pr_auc = np.average(pr_aucs, weights=class_weights)
-            else:
-                pr_auc = np.mean(pr_aucs) if pr_aucs else -100.0
-    except:
-        pr_auc = -100.0
+    pr_auc = calculate_robust_pr_auc_multiclass(y_true, probs)
     
     cm = confusion_matrix(y_true, y_pred)
     print("\nConfusion Matrix:")
@@ -300,43 +374,10 @@ def compute_tokenwise_classification_metrics(p: EvalPrediction) -> dict[str, flo
     probs = probs[valid_indices]  # Filter by valid indices
     
     # Calculate ROC AUC
-    try:
-        # binary
-        if len(np.unique(y_true)) == 2:
-            # For binary, use probabilities of positive class
-            roc_auc = roc_auc_score(y_true, probs[:, 1] if probs.shape[1] == 2 else probs.flatten())
-        else:
-            # multi-class
-            n_classes = probs.shape[1]
-            y_true_onehot = np.eye(n_classes)[y_true]
-            roc_auc = roc_auc_score(y_true_onehot, probs, multi_class='ovr', average='weighted')
-    except:
-        roc_auc = -100.0
+    roc_auc = calculate_robust_roc_auc_multiclass(y_true, probs)
     
     # Calculate PR AUC (true AUC of Precision-Recall curve)
-    try:
-        # binary
-        if len(np.unique(y_true)) == 2:
-            # For binary, use probabilities of positive class
-            y_scores = probs[:, 1] if probs.shape[1] == 2 else probs.flatten()
-            pr_precision, pr_recall, _ = precision_recall_curve(y_true, y_scores)
-            pr_auc = auc(pr_recall, pr_precision)
-        else:
-            # multi-class: compute PR AUC for each class and average
-            n_classes = probs.shape[1]
-            y_true_onehot = np.eye(n_classes)[y_true]
-            pr_aucs = []
-            for i in range(n_classes):
-                pr_precision, pr_recall, _ = precision_recall_curve(y_true_onehot[:, i], probs[:, i])
-                pr_aucs.append(auc(pr_recall, pr_precision))
-            # Weighted average by class support
-            class_weights = y_true_onehot.sum(axis=0)
-            if class_weights.sum() > 0:
-                pr_auc = np.average(pr_aucs, weights=class_weights)
-            else:
-                pr_auc = np.mean(pr_aucs) if pr_aucs else -100.0
-    except:
-        pr_auc = -100.0
+    pr_auc = calculate_robust_pr_auc_multiclass(y_true, probs)
     
     return {
         'accuracy': round(accuracy, 5),
@@ -386,7 +427,7 @@ def compute_multi_label_classification_metrics(p: EvalPrediction) -> dict[str, f
     else:
         y_true = labels.int()
 
-    probs = preds.softmax(dim=-1)
+    probs = preds.sigmoid()
     y_pred = (probs > 0.5).int()
 
     # Flatten before max_metrics for efficiency - max_metrics expects flattened tensors
@@ -394,28 +435,18 @@ def compute_multi_label_classification_metrics(p: EvalPrediction) -> dict[str, f
     y_true_flat = y_true.flatten()
     f1, prec, recall, thres = max_metrics(probs_flat, y_true_flat)
     
-    y_pred, y_true = y_pred.flatten().numpy(), y_true.flatten().numpy()
-    probs = probs.flatten().numpy()
+    y_pred_flat, y_true_flat = y_pred.flatten().numpy(), y_true.flatten().numpy()
     
-    accuracy = accuracy_score(y_pred, y_true)
-    hamming = hamming_loss(y_pred, y_true)
-    mcc = matthews_corrcoef(y_true, y_pred)
+    accuracy = accuracy_score(y_pred_flat, y_true_flat)
+    hamming = hamming_loss(y_pred_flat, y_true_flat)
+    mcc = matthews_corrcoef(y_true_flat, y_pred_flat)
     
     # Calculate ROC AUC for multilabel case
-    try:
-        roc_auc = roc_auc_score(y_true, probs, average='macro')
-    except ValueError:
-        # Fallback in case of invalid predictions
-        roc_auc = -100.0
+    # Use unflattened arrays for macro averaging
+    roc_auc = calculate_robust_roc_auc_multilabel(y_true.numpy(), probs.numpy())
     
     # Calculate PR AUC for multilabel case (true AUC of Precision-Recall curve)
-    try:
-        # For flattened multi-label, compute PR AUC directly
-        pr_precision, pr_recall, _ = precision_recall_curve(y_true, probs)
-        pr_auc = auc(pr_recall, pr_precision)
-    except ValueError:
-        # Fallback in case of invalid predictions
-        pr_auc = -100.0
+    pr_auc = calculate_robust_pr_auc_multilabel(y_true.numpy(), probs.numpy())
 
     return {
         'accuracy': round(accuracy, 5),
@@ -580,5 +611,67 @@ def get_compute_metrics(task_type: str, tokenwise: bool = False):
 
 
 if __name__ == "__main__":
-    scorer = get_classification_scorer()
-    print(scorer.__name__)
+    # py -m metrics
+
+    print("Running tests for metrics functions...")
+    
+    # Test compute_single_label_classification_metrics
+    print("\n--- compute_single_label_classification_metrics (Binary) ---")
+    # 2 samples, 2 classes.
+    # Logits: Sample 0 -> class 0 (high, low), Sample 1 -> class 1 (low, high)
+    predictions = np.array([[2.0, -1.0], [-1.0, 2.0]])
+    label_ids = np.array([0, 1])
+    p = EvalPrediction(predictions=predictions, label_ids=label_ids)
+    metrics = compute_single_label_classification_metrics(p)
+    print(metrics)
+
+    print("\n--- compute_single_label_classification_metrics (Multi-class) ---")
+    # 3 samples, 3 classes.
+    predictions = np.array([[2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]])
+    label_ids = np.array([0, 1, 2])
+    p = EvalPrediction(predictions=predictions, label_ids=label_ids)
+    metrics = compute_single_label_classification_metrics(p)
+    print(metrics)
+
+    # Test compute_tokenwise_classification_metrics
+    print("\n--- compute_tokenwise_classification_metrics ---")
+    # 1 sample, 3 tokens, 2 classes.
+    # Token 0: pred 0, label 0
+    # Token 1: pred 1, label 1
+    # Token 2: pred 0, label -100 (ignored)
+    predictions = np.array([[[2.0, -1.0], [-1.0, 2.0], [2.0, -1.0]]])
+    label_ids = np.array([[0, 1, -100]])
+    p = EvalPrediction(predictions=predictions, label_ids=label_ids)
+    metrics = compute_tokenwise_classification_metrics(p)
+    print(metrics)
+
+    # Test compute_multi_label_classification_metrics
+    print("\n--- compute_multi_label_classification_metrics ---")
+    # 2 samples, 3 classes
+    # Sample 0: pred [1, 0, 1], label [1, 0, 1]
+    # Sample 1: pred [0, 1, 0], label [0, 1, 0]
+    # Logits need to be high for 1, low for 0.
+    predictions = np.array([[5.0, -5.0, 5.0], [-5.0, 5.0, -5.0]])
+    label_ids = np.array([[1, 0, 1], [0, 1, 0]])
+    p = EvalPrediction(predictions=predictions, label_ids=label_ids)
+    metrics = compute_multi_label_classification_metrics(p)
+    print(metrics)
+
+    # Test compute_regression_metrics
+    print("\n--- compute_regression_metrics ---")
+    predictions = np.array([1.0, 2.0, 3.0])
+    label_ids = np.array([1.1, 1.9, 3.2])
+    p = EvalPrediction(predictions=predictions, label_ids=label_ids)
+    metrics = compute_regression_metrics(p)
+    print(metrics)
+
+    # Test compute_tokenwise_regression_metrics
+    print("\n--- compute_tokenwise_regression_metrics ---")
+    # 1 sample, 3 tokens
+    # Token 2 is ignored (-100)
+    predictions = np.array([[1.0, 2.0, 5.0]])
+    label_ids = np.array([[1.1, 1.9, -100.0]])
+    p = EvalPrediction(predictions=predictions, label_ids=label_ids)
+    metrics = compute_tokenwise_regression_metrics(p)
+    print(metrics)
+

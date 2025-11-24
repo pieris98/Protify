@@ -230,6 +230,9 @@ class AMPLIFY(AMPLIFYPreTrainedModel):
             pad_mask = None
 
         # RoPE
+        if src.shape[1] > self.freqs_cis.shape[0]:
+            self.freqs_cis = precompute_freqs_cis(self.config.hidden_size // self.config.num_attention_heads, src.shape[1]).to(src.device)
+            
         self.freqs_cis = self.freqs_cis.to(src.device, non_blocking=True)
         freqs_cis = self.freqs_cis[: src.shape[1]]
 

@@ -472,20 +472,26 @@ class DataMixin:
                 ppi = self._is_ppi_from_columns(dataset['train'].column_names)
             print_message(f'PPI (or dual sequence input dataset): {ppi}')
 
+            ### TODO, add better handling for valid, validation, test, testing, etc.
             assert 'train' in dataset, f'{data_name} does not have a train set'
             assert 'valid' in dataset or 'test' in dataset, f'{data_name} does not have a valid or test set, needs at least one'
             
             if 'valid' not in dataset:
                 seed = get_global_seed() if get_global_seed() is not None else 42
-                dataset = dataset.train_test_split(test_size=0.1, seed=seed + 1)
-                valid_set = dataset['test']
                 train_set = dataset['train']
-            
-            if 'test' not in dataset:
+                train_valid_set = train_set.train_test_split(test_size=0.1, seed=seed + 1)['test']
+                train_set = train_valid_set['train']
+                valid_set = train_valid_set['test']
+                test_set = dataset['test']  
+            elif 'test' not in dataset:
                 seed = get_global_seed() if get_global_seed() is not None else 42
-                dataset = dataset.train_test_split(test_size=0.1, seed=seed + 2)
-                test_set = dataset['test']
                 train_set = dataset['train']
+                train_test_set = train_set.train_test_split(test_size=0.1, seed=seed + 2)['test']
+                test_set = train_test_set['test']
+                train_set = train_test_set['train']
+                valid_set = dataset['valid']
+            else:
+                train_set, valid_set, test_set = dataset['train'], dataset['valid'], dataset['test']
 
             if ppi:
                 # Standardize PPI columns to 'SeqA', 'SeqB', and 'labels'

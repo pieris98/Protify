@@ -105,6 +105,8 @@ def max_metrics(ss: torch.Tensor, labels: torch.Tensor, increment: float = 0.01)
         - Returns metrics at the threshold that maximizes F1 score
         - Optimized to compute metrics for all cutoffs in parallel using vectorization
     """
+    # Handle NaNs by replacing with 0.0
+    ss = torch.nan_to_num(ss, nan=0.0)
     ss = torch.clamp(ss, -1.0, 1.0)
     min_val = ss.min().item()
     max_val = 1

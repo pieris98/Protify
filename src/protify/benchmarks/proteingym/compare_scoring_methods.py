@@ -5,7 +5,7 @@ import torch
 import time
 from typing import List, Optional
 from scipy.stats import spearmanr
-from .zero_shot import zero_shot_scores_for_assay
+from .scorer import ProteinGymScorer
 from .data_loader import load_proteingym_dms
 from .dms_ids import ALL_SUBSTITUTION_DMS_IDS
 from base_models.get_base_models import get_base_model
@@ -16,7 +16,9 @@ def compare_scoring_methods(
     methods: Optional[List[str]] = None,
     dms_ids: Optional[List[str]] = None,
     progress: bool = True,
-    output_csv: Optional[str] = None
+    output_csv: Optional[str] = None,
+    batch_size: int = 32,
+    scoring_window: str = "optimal"
 ) -> pd.DataFrame:
     """
     Compare scoring methods across one or more models and DMS assays.
@@ -28,6 +30,8 @@ def compare_scoring_methods(
         dms_ids: List of DMS IDs to evaluate
         progress: Whether to show progress bars
         output_csv: Optional path to save results CSV
+        batch_size: Batch size for inference (default: 32)
+        scoring_window: Windowing strategy ('optimal' or 'sliding')
         
     Returns:
         DataFrame with model_name, scoring_method, Average_Spearman, Average_Time_Seconds, Total_Time_Seconds, and n_assays columns
@@ -54,6 +58,13 @@ def compare_scoring_methods(
             # Load model once per model and reuse across methods/assays
             model, tokenizer = get_base_model(model_name, masked_lm=True)
             model = model.to(device).eval()
+            scorer = ProteinGymScorer(
+                model_name=model_name,
+                model=model,
+                tokenizer=tokenizer,
+                device=device,
+                batch_size=batch_size,
+            )
             
             for dms_id in dms_ids:
                 print(f"\nProcessing DMS ID: {dms_id}")
@@ -71,14 +82,10 @@ def compare_scoring_methods(
                     
                     # Measure timing for this scoring method
                     start_time = time.time()
-                    scored_df = zero_shot_scores_for_assay(
+                    scored_df = scorer.score_substitutions(
                         df=df,
-                        model_name=model_name,
-                        device=device,
-                        progress=progress,
                         scoring_method=method,
-                        model=model,
-                        tokenizer=tokenizer,
+                        scoring_window=scoring_window,
                     )
                     end_time = time.time()
                     method_duration = end_time - start_time

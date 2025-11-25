@@ -219,8 +219,7 @@ from embedder import EmbeddingArguments, Embedder, get_embedding_filename
 from logger import MetricsLogger, log_method_calls
 from utils import torch_load, print_message, expand_dms_ids_all
 from visualization.plot_result import create_plots
-from benchmarks.proteingym.zero_shot import run_zero_shot
-from benchmarks.proteingym.scoring_utils import collect_proteingym_spearman
+from benchmarks.proteingym.scorer import ProteinGymRunner
 from benchmarks.proteingym.compare_scoring_methods import compare_scoring_methods
 from seed_utils import set_global_seed
 
@@ -601,7 +600,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
     @log_method_calls
     def run_proteingym_zero_shot(self):
         """Run ProteinGym zero-shot for all specified models and DMS ids."""
-        # Signal base model loader to use MaskedLM variants
         dms_ids = getattr(args, 'dms_ids', []) or []
         mode = getattr(args, 'mode', 'benchmark')
         dms_ids = expand_dms_ids_all(dms_ids, mode=mode)
@@ -618,24 +616,23 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         if isinstance(mode, str) and mode.lower() == 'indels':
             print_message("Only pll is currently supported for indels scoring.")
             scoring_method = 'pll'
-        # Track timing per model
-        self._proteingym_timing = {}
-        for model_name in model_names:
-            self.logger.info(f"Running ProteinGym zero-shot with [{scoring_method}] scoring on {len(dms_ids)} DMS ids with model {model_name}")
-            start_time = time.time()
-            _ = run_zero_shot(
-                dms_ids=dms_ids,
-                model_name=model_name,
-                mode=mode,
-                repo_id="GleghornLab/ProteinGym_DMS",
-                results_dir=results_dir,
-                device=None,
-                scoring_method=scoring_method,
-                scoring_window=scoring_window,
-                batch_size=getattr(args, 'pg_batch_size', 32),
-            )
-            elapsed_time = time.time() - start_time
-            self._proteingym_timing[model_name] = elapsed_time
+        
+        # Log the run
+        self.logger.info(f"Running ProteinGym zero-shot with [{scoring_method}] scoring on {len(dms_ids)} DMS ids with models: {model_names}")
+        
+        # Use ProteinGymRunner for all models
+        runner = ProteinGymRunner(
+            results_dir=results_dir,
+            repo_id="GleghornLab/ProteinGym_DMS",
+        )
+        self._proteingym_timing = runner.run(
+            dms_ids=dms_ids,
+            model_names=model_names,
+            mode=mode,
+            scoring_method=scoring_method,
+            scoring_window=scoring_window,
+            batch_size=getattr(args, 'pg_batch_size', 32),
+        )
         print_message(f"ProteinGym zero-shot complete. Results in {results_dir}")
 
         # After all models are scored, run standardized performance benchmarking
@@ -752,7 +749,9 @@ def main(args: SimpleNamespace):
         if getattr(args, 'proteingym', False):
             main.run_proteingym_zero_shot()
             try:
-                pg_scores = collect_proteingym_spearman(args, getattr(args, 'model_names', []))
+                results_root = getattr(args, 'results_dir', 'results')
+                results_dir = os.path.join(results_root, 'proteingym')
+                pg_scores = ProteinGymRunner.collect_spearman(results_dir, getattr(args, 'model_names', []))
                 for model_name, score in pg_scores.items():
                     if isinstance(score, (int, float)):
                         training_time = getattr(main, '_proteingym_timing', {}).get(model_name, None)

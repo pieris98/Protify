@@ -202,9 +202,9 @@ def main():
                 suffix = 'pll'
             else:
                 suffix = args.scoring_method
-            score_path = os.path.join(args.input_scoring_files_folder, f"{DMS_id}__zs_{suffix}.csv")
+            score_path = os.path.join(args.input_scoring_files_folder, f"{DMS_id}_zs_{suffix}.csv")
             if os.path.exists(score_path):
-                merged_scores = pd.read_csv(score_path)
+                merged_scores = pd.read_csv(score_path, dtype={'target_seq': str})
             if 'mutant' not in merged_scores: merged_scores['mutant'] = merged_scores['mutated_sequence'] #if mutant not in DMS file we default to mutated_sequence (eg., for indels)
             # Ensure binary labels exist for AUC/MCC if not provided
             if 'DMS_score_bin' not in merged_scores and 'DMS_score' in merged_scores:

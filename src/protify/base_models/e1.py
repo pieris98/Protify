@@ -36,7 +36,7 @@ class E1TokenizerWrapper(BaseSequenceTokenizer):
 class E1ForEmbedding(nn.Module):
     def __init__(self, model_path: str):
         super().__init__()
-        self.e1 = E1Model.from_pretrained(model_path, dtype=torch.bfloat16)
+        self.e1 = E1Model.from_pretrained(model_path, torch_dtype=torch.bfloat16)
 
     def forward(
             self,
@@ -58,7 +58,7 @@ def get_e1_tokenizer(preset: str):
 def build_e1_model(preset: str, masked_lm: bool = False, **kwargs):
     model_path = presets[preset]
     if masked_lm:
-        model = E1ForMaskedLM.from_pretrained(model_path, dtype=torch.bfloat16).eval()
+        model = E1ForMaskedLM.from_pretrained(model_path, torch_dtype=torch.bfloat16).eval()
     else:
         model = E1ForEmbedding(model_path).eval()
     tokenizer = get_e1_tokenizer(preset)
@@ -68,12 +68,12 @@ def build_e1_model(preset: str, masked_lm: bool = False, **kwargs):
 def get_e1_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):
     model_path = presets[preset]
     if hybrid:
-        model = E1Model.from_pretrained(model_path, dtype=torch.bfloat16).eval()
+        model = E1Model.from_pretrained(model_path, torch_dtype=torch.bfloat16).eval()
     else:
         if tokenwise:
-            model = E1ForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=torch.bfloat16).eval()
+            model = E1ForTokenClassification.from_pretrained(model_path, num_labels=num_labels, torch_dtype=torch.bfloat16).eval()
         else:
-            model = E1ForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=torch.bfloat16).eval()
+            model = E1ForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, torch_dtype=torch.bfloat16).eval()
     tokenizer = get_e1_tokenizer(preset)
     return model, tokenizer
 

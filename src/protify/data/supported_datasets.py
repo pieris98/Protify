@@ -189,7 +189,7 @@ vector_benchmark = [
     'optimal-ph',
     'million_full',
     # ppi
-    'PPA-ppi',  
+    'PPA-ppi',
 ]
 
 

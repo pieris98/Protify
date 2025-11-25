@@ -67,6 +67,7 @@ class gLM2GAIAForEmbedding(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = False,
+        token_type_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         assert not output_attentions or not output_hidden_states, (
             "output_attentions=True and output_hidden_states=True are not supported by gLM2ForEmbedding."

@@ -1,7 +1,7 @@
 """
 Embedding Test Suite CLI
 
-Tests embedding quality by sampling sequences from test datasets,
+Tests embedding quality by sampling sequences from EC dataset (default),
 embedding them with various pooling methods, and reporting statistics
 on distribution, NaNs, and sparsity.
 """
@@ -39,7 +39,7 @@ def load_and_sample_sequences(
 ) -> Dict[str, List[str]]:
     """
     Load datasets and sample sequences from them.
-    
+
     Args:
         dataset_names: List of dataset names to load
         sample_frac: Fraction of sequences to sample (default 0.1 = 10%)
@@ -69,7 +69,6 @@ def load_and_sample_sequences(
             if dataset_name in datasets:
                 train_set, valid_set, test_set, _, _, ppi = datasets[dataset_name]
                 
-                # Extract sequences based on whether it's PPI or not
                 if ppi:
                     # For PPI datasets, combine SeqA and SeqB
                     sequences.extend(list(train_set['SeqA']))
@@ -201,7 +200,7 @@ def embed_and_diagnose(
     for pool_type, pool_list in pooling_list.items():
         print_message(f"Testing pooling: {pool_type} (types: {pool_list})")
         
-        # Set up embedder for this pooling type (or combination)
+        # Set up embedder for this pooling type
         embedder_args = EmbeddingArguments(
             embedding_batch_size=batch_size,
             embedding_num_workers=num_workers,
@@ -373,7 +372,7 @@ def main():
         '--datasets',
         nargs='+',
         default=None,
-        help=f'List of dataset names to test (default: {DEFAULT_TEST_DATASETS})'
+        help=f'List of dataset names to test (default: EC)'
     )
     
     parser.add_argument(
@@ -394,7 +393,7 @@ def main():
         '--sample_frac',
         type=float,
         default=0.1,
-        help='Fraction of sequences to sample from each dataset (default: 0.1 = 10%%)'
+        help='Fraction of sequences to sample from each dataset (default: 0.1)'
     )
     
     parser.add_argument(

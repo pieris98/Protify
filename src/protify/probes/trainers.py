@@ -2,7 +2,7 @@ import torch
 import os
 import numpy as np
 from copy import deepcopy
-from typing import Optional
+from typing import Optional, Dict, List, Tuple, Any
 from transformers import Trainer, TrainingArguments, EarlyStoppingCallback
 from dataclasses import dataclass
 from probes.hybrid_probe import HybridProbe, HybridProbeConfig
@@ -25,6 +25,8 @@ from data.data_collators import (
 from visualization.ci_plots import regression_ci_plot, classification_ci_plot
 from utils import print_message
 from metrics import get_compute_metrics
+from seed_utils import set_global_seed
+from probes.get_probe import get_probe
 
 
 @dataclass
@@ -49,6 +51,7 @@ class TrainerArguments:
             full_finetuning: bool = False,
             hybrid_probe: bool = False,
             num_workers: int = 0,
+            num_runs: int = 1,
             **kwargs
     ):
         self.model_save_dir = model_save_dir
@@ -69,6 +72,7 @@ class TrainerArguments:
         self.full_finetuning = full_finetuning
         self.hybrid_probe = hybrid_probe
         self.num_workers = num_workers
+        self.num_runs = num_runs
 
     def __call__(self, probe: Optional[bool] = True):
         if self.train_data_size > 350000:
@@ -134,6 +138,7 @@ class TrainerMixin:
             model_name,
             data_name,
             probe: Optional[bool] = True,
+            skip_plot: bool = False,
         ):
         task_type = self.trainer_args.task_type
         tokenwise = self.probe_args.tokenwise
@@ -175,15 +180,17 @@ class TrainerMixin:
         
         print_message(f'y_pred: {y_pred.shape}\ny_true: {y_true.shape}\nFinal test metrics: \n{test_metrics}\n')
 
-        output_dir = os.path.join(self.trainer_args.plots_dir, log_id)
-        os.makedirs(output_dir, exist_ok=True)
-        save_path = os.path.join(output_dir, f"{data_name}_{model_name}_{log_id}.png")
-        title = f"{data_name} {model_name} {log_id}"
+        # Generate plots unless skip_plot is True (used for multi-run mode)
+        if not skip_plot:
+            output_dir = os.path.join(self.trainer_args.plots_dir, log_id)
+            os.makedirs(output_dir, exist_ok=True)
+            save_path = os.path.join(output_dir, f"{data_name}_{model_name}_{log_id}.png")
+            title = f"{data_name} {model_name} {log_id}"
 
-        if task_type == 'regression':
-            regression_ci_plot(y_true, y_pred, save_path, title)
-        else:
-            classification_ci_plot(y_true, y_pred, save_path, title)
+            if task_type == 'regression':
+                regression_ci_plot(y_true, y_pred, save_path, title)
+            else:
+                classification_ci_plot(y_true, y_pred, save_path, title)
 
         if self.trainer_args.save:
             try:
@@ -223,7 +230,38 @@ class TrainerMixin:
         model = trainer.model.cpu()
         trainer.accelerator.free_memory()
         torch.cuda.empty_cache()
-        return model, valid_metrics, test_metrics
+        return model, valid_metrics, test_metrics, y_pred, y_true
+
+    def _aggregate_metrics(self, metrics_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Aggregate metrics across multiple runs, computing mean ± std for each metric."""
+        if not metrics_list:
+            return {}
+        
+        # Collect all metric keys
+        all_keys = set()
+        for m in metrics_list:
+            all_keys.update(m.keys())
+        
+        aggregated = {}
+        for key in all_keys:
+            values = [m.get(key) for m in metrics_list if key in m and m[key] is not None]
+            if not values:
+                continue
+            
+            # Check if all values are numeric
+            if all(isinstance(v, (int, float)) for v in values):
+                mean_val = np.mean(values)
+                std_val = np.std(values)
+                # Store as formatted string with mean±std
+                aggregated[key] = f"{mean_val:.4f}±{std_val:.4f}"
+                # Also store raw mean for sorting/comparison purposes
+                aggregated[f"{key}_mean"] = float(mean_val)
+                aggregated[f"{key}_std"] = float(std_val)
+            else:
+                # For non-numeric values, just take the first one
+                aggregated[key] = values[0]
+        
+        return aggregated
 
     def trainer_probe(
             self,
@@ -237,12 +275,16 @@ class TrainerMixin:
             emb_dict=None,
             ppi=False,
             log_id=None,
+            skip_plot=False,
         ):
         batch_size = self.trainer_args.probe_batch_size
         read_scaler = self.trainer_args.read_scaler
         input_size = self.probe_args.input_size
         task_type = self.probe_args.task_type
         tokenwise = self.probe_args.tokenwise
+        num_runs = getattr(self.trainer_args, 'num_runs', 1)
+        base_seed = self.trainer_args.seed
+        
         print(f'task_type: {task_type}')
         full = self.embedding_args.matrix_embed
         db_path = os.path.join(self.embedding_args.embedding_save_dir, f'{model_name}_{full}.db')
@@ -292,9 +334,9 @@ class TrainerMixin:
             train=True,
         )
         if use_multi:
-            train_dataset = DatasetClass(seq_cols=use_multi, **deepcopy(common_kwargs))
+            train_ds = DatasetClass(seq_cols=use_multi, **deepcopy(common_kwargs))
         else:
-            train_dataset = DatasetClass(**deepcopy(common_kwargs))
+            train_ds = DatasetClass(**deepcopy(common_kwargs))
         
         # BUG FIX: Update hf_dataset in common_kwargs before creating validation and test datasets.
         # Previously, common_kwargs['hf_dataset'] was set to train_dataset and never updated,
@@ -306,25 +348,93 @@ class TrainerMixin:
         common_kwargs['train'] = False
         common_kwargs['hf_dataset'] = valid_dataset
         if use_multi:
-            valid_dataset = DatasetClass(seq_cols=use_multi, **deepcopy(common_kwargs))
+            valid_ds = DatasetClass(seq_cols=use_multi, **deepcopy(common_kwargs))
         else:
-            valid_dataset = DatasetClass(**deepcopy(common_kwargs))
+            valid_ds = DatasetClass(**deepcopy(common_kwargs))
         common_kwargs['hf_dataset'] = test_dataset
         if use_multi:
-            test_dataset = DatasetClass(seq_cols=use_multi, **deepcopy(common_kwargs))
+            test_ds = DatasetClass(seq_cols=use_multi, **deepcopy(common_kwargs))
         else:
-            test_dataset = DatasetClass(**deepcopy(common_kwargs))
-        return self._train(
-            model=model,
-            train_dataset=train_dataset,
-            valid_dataset=valid_dataset,
-            test_dataset=test_dataset,
-            data_collator=data_collator,
-            log_id=log_id,
-            model_name=model_name,
-            data_name=data_name,
-            probe=True,
-        )
+            test_ds = DatasetClass(**deepcopy(common_kwargs))
+        
+        # Single run - original behavior
+        if num_runs == 1:
+            return self._train(
+                model=model,
+                train_dataset=train_ds,
+                valid_dataset=valid_ds,
+                test_dataset=test_ds,
+                data_collator=data_collator,
+                log_id=log_id,
+                model_name=model_name,
+                data_name=data_name,
+                probe=True,
+                skip_plot=skip_plot,
+            )
+        
+        # Multi-run mode: train multiple times with different seeds, reusing datasets
+        print_message(f"Running {num_runs} training runs with different seeds for {data_name}/{model_name}")
+        
+        all_valid_metrics = []
+        all_test_metrics = []
+        run_results = []  # Store (run_idx, test_loss, y_pred, y_true, seed, model) for plotting best
+        
+        for run_idx in range(num_runs):
+            run_seed = base_seed + run_idx
+            self.trainer_args.seed = run_seed
+            set_global_seed(run_seed)
+            
+            print_message(f"=== Run {run_idx + 1}/{num_runs} with seed {run_seed} ===")
+            
+            # Create a fresh probe for each run
+            probe = get_probe(self.probe_args)
+            
+            run_model, valid_metrics, test_metrics, y_pred, y_true = self._train(
+                model=probe,
+                train_dataset=train_ds,
+                valid_dataset=valid_ds,
+                test_dataset=test_ds,
+                data_collator=data_collator,
+                log_id=f"{log_id}_run{run_idx}",
+                model_name=model_name,
+                data_name=data_name,
+                probe=True,
+                skip_plot=True,  # Skip plots during individual runs
+            )
+            
+            all_valid_metrics.append(valid_metrics)
+            all_test_metrics.append(test_metrics)
+            
+            # Track test loss for determining best run
+            test_loss = test_metrics.get('test_loss', test_metrics.get('eval_loss', float('inf')))
+            run_results.append((run_idx, test_loss, y_pred, y_true, run_seed, run_model))
+        
+        # Restore original seed
+        self.trainer_args.seed = base_seed
+        
+        # Compute aggregated metrics (mean ± std)
+        aggregated_valid = self._aggregate_metrics(all_valid_metrics)
+        aggregated_test = self._aggregate_metrics(all_test_metrics)
+        
+        # Find the best run (lowest test loss)
+        best_run = min(run_results, key=lambda x: x[1])
+        best_run_idx, best_loss, best_y_pred, best_y_true, best_seed, best_model = best_run
+        print_message(f"Best run: {best_run_idx + 1} (seed={best_seed}, test_loss={best_loss:.4f})")
+        
+        # Generate plot for best run (unless skip_plot is True)
+        if not skip_plot:
+            output_dir = os.path.join(self.trainer_args.plots_dir, log_id)
+            os.makedirs(output_dir, exist_ok=True)
+            save_path = os.path.join(output_dir, f"{data_name}_{model_name}_{log_id}_best.png")
+            title = f"{data_name} {model_name} (best of {num_runs} runs, seed={best_seed})"
+            
+            if task_type == 'regression':
+                regression_ci_plot(best_y_true, best_y_pred, save_path, title)
+            else:
+                classification_ci_plot(best_y_true, best_y_pred, save_path, title)
+        
+        # Return the best model along with aggregated metrics
+        return best_model, aggregated_valid, aggregated_test, best_y_pred, best_y_true
 
     def trainer_base_model(
             self,
@@ -337,6 +447,7 @@ class TrainerMixin:
             test_dataset,
             ppi=False,
             log_id=None,
+            skip_plot=False,
         ):
         task_type = self.probe_args.task_type
         tokenwise = self.probe_args.tokenwise
@@ -364,6 +475,7 @@ class TrainerMixin:
             model_name=model_name,
             data_name=data_name,
             probe=False,
+            skip_plot=skip_plot,
         )
 
     def trainer_hybrid_model(
@@ -379,8 +491,9 @@ class TrainerMixin:
             emb_dict=None,
             ppi=False,
             log_id=None,
+            skip_plot=False,
         ):
-            probe, _, _ = self.trainer_probe(
+            probe, _, _, _, _ = self.trainer_probe(
                 model=probe,
                 tokenizer=tokenizer,
                 model_name=model_name,
@@ -391,6 +504,7 @@ class TrainerMixin:
                 emb_dict=emb_dict,
                 ppi=ppi,
                 log_id=log_id,
+                skip_plot=True,  # Always skip plot for probe phase in hybrid
             )
             config = HybridProbeConfig(
                 tokenwise=self.probe_args.tokenwise,
@@ -410,4 +524,5 @@ class TrainerMixin:
                 test_dataset=test_dataset,
                 ppi=ppi,
                 log_id=log_id,
+                skip_plot=skip_plot,
             )

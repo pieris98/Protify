@@ -95,3 +95,4 @@ weight_decay: !!float 0.00
 patience: !!int 1
 full_finetuning: !!bool false
 hybrid_probe: !!bool false
+num_runs: !!int 1

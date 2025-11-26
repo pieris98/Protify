@@ -60,6 +60,7 @@ supported_datasets = {
     'plddt': 'GleghornLab/af2_plddt',
     'realness': 'GleghornLab/realness_dataset',
     'million_full': 'GleghornLab/millionfull_round_1_oct_2025',
+    'soluprot': 'GleghornLab/soluprot',
 }
 
 internal_datasets = {
@@ -167,6 +168,7 @@ vector_benchmark = [
     'cloning-clf',
     'stability-prediction',
     'ec-active',
+    'soluprot',
     # taxonomy
     'taxon_domain',
     'taxon_kingdom',
@@ -178,18 +180,15 @@ vector_benchmark = [
     'taxon_species',
     'diff_phylogeny',
     # ppi
-    'shs27-ppi-raw',
-    'shs148-ppi-raw',
     'plm-interact',
     'gold-ppi',
-    'string-ppi-bfs',
     ### regression
     'enzyme-kcat',
     'optimal-temperature',
     'optimal-ph',
     'million_full',
     # ppi
-    'PPA-ppi',  
+    'PPA-ppi',
 ]
 
 

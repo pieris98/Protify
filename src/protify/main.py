@@ -125,6 +125,8 @@ def parse_arguments():
                         help="Batch size for ProteinGym zero-shot scoring (default: 32).")
     parser.add_argument("--compare_scoring_methods", action="store_true", default=False,
                         help="Compare different scoring methods across models and DMS assays (default: False).")
+    parser.add_argument("--score_only", action="store_true", default=False,
+                        help="Only run the ProteinGym benchmarking script on existing CSV files, skip zero-shot scoring (default: False).")
 
     args = parser.parse_args()
 
@@ -595,22 +597,21 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         create_plots(results_file, output_dir)
         print_message("Plots generated successfully!")
         
-    @log_method_calls
     def run_proteingym_zero_shot(self):
         """Run ProteinGym zero-shot for all specified models and DMS ids."""
-        dms_ids = getattr(args, 'dms_ids', []) or []
-        mode = getattr(args, 'mode', 'benchmark')
+        dms_ids = getattr(self.full_args, 'dms_ids', []) or []
+        mode = getattr(self.full_args, 'mode', 'benchmark')
         dms_ids = expand_dms_ids_all(dms_ids, mode=mode)
         if len(dms_ids) == 0:
             raise ValueError("--dms_ids is required when --proteingym is specified")
-        model_names = getattr(args, 'model_names', []) or []
+        model_names = getattr(self.full_args, 'model_names', []) or []
         if len(model_names) == 0:
             raise ValueError("--model_names must specify at least one model")
         # Where to write results
-        results_root = getattr(args, 'results_dir', 'results')
+        results_root = getattr(self.full_args, 'results_dir', 'results')
         results_dir = os.path.join(results_root, 'proteingym')
-        scoring_method = getattr(args, 'scoring_method', 'masked_marginal')
-        scoring_window = getattr(args, 'scoring_window', 'optimal')
+        scoring_method = getattr(self.full_args, 'scoring_method', 'masked_marginal')
+        scoring_window = getattr(self.full_args, 'scoring_window', 'optimal')
         if isinstance(mode, str) and mode.lower() == 'indels':
             print_message("Only pll is currently supported for indels scoring.")
             scoring_method = 'pll'
@@ -618,7 +619,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         # Log the run
         self.logger.info(f"Running ProteinGym zero-shot with [{scoring_method}] scoring on {len(dms_ids)} DMS ids with models: {model_names}")
         
-        # Use ProteinGymRunner for all models
         runner = ProteinGymRunner(
             results_dir=results_dir,
             repo_id="GleghornLab/ProteinGym_DMS",
@@ -629,38 +629,12 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             mode=mode,
             scoring_method=scoring_method,
             scoring_window=scoring_window,
-            batch_size=getattr(args, 'pg_batch_size', 32),
+            batch_size=getattr(self.full_args, 'pg_batch_size', 32),
         )
         print_message(f"ProteinGym zero-shot complete. Results in {results_dir}")
 
         # After all models are scored, run standardized performance benchmarking
-        try:
-            pg_dir = os.path.join(os.path.dirname(__file__), 'benchmarks', 'proteingym')
-            reference_mapping = os.path.join(pg_dir, 'DMS_substitutions.csv')
-            config_path = os.path.join(pg_dir, 'config.json')
-            perf_out_dir = os.path.join(results_dir, 'benchmark_performance')
-            os.makedirs(perf_out_dir, exist_ok=True)
-
-            script_path = os.path.join(pg_dir, 'DMS_benchmark_performance.py')
-            script_cmd = [
-                sys.executable, script_path,
-                '--input_scoring_files_folder', results_dir,
-                '--output_performance_file_folder', perf_out_dir,
-                '--DMS_reference_file_path', reference_mapping,
-                '--config_file', config_path,
-            ]
-            script_cmd += ['--scoring_method', scoring_method]
-            if isinstance(model_names, (list, tuple)) and len(model_names) > 0:
-                script_cmd += ['--selected_model_names', *model_names]
-            if isinstance(dms_ids, (list, tuple)) and len(dms_ids) > 0:
-                script_cmd += ['--dms_ids', *[str(x) for x in dms_ids]]
-            if isinstance(mode, str) and mode.lower() == 'indels':
-                script_cmd.append('--indel_mode')
-            subprocess.run(script_cmd, check=True)
-            
-            print_message(f"Benchmark performance computed. Outputs in {perf_out_dir}")
-        except Exception as e:
-            print_message(f"Failed to compute benchmark performance: {e}")
+        runner.run_benchmark(model_names, dms_ids, mode, scoring_method)
 
 def main(args: SimpleNamespace):
     chosen_seed = set_global_seed(args.seed)
@@ -717,47 +691,69 @@ def main(args: SimpleNamespace):
             print_message(f"Scoring method comparison complete. Results saved to {output_csv}")
             return
 
-        # Determine if current experiment passed datasets
-        has_datasets = bool(getattr(args, 'data_names', []) or getattr(args, 'data_dirs', []))
-
-        # Run through datasets first (if any)
-        if has_datasets:
-            main.apply_current_settings()
-            main.get_datasets()
-            num_seqs = len(main.all_seqs) if hasattr(main, 'all_seqs') else 0
-            print_message(f"Number of sequences: {num_seqs}")
-
-            if main.full_args.full_finetuning:
-                main.run_full_finetuning()
-
-            elif main.full_args.hybrid_probe:
-                main.save_embeddings_to_disk()
-                main.run_hybrid_probes()
-
-            elif main.full_args.use_scikit:
-                main.save_embeddings_to_disk()
-                main.run_scikit_scheme()
+        # If score_only is set, skip dataset processing and just score
+        if getattr(args, 'score_only', False):
+            # Only runs on existing CSV files
+            print_message("Running ProteinGym scoring...")
+            results_root = getattr(args, 'results_dir', 'results')
+            results_dir = os.path.join(results_root, 'proteingym')
             
-            else:
-                main.save_embeddings_to_disk()
-                main.run_nn_probes()
+            # Check if results directory exists
+            if not os.path.exists(results_dir):
+                raise ValueError(f"Results directory not found: {results_dir}. Please ensure CSV files exist in this directory.")
+            
+            dms_ids = getattr(args, 'dms_ids', []) or []
+            mode = getattr(args, 'mode', 'benchmark')
+            dms_ids = expand_dms_ids_all(dms_ids, mode=mode)
+            model_names = getattr(args, 'model_names', []) or []
+            scoring_method = getattr(args, 'scoring_method', 'masked_marginal')
+            
+            runner = ProteinGymRunner(results_dir=results_dir)
+            runner.run_benchmark(model_names, dms_ids, mode, scoring_method)
+            print_message(f"Scoring complete. Results in {os.path.join(results_dir, 'benchmark_performance')}")
+        
         else:
-            print_message("No datasets specified; proceeding with ProteinGym.")
+            # Determine if current experiment passed datasets
+            has_datasets = bool(getattr(args, 'data_names', []) or getattr(args, 'data_dirs', []))
 
-        if getattr(args, 'proteingym', False):
-            main.run_proteingym_zero_shot()
-            try:
-                results_root = getattr(args, 'results_dir', 'results')
-                results_dir = os.path.join(results_root, 'proteingym')
-                pg_scores = ProteinGymRunner.collect_spearman(results_dir, getattr(args, 'model_names', []))
-                for model_name, score in pg_scores.items():
-                    if isinstance(score, (int, float)):
-                        training_time = getattr(main, '_proteingym_timing', {}).get(model_name, None)
-                        metrics_dict = {'spearman': float(score)}
-                        metrics_dict['training_time_seconds'] = float(training_time)
-                        main.log_metrics('proteingym', model_name, metrics_dict)
-            except Exception as e:
-                print_message(f"Failed to log ProteinGym metrics: {e}")
+            # Run through datasets first (if any)
+            if has_datasets:
+                main.apply_current_settings()
+                main.get_datasets()
+                num_seqs = len(main.all_seqs) if hasattr(main, 'all_seqs') else 0
+                print_message(f"Number of sequences: {num_seqs}")
+
+                if main.full_args.full_finetuning:
+                    main.run_full_finetuning()
+
+                elif main.full_args.hybrid_probe:
+                    main.save_embeddings_to_disk()
+                    main.run_hybrid_probes()
+
+                elif main.full_args.use_scikit:
+                    main.save_embeddings_to_disk()
+                    main.run_scikit_scheme()
+                
+                else:
+                    main.save_embeddings_to_disk()
+                    main.run_nn_probes()
+            else:
+                print_message("No datasets specified; proceeding with ProteinGym.")
+
+            if getattr(args, 'proteingym', False):
+                main.run_proteingym_zero_shot()
+                try:
+                    results_root = getattr(args, 'results_dir', 'results')
+                    results_dir = os.path.join(results_root, 'proteingym')
+                    pg_scores = ProteinGymRunner.collect_spearman(results_dir, getattr(args, 'model_names', []))
+                    for model_name, score in pg_scores.items():
+                        if isinstance(score, (int, float)):
+                            training_time = getattr(main, '_proteingym_timing', {}).get(model_name, None)
+                            metrics_dict = {'spearman': float(score)}
+                            metrics_dict['training_time_seconds'] = float(training_time)
+                            main.log_metrics('proteingym', model_name, metrics_dict)
+                except Exception as e:
+                    print_message(f"Failed to log ProteinGym metrics: {e}")
 
         # Write results and generate plots
         main.write_results()

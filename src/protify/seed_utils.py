@@ -45,11 +45,15 @@ def seed_worker(worker_id: int):
     random.seed(worker_seed)
 
 
-def dataloader_generator(seed: int):
+def dataloader_generator(seed: Optional[int]):
     """
     Use with torch.utils.data.DataLoader(generator=dataloader_generator(seed)) to sync NumPy/random per-worker.
     """
     import torch
+    
+    if seed is None:
+        seed = set_global_seed()
+
     g = torch.Generator()
     g.manual_seed(seed)
     return g

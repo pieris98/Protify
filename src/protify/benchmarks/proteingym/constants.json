@@ -302,9 +302,9 @@
         "ESM3": "ESM3 open (1.4B)",
         "ESMC-300M": "ESM-C (300M)",
         "ESMC-600M": "ESM-C (600M)",
-        "E1-150": "E1 (150M)",
-        "E1-300": "E1 (300M)",
-        "E1-600": "E1 (600M)",
+        "E1-150M": "E1 (150M)",
+        "E1-300M": "E1 (300M)",
+        "E1-600M": "E1 (600M)",
         "AIDO.Protein-RAG-16B": "AIDO Protein-RAG (16B)"
     },
     "supervised_model_details": {

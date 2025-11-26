@@ -1,5 +1,7 @@
 import re
 import os
+import sys
+import subprocess
 import time
 import numpy as np
 import pandas as pd
@@ -205,7 +207,11 @@ class ProteinGymScorer:
         self.tokenizer = tokenizer
         self.device = device
         self.batch_size = batch_size
-        self.aa_to_id = SequenceProcessor.aa_to_token_ids(tokenizer)
+        # Skip aa_to_id for E1, incompatible with E1Scorer
+        if not model_name.lower().startswith("e1"):
+            self.aa_to_id = SequenceProcessor.aa_to_token_ids(tokenizer)
+        else:
+            self.aa_to_id = None
         self.unk_id = getattr(tokenizer, "unk_token_id", None)
         self.context_length = self.MODEL_CONTEXT_LENGTH.get(model_name, 1024)
         
@@ -668,7 +674,7 @@ class ProteinGymScorer:
     
     def _score_with_e1(self, df: pd.DataFrame, scoring_method: str) -> pd.DataFrame:
         """Score variants using E1Scorer."""
-        from base_models.FastPLMs.e1.scorer import E1Scorer, EncoderScoreMethod
+        from .e1_scorer import E1Scorer, EncoderScoreMethod
         
         scorer = E1Scorer(model=self.model, method=EncoderScoreMethod.MASKED_MARGINAL)
         # E1 has a context length of 8192, so we don't need to slice the sequences for scoring with these models
@@ -965,7 +971,6 @@ class ProteinGymRunner:
                     results_df = scorer.score_indels(
                         df,
                         scoring_window='sliding',
-                        tqdm_position=1,
                     )
                     suffix = 'pll'
                 else:
@@ -973,7 +978,6 @@ class ProteinGymRunner:
                         df,
                         scoring_method=scoring_method,
                         scoring_window=scoring_window,
-                        tqdm_position=1,
                     )
                     suffix = scoring_method
                 
@@ -1028,6 +1032,55 @@ class ProteinGymRunner:
                 results_to_save.to_csv(per_dms_path, index=False)
         else:
             results_to_save.to_csv(per_dms_path, index=False)
+    
+    def run_benchmark(
+        self,
+        model_names: List[str],
+        dms_ids: List[str],
+        mode: str,
+        scoring_method: str,
+    ):
+        """Run the ProteinGym benchmarking script on scored CSV files.
+        
+        Parameters
+        ----------
+        model_names : List[str]
+            List of model names to evaluate
+        dms_ids : List[str]
+            List of DMS assay IDs to evaluate
+        mode : str
+            Mode: 'benchmark', 'indels', 'singles', 'multiples'
+        scoring_method : str
+            Scoring method used (e.g., 'masked_marginal', 'pll')
+        """
+        try:
+            pg_dir = os.path.join(os.path.dirname(__file__))
+            reference_mapping = os.path.join(pg_dir, 'DMS_substitutions.csv')
+            config_path = os.path.join(pg_dir, 'config.json')
+            perf_out_dir = os.path.join(self.results_dir, 'benchmark_performance')
+            os.makedirs(perf_out_dir, exist_ok=True)
+
+            script_path = os.path.join(pg_dir, 'DMS_benchmark_performance.py')
+            script_cmd = [
+                sys.executable, script_path,
+                '--input_scoring_files_folder', self.results_dir,
+                '--output_performance_file_folder', perf_out_dir,
+                '--DMS_reference_file_path', reference_mapping,
+                '--config_file', config_path,
+                '--performance_by_depth',
+            ]
+            script_cmd += ['--scoring_method', scoring_method]
+            if isinstance(model_names, (list, tuple)) and len(model_names) > 0:
+                script_cmd += ['--selected_model_names', *model_names]
+            if isinstance(dms_ids, (list, tuple)) and len(dms_ids) > 0:
+                script_cmd += ['--dms_ids', *[str(x) for x in dms_ids]]
+            if isinstance(mode, str) and mode.lower() == 'indels':
+                script_cmd.append('--indel_mode')
+            subprocess.run(script_cmd, check=True)
+            
+            print(f"Benchmark performance computed. Outputs in {perf_out_dir}")
+        except Exception as e:
+            print(f"Failed to compute benchmark performance: {e}")
     
     @staticmethod
     def collect_spearman(results_dir: str, model_names: List[str]) -> Dict[str, float]:

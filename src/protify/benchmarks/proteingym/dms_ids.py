@@ -286,3 +286,31 @@ ALL_INDEL_DMS_IDS = [
     "VRPI_BPT7_Tsuboyama_2023_2WNM_indels",
     "YNZC_BACSU_Tsuboyama_2023_2JVD_indels"
 ]
+
+def expand_dms_ids_all(dms_ids, mode="benchmark"):
+    """
+    Expands 'all' in dms_ids to the full list of DMS IDs based on the mode.
+    """
+    if not dms_ids:
+        return []
+    
+    expanded_ids = []
+    for dms_id in dms_ids:
+        if dms_id == "all":
+            if mode == "indels":
+                expanded_ids.extend(ALL_INDEL_DMS_IDS)
+            else:
+                # Default to substitution benchmark
+                expanded_ids.extend(ALL_SUBSTITUTION_DMS_IDS)
+        else:
+            expanded_ids.append(dms_id)
+            
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_ids = []
+    for dms_id in expanded_ids:
+        if dms_id not in seen:
+            unique_ids.append(dms_id)
+            seen.add(dms_id)
+            
+    return unique_ids

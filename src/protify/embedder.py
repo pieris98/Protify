@@ -315,7 +315,7 @@ if __name__ == '__main__':
     # py -m embedder
     import argparse
     from huggingface_hub import upload_file, login
-    from data.supported_datasets import possible_with_vector_reps
+    from data.supported_datasets import vector_benchmark
     from data.data_mixin import DataArguments, DataMixin
     from base_models.get_base_models import BaseModelArguments, get_base_model
     from seed_utils import set_global_seed
@@ -350,7 +350,7 @@ if __name__ == '__main__':
 
     # Get data    
     data_args = DataArguments(
-        data_names=possible_with_vector_reps,
+        data_names=vector_benchmark,
         max_length=1024,
         trim=False
     )

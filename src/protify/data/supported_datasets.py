@@ -170,13 +170,6 @@ vector_benchmark = [
     'ec-active',
     'soluprot',
     # taxonomy
-    'taxon_domain',
-    'taxon_kingdom',
-    'taxon_phylum',
-    'taxon_class',
-    'taxon_order',
-    'taxon_family',
-    'taxon_genus',
     'taxon_species',
     'diff_phylogeny',
     # ppi

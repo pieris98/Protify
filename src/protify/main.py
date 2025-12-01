@@ -7,7 +7,6 @@ import sys
 import subprocess
 import argparse
 import yaml
-import time
 from types import SimpleNamespace
 
 
@@ -212,7 +211,7 @@ from torchinfo import summary
 import numpy as np
 
 from probes.get_probe import ProbeArguments, get_probe
-from base_models.get_base_models import BaseModelArguments, get_tokenizer, get_base_model_for_training
+from base_models.get_base_models import BaseModelArguments, get_tokenizer, get_base_model_for_training, standard_models
 from base_models.utils import wrap_lora
 from data.data_mixin import DataMixin, DataArguments
 from probes.trainers import TrainerMixin, TrainerArguments
@@ -672,6 +671,9 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
 def main(args: SimpleNamespace):
     chosen_seed = set_global_seed(args.seed)
     args.seed = chosen_seed
+
+    if args.model_names[0] == 'standard_models':
+        args.model_names = standard_models
 
     if args.replay_path is not None:
         from logger import LogReplayer

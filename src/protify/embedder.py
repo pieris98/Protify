@@ -363,7 +363,7 @@ if __name__ == '__main__':
         embedder_args = EmbeddingArguments(
             batch_size=args.batch_size,
             num_workers=args.num_workers,
-            download_embeddings=if model_name not in args.models_to_skip,
+            download_embeddings=model_name not in args.models_to_skip,
             matrix_embed=False,
             embedding_pooling_types=args.embedding_pooling_types,
             save_embeddings=True,

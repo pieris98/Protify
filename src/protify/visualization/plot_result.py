@@ -76,35 +76,43 @@ DATASET_NAMES = {
     'optimal_ph': 'optimal pH',
     'material_production': 'material production',
     'fold_prediction': 'folds',
-    'cloning_clf': 'cloning',
+    'cloning_clf': 'cloning-clf',
     'stability_prediction': 'stability',
     'ec_active': r'$EC_{singlelabel}$',
+    'soluprot': 'soluprot',
     
     # Protein-protein interactions
     'human-ppi-saprot': r'$Human-PPI_{saprot}$',
     'human-ppi-pinui': r'$Human-PPI_{PiNUI}$',
     'yeast-ppi-pinui': r'$Yeast-PPI_{PiNUI}$',
     'peptide-HLA-MHC-affinity': 'peptide HLA MHC affinity',
-    'shs27-ppi-raw': r'$SHS_{27k}-raw$',
-    'shs148-ppi-raw': r'$SHS_{148k}-raw$',
-    'shs27-ppi-random': r'$SHS_{27k}-random$',
-    'shs148-ppi-random': r'$SHS_{148k}-random$',
-    'shs27-ppi-dfs': r'$SHS_{27k}-dfs$',
-    'shs148-ppi-dfs': r'$SHS_{148k}-dfs$',
-    'shs27-ppi-bfs': r'$SHS_{27k}-bfs$',
-    'shs148-ppi-bfs': r'$SHS_{148k}-bfs$',
-    'ppi_SHS148k_bfs_2025': r'$SHS_{148k}-bfs$',
-    'ppi_SHS148k_dfs_2025': r'$SHS_{148k}-dfs$',
-    'ppi_SHS27k_bfs_2025': r'$SHS_{27k}-bfs$',
-    'ppi_SHS27k_dfs_2025': r'$SHS_{27k}-dfs$',
-    'ppi_SHS27k_random_2025': r'$SHS_{27k}-random$',
-    'ppi_SHS148k_random_2025': r'$SHS_{148k}-random$',
+    'shs27-ppi-raw': r'$SHS_{27k-raw}-ppi$',
+    'shs148-ppi-raw': r'$SHS_{148k-raw}-ppi$',
+    'shs27-ppi-random': r'$SHS_{27k-random}-ppi$',
+    'shs148-ppi-random': r'$SHS_{148k-random}-ppi$',
+    'shs27-ppi-dfs': r'$SHS_{27k-dfs}-ppi$',
+    'shs148-ppi-dfs': r'$SHS_{148k-dfs}-ppi$',
+    'shs27-ppi-bfs': r'$SHS_{27k-bfs}-ppi$',
+    'shs148-ppi-bfs': r'$SHS_{148k-bfs}-ppi$',
+    'string-ppi-random': r'$STRING_{random-ppi}$',
+    'string-ppi-dfs': r'$STRING_{dfs-ppi}$',
+    'string-ppi-bfs': r'$STRING_{bfs-ppi}$',
+    'ppi_SHS148k_bfs_2025': r'$SHS_{148k-bfs}-ppi$',
+    'ppi_SHS148k_dfs_2025': r'$SHS_{148k-dfs}-ppi$',
+    'ppi_SHS27k_bfs_2025': r'$SHS_{27k-bfs}-ppi$',
+    'ppi_SHS27k_dfs_2025': r'$SHS_{27k-dfs}-ppi$',
+    'ppi_SHS27k_random_2025': r'$SHS_{27k-random}-ppi$',
+    'ppi_SHS148k_random_2025': r'$SHS_{148k-random}-ppi$',
+    'ppi_STRING_random_2025': r'$STRING_{random}-ppi$',
+    'ppi_STRING_dfs_2025': r'$STRING_{dfs}-ppi$',
+    'ppi_STRING_bfs_2025': r'$STRING_{bfs}-ppi$',
     'gold-ppi': r'$Human PPI_{bernett}$',
     'plm-interact': r'$PLM-Interact_{human / cross}$',
-    'plm_interact_human_train_cross_ppi': r'$PLM-Interact_{human train / cross}$',
+    'plm_interact_human_train_cross_ppi': r'$PLM-Interact_{human / cross}$',
     'ppi-mutation-effect': r'$PPI_{mutation effect}$',
     'PPA-ppi': r'$PPA_{PPI}$',
     'bernett_gold_ppi': r'$Human PPI_{bernett}$',
+    'ProteinProteinAffinity': 'PPI binding affinity',
 
     # Secondary structure
     'SS3': r'$SS_{3}$',
@@ -200,15 +208,58 @@ def pick_metric(metrics: Dict[str, float], prefs: List[Tuple[str, str]]) -> Tupl
     raise KeyError("No preferred metric found.")
 
 
+def parse_metric_value(value) -> Tuple[float, float]:
+    """
+    Parse a metric value that may be in 'mean±std' format or a plain number.
+    Returns (mean, std) where std is 0.0 if not present.
+    """
+    if isinstance(value, str) and '±' in value:
+        parts = value.split('±')
+        try:
+            mean_val = float(parts[0])
+            std_val = float(parts[1]) if len(parts) > 1 else 0.0
+            return mean_val, std_val
+        except ValueError:
+            return math.nan, 0.0
+    elif isinstance(value, (int, float)):
+        return float(value), 0.0
+    return math.nan, 0.0
+
+
 def get_metric_value(metrics: Dict[str, float], key_suffix: str) -> float:
-    """Fetch metric value case-/prefix-insensitively; NaN if absent."""
+    """Fetch metric value case-/prefix-insensitively; NaN if absent.
+    For mean±std format, returns only the mean value."""
     for k, v in metrics.items():
-        # Skip time-related metrics
+        # Skip time-related metrics and _mean/_std suffixed keys
         if 'training_time' in k.lower() or 'time_seconds' in k.lower():
             continue
+        if k.lower().endswith('_mean') or k.lower().endswith('_std'):
+            continue
         if k.lower().endswith(key_suffix):
-            return v
+            mean_val, _ = parse_metric_value(v)
+            return mean_val
     return math.nan
+
+
+def get_metric_value_with_std(metrics: Dict[str, float], key_suffix: str) -> Tuple[float, float, str]:
+    """
+    Fetch metric value with std case-/prefix-insensitively.
+    Returns (mean, std, display_string) where display_string is formatted for heatmap display.
+    """
+    for k, v in metrics.items():
+        # Skip time-related metrics and _mean/_std suffixed keys
+        if 'training_time' in k.lower() or 'time_seconds' in k.lower():
+            continue
+        if k.lower().endswith('_mean') or k.lower().endswith('_std'):
+            continue
+        if k.lower().endswith(key_suffix):
+            mean_val, std_val = parse_metric_value(v)
+            if std_val > 0:
+                display_str = f"{mean_val:.2f}±{std_val:.2f}"
+            else:
+                display_str = f"{mean_val:.2f}"
+            return mean_val, std_val, display_str
+    return math.nan, 0.0, ""
 
 
 def radar_factory(n_axes: int):
@@ -286,7 +337,21 @@ def heatmap_plot(datasets: List[str],
                  data: List[List[float]],
                  metric_name: str,
                  outfile: Path,
-                 normalize: bool = False):
+                 normalize: bool = False,
+                 display_strings: List[List[str]] = None):
+    """
+    Create a heatmap plot.
+    
+    Args:
+        datasets: List of dataset names
+        models: List of model names
+        data: List of lists of mean values (for coloring)
+        metric_name: Name of the metric being plotted
+        outfile: Output file path
+        normalize: Whether to normalize display values
+        display_strings: Optional list of lists of display strings (e.g., "0.85±0.01").
+                        If provided, these are used for annotations instead of raw values.
+    """
     arr = np.array(data).T  # shape: (num_datasets, num_models)
     # Compute average row (mean across datasets for each model)
     avg_row = np.nanmean(arr, axis=0, keepdims=True)
@@ -298,6 +363,22 @@ def heatmap_plot(datasets: List[str],
     clean_dataset_names = [DATASET_NAMES.get(d, d) for d in datasets_plus_avg]
     print(clean_dataset_names)
     print(datasets_plus_avg)
+
+    # Build display string matrix if provided
+    if display_strings is not None:
+        # Transpose to match arr shape: (num_datasets, num_models)
+        display_arr = np.array(display_strings).T.tolist()
+        # Add average row display strings
+        avg_display = []
+        for j in range(len(models)):
+            model_vals = [arr[i, j] for i in range(arr.shape[0]) if not math.isnan(arr[i, j])]
+            if model_vals:
+                avg_display.append(f"{np.mean(model_vals):.2f}")
+            else:
+                avg_display.append("")
+        display_arr.append(avg_display)
+    else:
+        display_arr = None
 
     # For annotations: use normalized or original values based on normalize parameter
     if normalize:
@@ -314,6 +395,8 @@ def heatmap_plot(datasets: List[str],
         avg_row_norm = np.nanmean(normalized_data, axis=0, keepdims=True)
         annot_arr = np.vstack([normalized_data, avg_row_norm])
         annot_label = 'Normalized Performance (0-1)'
+        # Don't use display_strings for normalized view
+        display_arr = None
     else:
         annot_arr = arr_with_avg
         annot_label = metric_name
@@ -331,7 +414,9 @@ def heatmap_plot(datasets: List[str],
             color_arr[i, :] = (arr_with_avg[i, :] - row_min) / denom
 
     # Calculate figure size based on content
-    cell_width = 1.0  # width per cell in inches
+    # Increase cell width if we have mean±std strings
+    has_std = display_arr is not None and any('±' in str(s) for row in display_arr for s in row)
+    cell_width = 1.4 if has_std else 1.0  # wider cells for mean±std display
     cell_height = 0.8  # height per cell in inches
     
     fig_width = max(8, cell_width * len(clean_model_names))
@@ -360,10 +445,16 @@ def heatmap_plot(datasets: List[str],
     ax.set_yticklabels(clean_dataset_names, rotation=0, fontsize=12)
     
     # Add value annotations
+    # Use smaller font if displaying mean±std
+    font_size = 9 if has_std else 12
     for i in range(annot_arr.shape[0]):
         for j in range(annot_arr.shape[1]):
-            text = ax.text(j, i, f'{annot_arr[i, j]:.2f}',
-                          ha="center", va="center", color="black", fontsize=12)
+            if display_arr is not None and i < len(display_arr) and j < len(display_arr[i]):
+                text_str = display_arr[i][j]
+            else:
+                text_str = f'{annot_arr[i, j]:.2f}'
+            text = ax.text(j, i, text_str,
+                          ha="center", va="center", color="black", fontsize=font_size)
     
     # Add black boxes around best performers in each row
     for i in range(color_arr.shape[0]):
@@ -401,6 +492,7 @@ def create_plots(tsv: str, outdir: str):
 
     # Resolve metric per-dataset (MCC or R², w/ fallbacks).
     datasets, scores_by_model = [], {m: [] for m in models}
+    display_by_model = {m: [] for m in models}  # For mean±std display strings
     dataset_types = []  # Track which type each dataset is
 
     for _, row in df.iterrows():
@@ -418,8 +510,9 @@ def create_plots(tsv: str, outdir: str):
 
         datasets.append(name)
         for m in models:
-            val = get_metric_value(row[m], suffix)
-            scores_by_model[m].append(val)
+            mean_val, std_val, display_str = get_metric_value_with_std(row[m], suffix)
+            scores_by_model[m].append(mean_val)
+            display_by_model[m].append(display_str)
 
     if not datasets:
         raise RuntimeError("No plottable datasets found.")
@@ -431,6 +524,7 @@ def create_plots(tsv: str, outdir: str):
     # Order datasets according to DATASET_NAMES keys
     ordered_datasets = []
     ordered_scores = {m: [] for m in models}
+    ordered_display = {m: [] for m in models}  # For mean±std display strings
     ordered_types = []  # Keep track of ordered dataset types
     
     # First add datasets that are in DATASET_NAMES in their defined order
@@ -441,6 +535,7 @@ def create_plots(tsv: str, outdir: str):
             ordered_types.append(dataset_types[idx])
             for m in models:
                 ordered_scores[m].append(scores_by_model[m][idx])
+                ordered_display[m].append(display_by_model[m][idx])
     
     # Then add any remaining datasets that weren't in DATASET_NAMES
     for ds in datasets:
@@ -450,20 +545,24 @@ def create_plots(tsv: str, outdir: str):
             ordered_types.append(dataset_types[idx])
             for m in models:
                 ordered_scores[m].append(scores_by_model[m][idx])
+                ordered_display[m].append(display_by_model[m][idx])
     
     # Replace original lists with ordered ones
     datasets = ordered_datasets
     scores_by_model = ordered_scores
+    display_by_model = ordered_display
     dataset_types = ordered_types
 
     # assemble lists in model order
     plot_matrix = [scores_by_model[m] for m in models]
+    display_matrix = [display_by_model[m] for m in models]
 
     # Sort models by average score (ascending: worst to best)
     model_avgs = [np.nanmean(scores) for scores in plot_matrix]
     sorted_indices = np.argsort(model_avgs)
     sorted_models = [models[i] for i in sorted_indices]
     sorted_plot_matrix = [plot_matrix[i] for i in sorted_indices]
+    sorted_display_matrix = [display_matrix[i] for i in sorted_indices]
 
     fig_tag = tsv.stem
     outdir = outdir / fig_tag
@@ -509,9 +608,11 @@ def create_plots(tsv: str, outdir: str):
     rng = np.where(np.ptp(arr, axis=0) == 0, 1, np.ptp(arr, axis=0))
     arr_norm = (arr - arr.min(0)) / rng
     bar_plot(datasets, sorted_models, arr_norm.tolist(), metric_name + " (Normalized)", bar_path_norm)
-    # Heatmap
-    heatmap_plot(datasets, sorted_models, sorted_plot_matrix, metric_name, heatmap_path, normalize=False)
-    heatmap_plot(datasets, sorted_models, sorted_plot_matrix, metric_name, heatmap_path_norm, normalize=True)
+    # Heatmap - pass display strings for mean±std annotation
+    heatmap_plot(datasets, sorted_models, sorted_plot_matrix, metric_name, heatmap_path, 
+                 normalize=False, display_strings=sorted_display_matrix)
+    heatmap_plot(datasets, sorted_models, sorted_plot_matrix, metric_name, heatmap_path_norm, 
+                 normalize=True, display_strings=sorted_display_matrix)
 
     print(f"Radar saved to {radar_path}")
     print(f"Radar (normalized) saved to {radar_path_norm}")
@@ -579,4 +680,13 @@ if __name__ == "__main__":
     heatmap_plot(categories, models, data, "Test Metric", heatmap_path_norm, normalize=True)
     assert heatmap_path_norm.exists(), "Normalized heatmap plot not created!"
     print(f"Normalized heatmap plot test passed: {heatmap_path_norm}")
+    # Heatmap plot with mean±std display strings
+    display_strings = [
+        ["0.80±0.02", "0.60±0.01", "0.70±0.03"],
+        ["0.50±0.05", "0.90±0.02", "0.40±0.01"],
+    ]
+    heatmap_path_std = tmpdir / "test_heatmap_with_std.png"
+    heatmap_plot(categories, models, data, "Test Metric", heatmap_path_std, display_strings=display_strings)
+    assert heatmap_path_std.exists(), "Heatmap with std not created!"
+    print(f"Heatmap with std test passed: {heatmap_path_std}")
     print("All plot function tests passed!\n")

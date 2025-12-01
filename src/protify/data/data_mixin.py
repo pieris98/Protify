@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from utils import print_message
 from seed_utils import get_global_seed
 from embedder import get_embedding_filename
-from .supported_datasets import supported_datasets, standard_data_benchmark
+from .supported_datasets import supported_datasets, standard_data_benchmark, vector_benchmark
 
 
 AMINO_ACIDS = set('LAGVSERTIPDKQNFYMHWCXBUOZ*')
@@ -55,6 +55,8 @@ class DataArguments:
         if len(data_names) > 0:
             if data_names[0] == 'standard_benchmark':
                 self.data_paths = [supported_datasets[data_name] for data_name in standard_data_benchmark]
+            elif data_names[0] == 'vector_benchmark':
+                self.data_paths = [supported_datasets[data_name] for data_name in vector_benchmark]
             else:
                 self.data_paths = []
                 for data_name in data_names:

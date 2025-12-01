@@ -5,6 +5,7 @@
 *.bin
 *.txt
 *.tsv
+*.cache
 !requirements.txt
 *.png
 *.safetensors
@@ -17,6 +18,7 @@ src/protify/private_yamls
 *.db
 *.yaml
 !yamls/base.yaml
+!yamls/vector_benchmark.yaml
 /outputs/*
 src/protify/benchmarks/proteingym/scores_old/*
 src/protify/results/*

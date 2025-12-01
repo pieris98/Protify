@@ -41,7 +41,7 @@ supported_datasets = {
     'string-ppi-bfs': 'GleghornLab/ppi_STRING_bfs_2025',
     'plm-interact': 'GleghornLab/plm_interact_human_train_cross_ppi',
     'ppi-mutation-effect': 'GleghornLab/ppi_mutation_effect', # requires multi_column
-    'PPA-ppi': 'Synthyra/ProteinProteinAffinity',
+    'PPA-ppi': 'Synthyra/ppi_affinity',
     'foldseek-fold': 'lhallee/foldseek_dataset',
     'foldseek-inverse': 'lhallee/foldseek_dataset',
     'ec-active': 'lhallee/ec_active',
@@ -60,6 +60,7 @@ supported_datasets = {
     'plddt': 'GleghornLab/af2_plddt',
     'realness': 'GleghornLab/realness_dataset',
     'million_full': 'GleghornLab/millionfull_round_1_oct_2025',
+    'soluprot': 'GleghornLab/soluprot',
 }
 
 internal_datasets = {
@@ -167,22 +168,13 @@ vector_benchmark = [
     'cloning-clf',
     'stability-prediction',
     'ec-active',
+    'soluprot',
     # taxonomy
-    'taxon_domain',
-    'taxon_kingdom',
-    'taxon_phylum',
-    'taxon_class',
-    'taxon_order',
-    'taxon_family',
-    'taxon_genus',
     'taxon_species',
     'diff_phylogeny',
     # ppi
-    'shs27-ppi-raw',
-    'shs148-ppi-raw',
     'plm-interact',
     'gold-ppi',
-    'string-ppi-bfs',
     ### regression
     'enzyme-kcat',
     'optimal-temperature',

@@ -7,7 +7,6 @@ import sys
 import subprocess
 import argparse
 import yaml
-import time
 from types import SimpleNamespace
 
 
@@ -110,6 +109,7 @@ def parse_arguments():
                         help="Enable deterministic behavior for reproducibility (will slow down training).")
     parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning (default: False).")
     parser.add_argument("--hybrid_probe", action="store_true", default=False, help="Hybrid probe (default: False).")
+    parser.add_argument("--num_runs", type=int, default=1, help="Number of training runs with different seeds. Results will show mean±std across runs.")
     
     # ----------------- ProteinGym Arguments ----------------- #
     parser.add_argument("--dms_ids", nargs="+", default=["all"],
@@ -165,6 +165,9 @@ def parse_arguments():
             yaml_args.mode = None
         if not hasattr(yaml_args, 'scoring_method'):
             yaml_args.scoring_method = "masked_marginal"
+        # Ensure num_runs default exists
+        if not hasattr(yaml_args, 'num_runs'):
+            yaml_args.num_runs = 1
         return yaml_args
     else:
         return args
@@ -282,9 +285,12 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             emb_dict=None,
             ppi=False,
         ):
+        # Create initial probe (for single run or as template for multi-run)
         probe = get_probe(self.probe_args)
         summary(probe)
-        probe, valid_metrics, test_metrics = self.trainer_probe(
+        
+        # trainer_probe handles multi-run internally if num_runs > 1
+        probe, valid_metrics, test_metrics, _, _ = self.trainer_probe(
             model=probe,
             tokenizer=tokenizer,
             model_name=model_name,
@@ -330,7 +336,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         self.trainer_args.task_type = 'regression'
         
         probe = get_probe(self.probe_args)
-        _, _, test_metrics = self.trainer_probe(
+        _, _, test_metrics, _, _ = self.trainer_probe(
             model=probe,
             tokenizer=tokenizer,
             model_name=model_name,
@@ -363,7 +369,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         if self.probe_args.lora:
             model = wrap_lora(model, self.probe_args.lora_r, self.probe_args.lora_alpha, self.probe_args.lora_dropout)
         summary(model)
-        model, valid_metrics, test_metrics = self.trainer_base_model(
+        model, valid_metrics, test_metrics, _, _ = self.trainer_base_model(
             model=model,
             tokenizer=tokenizer,
             model_name=model_name,
@@ -397,7 +403,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         probe = get_probe(self.probe_args)
         summary(model)
         summary(probe)
-        model, valid_metrics, test_metrics = self.trainer_hybrid_model(
+        model, valid_metrics, test_metrics, _, _ = self.trainer_hybrid_model(
             model=model,
             tokenizer=tokenizer,
             probe=probe,

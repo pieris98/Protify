@@ -315,7 +315,7 @@ if __name__ == '__main__':
     # py -m embedder
     import argparse
     from huggingface_hub import upload_file, login
-    from data.supported_datasets import possible_with_vector_reps
+    from data.supported_datasets import vector_benchmark
     from data.data_mixin import DataArguments, DataMixin
     from base_models.get_base_models import BaseModelArguments, get_base_model
     from seed_utils import set_global_seed
@@ -328,6 +328,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--embed_dtype', type=str, default='float16')
     parser.add_argument('--model_names', nargs='+', default=['standard'])
+    parser.add_argument('--models_to_skip', nargs='+', default=[], help='When checking for existing embeddings, skip these models.')
     parser.add_argument('--embedding_save_dir', type=str, default='embeddings')
     parser.add_argument('--download_dir', type=str, default='Synthyra/vector_embeddings')
     parser.add_argument('--embedding_pooling_types', nargs='+', default=['mean', 'var'], help='Pooling types for embeddings.')
@@ -349,29 +350,29 @@ if __name__ == '__main__':
 
     # Get data    
     data_args = DataArguments(
-        data_names=possible_with_vector_reps,
+        data_names=vector_benchmark,
         max_length=1024,
         trim=False
     )
     all_seqs = DataMixin(data_args).get_data()[1]
 
-    # Set up embedder
-    embedder_args = EmbeddingArguments(
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        download_embeddings=True,
-        matrix_embed=False,
-        embedding_pooling_types=args.embedding_pooling_types,
-        save_embeddings=True,
-        embed_dtype=dtype,
-        sql=False,
-        embedding_save_dir='embeddings'
-    )
-    embedder = Embedder(embedder_args, all_seqs)
-
     # Embed for each model
     model_args = BaseModelArguments(model_names=args.model_names)
     for model_name in model_args.model_names:
+
+        embedder_args = EmbeddingArguments(
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            download_embeddings=model_name not in args.models_to_skip,
+            matrix_embed=False,
+            embedding_pooling_types=args.embedding_pooling_types,
+            save_embeddings=True,
+            embed_dtype=dtype,
+            sql=False,
+            embedding_save_dir='embeddings'
+        )
+        embedder = Embedder(embedder_args, all_seqs)
+
         _ = embedder(model_name)
         filename = get_embedding_filename(model_name, False, embedder_args.pooling_types, 'pth')
         save_path = os.path.join(args.embedding_save_dir, filename)
@@ -383,7 +384,6 @@ if __name__ == '__main__':
                 f_out.write(f_in.read())
         upload_path = compressed_path
         path_in_repo = f'embeddings/{filename}.gz'
-
             
         upload_file(
             path_or_fileobj=upload_path,

@@ -8,12 +8,19 @@ from tqdm.auto import tqdm
 from dataclasses import dataclass
 from typing import Optional, Callable, List
 from huggingface_hub import hf_hub_download
-from seed_utils import seed_worker, dataloader_generator, get_global_seed
 
-from data.dataset_classes import SimpleProteinDataset
-from base_models.get_base_models import get_base_model
-from pooler import Pooler
-from utils import torch_load, print_message
+try:
+    from seed_utils import seed_worker, dataloader_generator, get_global_seed
+    from data.dataset_classes import SimpleProteinDataset
+    from base_models.get_base_models import get_base_model
+    from pooler import Pooler
+    from utils import torch_load, print_message
+except ImportError:
+    from protify.seed_utils import seed_worker, dataloader_generator, get_global_seed
+    from protify.data.dataset_classes import SimpleProteinDataset
+    from protify.base_models.get_base_models import get_base_model
+    from protify.pooler import Pooler
+    from protify.utils import torch_load, print_message
 
 
 def build_collator(tokenizer) -> Callable[[List[str]], tuple[torch.Tensor, torch.Tensor]]:

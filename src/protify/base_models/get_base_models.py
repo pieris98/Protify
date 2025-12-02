@@ -135,7 +135,7 @@ def get_base_model(model_name: str, masked_lm: bool = False):
     elif 'custom' in model_name.lower():
         model_path = model_name.split('---')[-1]
         from .custom_model import build_custom_model
-        return build_custom_model(model_path)
+        return build_custom_model(model_path, masked_lm=masked_lm)
     else:
         raise ValueError(f"Model {model_name} not supported")
 

@@ -13,11 +13,19 @@ import random
 import numpy as np
 import torch
 from typing import Dict, List, Optional
-from data.data_mixin import DataMixin, DataArguments
-from embedder import Embedder, EmbeddingArguments
-from base_models.get_base_models import standard_models
-from seed_utils import set_global_seed, get_global_seed
-from utils import print_message
+
+try:
+    from data.data_mixin import DataMixin, DataArguments
+    from embedder import Embedder, EmbeddingArguments
+    from base_models.get_base_models import standard_models
+    from seed_utils import set_global_seed, get_global_seed
+    from utils import print_message
+except ImportError:
+    from ..data.data_mixin import DataMixin, DataArguments
+    from ..embedder import Embedder, EmbeddingArguments
+    from ..base_models.get_base_models import standard_models
+    from ..seed_utils import set_global_seed, get_global_seed
+    from ..utils import print_message
 
 
 # Default test datasets

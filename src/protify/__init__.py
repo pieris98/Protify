@@ -10,7 +10,6 @@ from . import data  # noqa: F401
 from . import base_models  # noqa: F401
 
 # Re-export commonly used classes and functions
-from .embedder import Embedder, EmbeddingArguments  # noqa: F401
 from .pooler import Pooler  # noqa: F401
 from .utils import torch_load, print_message  # noqa: F401
 from .seed_utils import (  # noqa: F401
@@ -20,6 +19,8 @@ from .seed_utils import (  # noqa: F401
     dataloader_generator,
     set_determinism,
 )
+from .data.data_mixin import DataArguments, DataMixin  # noqa: F401
+from .embedder import Embedder, EmbeddingArguments  # noqa: F401
 
 __all__ = [
     # Subpackages
@@ -30,6 +31,8 @@ __all__ = [
     "Embedder",
     "EmbeddingArguments",
     "Pooler",
+    "DataArguments",
+    "DataMixin",
     # Utility functions
     "torch_load",
     "print_message",

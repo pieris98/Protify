@@ -9,9 +9,14 @@ from pandas import read_csv, read_excel
 from datasets import load_dataset, Dataset
 from dataclasses import dataclass
 
-from utils import print_message
-from seed_utils import get_global_seed
-from embedder import get_embedding_filename
+try:
+    from utils import print_message
+    from seed_utils import get_global_seed
+    from embedder import get_embedding_filename
+except ImportError:
+    from ..utils import print_message
+    from ..seed_utils import get_global_seed
+    from ..embedder import get_embedding_filename
 from .supported_datasets import supported_datasets, standard_data_benchmark, vector_benchmark
 
 

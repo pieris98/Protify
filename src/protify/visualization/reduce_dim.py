@@ -11,10 +11,16 @@ from sklearn.manifold import TSNE as SklearnTSNE
 from typing import Optional, Union, List
 from matplotlib.colors import LinearSegmentedColormap
 
-from utils import torch_load, print_message
-from seed_utils import get_global_seed, set_global_seed, set_determinism
-from data.data_mixin import DataMixin, DataArguments
-from embedder import Embedder, EmbeddingArguments, get_embedding_filename
+try:
+    from utils import torch_load, print_message
+    from seed_utils import get_global_seed, set_global_seed, set_determinism
+    from data.data_mixin import DataMixin, DataArguments
+    from embedder import Embedder, EmbeddingArguments, get_embedding_filename
+except ImportError:
+    from ..utils import torch_load, print_message
+    from ..seed_utils import get_global_seed, set_global_seed, set_determinism
+    from ..data.data_mixin import DataMixin, DataArguments
+    from ..embedder import Embedder, EmbeddingArguments, get_embedding_filename
 
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"

@@ -8,7 +8,11 @@ from scipy.stats import spearmanr
 from .scorer import ProteinGymScorer
 from .data_loader import load_proteingym_dms
 from .dms_ids import ALL_SUBSTITUTION_DMS_IDS
-from base_models.get_base_models import get_base_model
+
+try:
+    from base_models.get_base_models import get_base_model
+except ImportError:
+    from ...base_models.get_base_models import get_base_model
 
 def compare_scoring_methods(
     model_names: List[str],

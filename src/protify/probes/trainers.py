@@ -5,28 +5,54 @@ from copy import deepcopy
 from typing import Optional, Dict, List, Tuple, Any
 from transformers import Trainer, TrainingArguments, EarlyStoppingCallback
 from dataclasses import dataclass
-from probes.hybrid_probe import HybridProbe, HybridProbeConfig
-from data.dataset_classes import (
-    EmbedsLabelsDatasetFromDisk,
-    PairEmbedsLabelsDatasetFromDisk,
-    EmbedsLabelsDataset,
-    PairEmbedsLabelsDataset,
-    StringLabelDataset,
-    PairStringLabelDataset,
-    MultiEmbedsLabelsDatasetFromDisk,
-    MultiEmbedsLabelsDataset,
-)
-from data.data_collators import (
-    EmbedsLabelsCollator,
-    PairEmbedsLabelsCollator,
-    PairCollator_input_ids,
-    StringLabelsCollator,
-)
-from visualization.ci_plots import regression_ci_plot, classification_ci_plot
-from utils import print_message
-from metrics import get_compute_metrics
-from seed_utils import set_global_seed
-from probes.get_probe import get_probe
+try:
+    from probes.hybrid_probe import HybridProbe, HybridProbeConfig
+    from data.dataset_classes import (
+        EmbedsLabelsDatasetFromDisk,
+        PairEmbedsLabelsDatasetFromDisk,
+        EmbedsLabelsDataset,
+        PairEmbedsLabelsDataset,
+        StringLabelDataset,
+        PairStringLabelDataset,
+        MultiEmbedsLabelsDatasetFromDisk,
+        MultiEmbedsLabelsDataset,
+    )
+except ImportError:
+    from .hybrid_probe import HybridProbe, HybridProbeConfig
+    from ..data.dataset_classes import (
+        EmbedsLabelsDatasetFromDisk,
+        PairEmbedsLabelsDatasetFromDisk,
+        EmbedsLabelsDataset,
+        PairEmbedsLabelsDataset,
+        StringLabelDataset,
+        PairStringLabelDataset,
+        MultiEmbedsLabelsDatasetFromDisk,
+        MultiEmbedsLabelsDataset,
+    )
+try:
+    from data.data_collators import (
+        EmbedsLabelsCollator,
+        PairEmbedsLabelsCollator,
+        PairCollator_input_ids,
+        StringLabelsCollator,
+    )
+    from visualization.ci_plots import regression_ci_plot, classification_ci_plot
+    from utils import print_message
+    from metrics import get_compute_metrics
+    from seed_utils import set_global_seed
+    from probes.get_probe import get_probe
+except ImportError:
+    from ..data.data_collators import (
+        EmbedsLabelsCollator,
+        PairEmbedsLabelsCollator,
+        PairCollator_input_ids,
+        StringLabelsCollator,
+    )
+    from ..visualization.ci_plots import regression_ci_plot, classification_ci_plot
+    from ..utils import print_message
+    from ..metrics import get_compute_metrics
+    from ..seed_utils import set_global_seed
+    from .get_probe import get_probe
 
 
 @dataclass

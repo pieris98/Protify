@@ -5,8 +5,12 @@ import numpy as np
 import sqlite3
 import torch.nn.functional as F
 from torch.utils.data import Dataset as TorchDataset
-from utils import print_message
 from tqdm.auto import tqdm
+
+try:
+    from utils import print_message
+except ImportError:
+    from ..utils import print_message
 from typing import List
 
 

@@ -11,7 +11,11 @@ import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from utils import print_message
+
+try:
+    from utils import print_message
+except ImportError:
+    from .utils import print_message
 
 
 def log_method_calls(func):

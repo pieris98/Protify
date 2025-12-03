@@ -393,7 +393,7 @@ if __name__ == '__main__':
         path_in_repo = f'embeddings/{filename}.gz'
             
         upload_file(
-            path_or_fileobj=upload_path,
+             path_or_fileobj=upload_path,
             path_in_repo=path_in_repo,
             repo_id=args.download_dir,
             repo_type='dataset'

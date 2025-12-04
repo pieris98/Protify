@@ -82,7 +82,7 @@ class Embedder:
     embeddings, and various pooling strategies for vector embeddings.
     """
 
-    def __init__(self, args: EmbeddingArguments, all_seqs: List[str]):
+    def __init__(self, args: EmbeddingArguments, all_seqs: List[str], **kwargs):
         self.args = args
         self.all_seqs = all_seqs
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

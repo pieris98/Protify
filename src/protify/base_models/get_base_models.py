@@ -46,14 +46,17 @@ currently_supported_models = [
 ]
 
 standard_models = [
-    'Random',
-    'Random-Transformer',
-    'OneHot-Protein',
     'AMPLIFY-120',
     'AMPLIFY-350',
     'GLM2-150',
     'GLM2-650',
     'GLM2-GAIA',
+    'DSM-150',
+    'DSM-650',
+    'DSM-PPI',
+    'E1-150',
+    'E1-300',
+    'E1-600',
     'DSM-150',
     'DSM-650',
     'DSM-PPI',
@@ -64,10 +67,6 @@ standard_models = [
     'ESM2-3B',
     'ESMC-300',
     'ESMC-600',
-    'E1-150',
-    'E1-300',
-    'E1-600',
-    'ProtBert',
     'ProtBert-BFD',
     'ProtT5',
     'ANKH-Base',
@@ -76,9 +75,9 @@ standard_models = [
     'DPLM-150',
     'DPLM-650',
     'DPLM-3B',
-    'DSM-150',
-    'DSM-650',
-    'DSM-PPI',
+    'Random',
+    'Random-Transformer',
+    'OneHot-Protein',
 ]
 
 experimental_models = []

@@ -11,7 +11,7 @@ except:
     try:
         from protify.model_components.transformer import TransformerForMaskedLM, TransformerConfig
     except:
-        from model_components.transformer import TransformerForMaskedLM, TransformerConfig
+        from ..model_components.transformer import TransformerForMaskedLM, TransformerConfig
 
 
 presets = {

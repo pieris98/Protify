@@ -7,10 +7,10 @@ from dataclasses import dataclass
 
 try:
     from model_components.transformer import TransformerForMaskedLM, TransformerConfig
-except ImportError:
+except:
     try:
         from protify.model_components.transformer import TransformerForMaskedLM, TransformerConfig
-    except ImportError:
+    except:
         from model_components.transformer import TransformerForMaskedLM, TransformerConfig
 
 

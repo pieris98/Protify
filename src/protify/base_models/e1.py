@@ -40,7 +40,8 @@ class E1ForEmbedding(nn.Module):
 
     def forward(
             self,
-            output_attentions: bool = False,
+            output_attentions: Optional[bool] = False,
+            output_hidden_states: Optional[bool] = False,
             **kwargs,
     ) -> Tuple[torch.Tensor, Optional[Tuple[torch.Tensor, ...]]]:
         if output_attentions:

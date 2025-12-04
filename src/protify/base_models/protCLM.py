@@ -39,6 +39,7 @@ class ProtCLMForEmbedding(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
+        **kwargs,
     ) -> torch.Tensor:  
         assert not output_attentions or not output_hidden_states, (
             "output_attentions=True and output_hidden_states=True are not supported by ProtCLMForEmbedding."

@@ -291,6 +291,7 @@ class AmplifyForEmbedding(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = True,
+        **kwargs,
     ) -> torch.Tensor:
         out = self.plm(
             src=input_ids,

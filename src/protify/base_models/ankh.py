@@ -38,6 +38,8 @@ class AnkhForEmbedding(nn.Module):
             input_ids: torch.Tensor,
             attention_mask: Optional[torch.Tensor] = None,
             output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = False,
+            **kwargs,
     ) -> torch.Tensor:
         if output_attentions:
             out = self.plm(input_ids, attention_mask=attention_mask, output_attentions=output_attentions)

@@ -23,10 +23,12 @@ presets = {
     'Random-ESM2-650': 'facebook/esm2_t36_650M_UR50D',
 }
 
+
 @dataclass
 class RandomModelOutput(ModelOutput):
     last_hidden_state: torch.FloatTensor = None
     logits: torch.FloatTensor = None
+
 
 class RandomModel(nn.Module):
     def __init__(self, config: EsmConfig):

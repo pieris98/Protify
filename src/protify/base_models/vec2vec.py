@@ -416,9 +416,17 @@ from pooler import Pooler
 
 
 presets = {
-    'ESM2-8-ESM2-35': 
+    'ESM2-8-ESM2-35': 'Synthyra/ESM2-8-ESM2-35-sequence-sequence',
+    'ESM2-8-ESM2-150': 'Synthyra/ESM2-8-ESM2-150-sequence-sequence',
+    'ESM2-8-ESM2-650': 'Synthyra/ESM2-8-ESM2-650-sequence-sequence',
+    'ESM2-8-ESM2-3B': 'Synthyra/ESM2-8-ESM2-3B-sequence-sequence',
+    'ESM2-35-ESM2-150': 'Synthyra/ESM2-35-ESM2-150-sequence-sequence',
+    'ESM2-35-ESM2-650': 'Synthyra/ESM2-35-ESM2-650-sequence-sequence',
+    'ESM2-35-ESM2-3B': 'Synthyra/ESM2-35-ESM2-3B-sequence-sequence',
+    'ESM2-150-ESM2-650': 'Synthyra/ESM2-150-ESM2-650-sequence-sequence',
+    'ESM2-150-ESM2-3B': 'Synthyra/ESM2-150-ESM2-3B-sequence-sequence',
+    'ESM2-650-ESM2-3B': 'Synthyra/ESM2-650-ESM2-3B-sequence-sequence',
 }
-
 
 
 class Vec2VecTokenizerWrapper(BaseSequenceTokenizer):
@@ -436,12 +444,21 @@ class Vec2VecTokenizerWrapper(BaseSequenceTokenizer):
 
 
 class Vec2VecForEmbedding(nn.Module):
-    def __init__(self, config: Vec2VecConfig, base_model: AutoModel, vec2vec_model: Vec2VecModel):
+    def __init__(
+        self,
+        config: Vec2VecConfig,
+        base_model: AutoModel,
+        vec2vec_model: Vec2VecModel,
+        model_name_a: str,
+        model_name_b: str,
+    ):
         super().__init__()
         self.base_model = base_model
         self.vec2vec_model = vec2vec_model
         self.config = config
         self.pooler = Pooler(['mean', 'var'])
+        self.model_name_a = model_name_a
+        self.model_name_b = model_name_b
 
     def forward(
             self,
@@ -454,13 +471,15 @@ class Vec2VecForEmbedding(nn.Module):
         # only vector embeddings, don't use output_attentions, etc.
         base_state = self.base_model(input_ids, attention_mask=attention_mask).last_hidden_state
         base_vec = self.pooler(base_state, attention_mask=attention_mask)
+        translated_ab = self.vec2vec_model.translate(base_vec, src=self.model_name_a, tgt=self.model_name_b)
+        return translated_ab
 
 
 def get_vec2vec_tokenizer(preset: str):
     try:
         tokenizer = AutoTokenizer.from_pretrained(all_presets_with_paths[preset], trust_remote_code=True)
     except:
-        model = AutoModel.from_pretrained(all_presets_with_paths[preset], trust_remote_code=True``)
+        model = AutoModel.from_pretrained(all_presets_with_paths[preset], trust_remote_code=True)
         tokenizer = AutoTokenizer.from_pretrained(model.config.tokenizer_name)
     return Vec2VecTokenizerWrapper(tokenizer)
 
@@ -483,7 +502,7 @@ def build_vec2vec_model(preset: str, masked_lm: bool = False, **kwargs):
 
         base_model = AutoModel.from_pretrained(all_presets_with_paths[model_name_a], trust_remote_code=True)
         vec2vec_model = Vec2VecModel(config).from_pretrained(model_path)
-        model = Vec2VecForEmbedding(config, base_model, vec2vec_model)
+        model = Vec2VecForEmbedding(config, base_model, vec2vec_model, model_name_a, model_name_b)
 
     try:
         tokenizer = Vec2VecTokenizerWrapper(model.tokenizer)
@@ -498,7 +517,7 @@ def get_vec2vec_for_training(preset: str, tokenwise: bool = False, num_labels: i
 
 if __name__ == '__main__':
     # py -m src.protify.base_models.vec2vec
-    model, tokenizer = build_vec2vec_model('ESM2-8')
+    model, tokenizer = build_vec2vec_model('ESM2-8-ESM2-35')
     print(model)
     print(tokenizer)
     print(tokenizer('MEKVQYLTRSAIRRASTIEMPQQARQKLQNLFINFCLILICBBOLLICIIVMLL'))

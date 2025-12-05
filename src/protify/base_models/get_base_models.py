@@ -18,7 +18,10 @@ def get_base_model(model_name: str, masked_lm: bool = False):
     if 'random' in model_name.lower():
         from .random import build_random_model
         return build_random_model(model_name, masked_lm=masked_lm)
-    elif 'esm2' in model_name.lower() or 'dsm' in model_name.lower():
+    elif 'esm2' in model_name.lower() and model_name.lower().count('esm2') == 1:
+        from .esm2 import build_esm2_model
+        return build_esm2_model(model_name, masked_lm=masked_lm)
+    elif 'dsm' in model_name.lower():
         from .esm2 import build_esm2_model
         return build_esm2_model(model_name, masked_lm=masked_lm)
     elif 'esmc' in model_name.lower():

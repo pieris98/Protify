@@ -405,8 +405,6 @@ def vsp_loss(inputs: Dict[str, torch.Tensor], translations: Dict[str, Dict[str, 
     return loss / max(count, 1)
 
 
-import torch
-import torch.nn as nn
 from typing import Optional, Union, List, Dict
 from transformers import AutoModel, AutoTokenizer
 from .base_tokenizer import BaseSequenceTokenizer

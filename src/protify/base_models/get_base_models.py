@@ -54,6 +54,9 @@ def get_base_model(model_name: str, masked_lm: bool = False):
     elif 'e1' in model_name.lower():
         from .e1 import build_e1_model
         return build_e1_model(model_name, masked_lm=masked_lm)
+    elif 'vec2vec' in model_name.lower():
+        from .vec2vec import build_vec2vec_model
+        return build_vec2vec_model(model_name, masked_lm=masked_lm)
     elif 'custom' in model_name.lower():
         model_path = model_name.split('---')[-1]
         from .custom_model import build_custom_model

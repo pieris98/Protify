@@ -54,6 +54,17 @@ all_presets_with_paths = {
     'OneHot-DNA': 'OneHot-DNA',
     'OneHot-RNA': 'OneHot-RNA',
     'OneHot-Codon': 'OneHot-Codon',
+    # Vec2Vec models (from vec2vec.py)
+    'ESM2-8-ESM2-35': 'Synthyra/ESM2-8-ESM2-35-sequence-sequence',
+    'ESM2-8-ESM2-150': 'Synthyra/ESM2-8-ESM2-150-sequence-sequence',
+    'ESM2-8-ESM2-650': 'Synthyra/ESM2-8-ESM2-650-sequence-sequence',
+    'ESM2-8-ESM2-3B': 'Synthyra/ESM2-8-ESM2-3B-sequence-sequence',
+    'ESM2-35-ESM2-150': 'Synthyra/ESM2-35-ESM2-150-sequence-sequence',
+    'ESM2-35-ESM2-650': 'Synthyra/ESM2-35-ESM2-650-sequence-sequence',
+    'ESM2-35-ESM2-3B': 'Synthyra/ESM2-35-ESM2-3B-sequence-sequence',
+    'ESM2-150-ESM2-650': 'Synthyra/ESM2-150-ESM2-650-sequence-sequence',
+    'ESM2-150-ESM2-3B': 'Synthyra/ESM2-150-ESM2-3B-sequence-sequence',
+    'ESM2-650-ESM2-3B': 'Synthyra/ESM2-650-ESM2-3B-sequence-sequence',
 }
 
 

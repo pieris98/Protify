@@ -492,7 +492,7 @@ def build_vec2vec_model(preset: str, masked_lm: bool = False, **kwargs):
         model_path = presets[preset]
         config = Vec2VecConfig.from_pretrained(model_path)
         encoder_names = config.encoder_names
-        encoder_dims: config.encoder_dims
+        encoder_dims = config.encoder_dims
 
         if encoder_dims[0] >= encoder_dims[1]:
             model_name_a = encoder_names[0]

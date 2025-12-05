@@ -459,6 +459,7 @@ class Vec2VecForEmbedding(nn.Module):
         self.pooler = Pooler(['mean', 'var'])
         self.model_name_a = model_name_a
         self.model_name_b = model_name_b
+        self.normalize = config.normalize_embeddings
 
     def forward(
             self,
@@ -471,6 +472,8 @@ class Vec2VecForEmbedding(nn.Module):
         # only vector embeddings, don't use output_attentions, etc.
         base_state = self.base_model(input_ids, attention_mask=attention_mask).last_hidden_state
         base_vec = self.pooler(base_state, attention_mask=attention_mask)
+        if self.normalize:
+            base_vec = F.normalize(base_vec, p=2, dim=1)
         translated_ab = self.vec2vec_model.translate(base_vec, src=self.model_name_a, tgt=self.model_name_b)
         return translated_ab
 

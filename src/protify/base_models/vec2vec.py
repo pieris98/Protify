@@ -503,7 +503,7 @@ def build_vec2vec_model(preset: str, masked_lm: bool = False, **kwargs):
             model_name_b = encoder_names[0]
 
         base_model = AutoModel.from_pretrained(all_presets_with_paths[model_name_a], trust_remote_code=True)
-        base_tokenizer = AutoTokenizer.from_pretrained(all_presets_with_paths[model_name_a])
+        base_tokenizer = base_model.tokenizer
         vec2vec_model = Vec2VecModel(config).from_pretrained(model_path)
         model = Vec2VecForEmbedding(config, base_model, vec2vec_model, model_name_a, model_name_b)
         tokenizer = Vec2VecTokenizerWrapper(base_tokenizer)

@@ -477,6 +477,7 @@ class Vec2VecForEmbedding(nn.Module):
 
 
 def get_vec2vec_tokenizer(preset: str):
+    # TODO work with new Vec2Vec .tokenizer_a and .tokenizer_b
     try:
         tokenizer = AutoTokenizer.from_pretrained(all_presets_with_paths[preset], trust_remote_code=True)
     except:
@@ -502,14 +503,11 @@ def build_vec2vec_model(preset: str, masked_lm: bool = False, **kwargs):
             model_name_b = encoder_names[0]
 
         base_model = AutoModel.from_pretrained(all_presets_with_paths[model_name_a], trust_remote_code=True)
+        base_tokenizer = AutoTokenizer.from_pretrained(all_presets_with_paths[model_name_a])
         vec2vec_model = Vec2VecModel(config).from_pretrained(model_path)
         model = Vec2VecForEmbedding(config, base_model, vec2vec_model, model_name_a, model_name_b)
-
-    try:
-        tokenizer = Vec2VecTokenizerWrapper(model.tokenizer)
-    except:
-        tokenizer = get_vec2vec_tokenizer(preset)
-    return model, tokenizer
+        tokenizer = Vec2VecTokenizerWrapper(base_tokenizer)
+        return model, tokenizer
 
 
 def get_vec2vec_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):

@@ -2,7 +2,7 @@ import os
 import torch
 import warnings
 import sqlite3
-import gzip
+import lz4.frame
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from dataclasses import dataclass
@@ -105,20 +105,20 @@ class Embedder:
         try:
             local_path = hf_hub_download(
                 repo_id=self.download_dir,
-                filename=f'embeddings/{filename}.gz',
+                filename=f'embeddings/{filename}.lz4',
                 repo_type='dataset'
             )
         except:
             print(f'No embeddings found for {model_name} in {self.download_dir}')
             return
 
-        # unzip
-        print_message(f'Unzipping {local_path}')
-        with gzip.open(local_path, 'rb') as f_in:
-            with open(local_path.replace('.gz', ''), 'wb') as f_out:
+        # decompress
+        print_message(f'Decompressing {local_path}')
+        with lz4.frame.open(local_path, 'rb') as f_in:
+            with open(local_path.replace('.lz4', ''), 'wb') as f_out:
                 f_out.write(f_in.read())
         # move to embedding_save_dir
-        unzipped_path = local_path.replace('.gz', '')
+        unzipped_path = local_path.replace('.lz4', '')
         final_path = os.path.join(self.embedding_save_dir, filename)
         
         if os.path.exists(final_path):
@@ -384,13 +384,13 @@ if __name__ == '__main__':
         filename = get_embedding_filename(model_name, False, embedder_args.pooling_types, 'pth')
         save_path = os.path.join(args.embedding_save_dir, filename)
         
-        compressed_path = f"{save_path}.gz"
+        compressed_path = f"{save_path}.lz4"
         print(f"Compressing {save_path} to {compressed_path}")
         with open(save_path, 'rb') as f_in:
-            with gzip.open(compressed_path, 'wb') as f_out:
+            with lz4.frame.open(compressed_path, 'wb') as f_out:
                 f_out.write(f_in.read())
         upload_path = compressed_path
-        path_in_repo = f'embeddings/{filename}.gz'
+        path_in_repo = f'embeddings/{filename}.lz4'
             
         upload_file(
              path_or_fileobj=upload_path,

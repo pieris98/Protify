@@ -387,8 +387,20 @@ if __name__ == '__main__':
         compressed_path = f"{save_path}.lz4"
         print(f"Compressing {save_path} to {compressed_path}")
         with open(save_path, 'rb') as f_in:
-            with lz4.frame.open(compressed_path, 'wb') as f_out:
-                f_out.write(f_in.read())
+            data = f_in.read()
+            # Use high compression level for better compression ratio on dense float data
+            # Try level 9 first (standard max), fall back to lower if not supported
+            try:
+                compressed_data = lz4.frame.compress(
+                    data,
+                    compression_level=9,  # High compression (0-9 standard, up to 16 for HC)
+                    block_size=1048576  # 1MB blocks for better compression
+                )
+            except (ValueError, TypeError):
+                # Fallback to default compression if level 9 not supported
+                compressed_data = lz4.frame.compress(data, block_size=1048576)
+            with open(compressed_path, 'wb') as f_out:
+                f_out.write(compressed_data)
         upload_path = compressed_path
         path_in_repo = f'embeddings/{filename}.lz4'
             

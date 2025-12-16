@@ -410,6 +410,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 self.trainer_args.task_type = label_type
                 self.logger.info(f'Training probe for {data_name} with {model_name}')
                 _ = self._run_full_finetuning(model_name, data_name, train_set, valid_set, test_set, ppi)
+                torch.cuda.empty_cache()
 
     @log_method_calls
     def run_hybrid_probes(self):
@@ -473,6 +474,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     emb_dict=emb_dict,
                     ppi=ppi,
                 )
+                torch.cuda.empty_cache()
                 ### TODO may link from probe here to running inference on input csv or HF datasets
 
     @log_method_calls
@@ -544,6 +546,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     emb_dict=emb_dict,
                     ppi=ppi,
                 )
+                torch.cuda.empty_cache()
                 ### TODO may link from probe here to running inference on input csv or HF datasets
 
     @log_method_calls

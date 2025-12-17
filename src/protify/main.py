@@ -10,7 +10,7 @@ import yaml
 from types import SimpleNamespace
 
 
-def parse_arguments():
+def parse_arguments():  
     parser = argparse.ArgumentParser(description="Script with arguments mirroring the provided YAML settings.")
     # ----------------- ID ----------------- #
     parser.add_argument("--hf_username", default="Synthyra", help="Hugging Face username.")
@@ -128,6 +128,16 @@ def parse_arguments():
     parser.add_argument("--score_only", action="store_true", default=False,
                         help="Only run the ProteinGym benchmarking script on existing CSV files, skip zero-shot scoring (default: False).")
 
+    # ----------------- W&B Arguments ----------------- #
+    parser.add_argument("--use_wandb_hyperopt", action="store_true", default=False, help="Use Weights & Biases hyperparameter optimization.")
+    parser.add_argument("--wandb_project", type=str, default="Protify", help="W&B project name for sweeps.")
+    parser.add_argument("--wandb_entity", type=str, default=None, help="W&B entity (team/user) for sweeps.")
+    parser.add_argument("--sweep_config_path", type=str, default="yamls/sweep.yaml", help="Path to W&B sweep config YAML.")
+    parser.add_argument("--sweep_count", type=int, default=10, help="Number of hyperparameter trials to run in the sweep.")
+    parser.add_argument("--sweep_method", type=str, default="bayes", choices=["bayes", "grid", "random"], help="Sweep method for hyperparameter optimization.")
+    parser.add_argument("--sweep_metric_cls",type=str,default="eval_loss", help="Classification metric to optimize during sweep (e.g., eval_f1, eval_accuracy, eval_mcc)")
+    parser.add_argument("--sweep_metric_reg",type=str,default="eval_loss", help="Regression metric to optimize during sweep (e.g., eval_r_squared, eval_spearman_rho, eval_pearson_rho)")
+    parser.add_argument("--sweep_goal", type=str, default='minimize', choices=['maximize', 'minimize'], help="Goal for the sweep metric (maximize/minimize)")
     args = parser.parse_args()
 
     if args.hf_token is not None:
@@ -143,7 +153,12 @@ def parse_arguments():
             print(f"Note: HF_TOKEN found in environment (from Modal secret or other source)")
             print(f"Note: This token will be used for read operations only unless overridden")
     if args.wandb_api_key is not None:
-        print_message('Wandb not integrated yet')
+        try:
+            import wandb
+            wandb.login(key=args.wandb_api_key)
+            print_message('Logged into Weights & Biases')
+        except Exception as e:
+            print_message(f'W&B login failed: {e}')
     if args.synthyra_api_key is not None:
         print_message('Synthyra API not integrated yet')
 
@@ -155,6 +170,15 @@ def parse_arguments():
         yaml_args.hf_home = args.hf_home
         yaml_args.synthyra_api_key = args.synthyra_api_key
         yaml_args.wandb_api_key = args.wandb_api_key
+        yaml_args.use_wandb_hyperopt = args.use_wandb_hyperopt
+        yaml_args.wandb_project = args.wandb_project
+        yaml_args.wandb_entity = args.wandb_entity
+        yaml_args.sweep_config_path = args.sweep_config_path
+        yaml_args.sweep_count = args.sweep_count
+        yaml_args.sweep_method = args.sweep_method
+        yaml_args.sweep_metric_cls = args.sweep_metric_cls
+        yaml_args.sweep_metric_reg = args.sweep_metric_reg
+        yaml_args.sweep_goal = args.sweep_goal
         yaml_args.yaml_path = args.yaml_path
         # Ensure ProteinGym defaults exist when using YAML configs
         if not hasattr(yaml_args, 'proteingym'):
@@ -222,6 +246,9 @@ from embedder import EmbeddingArguments, Embedder, get_embedding_filename
 from logger import MetricsLogger, log_method_calls
 from utils import torch_load, print_message, expand_dms_ids_all
 from visualization.plot_result import create_plots
+from hyperopt_utils import HyperoptModule
+from benchmarks.proteingym.zero_shot import run_zero_shot
+from benchmarks.proteingym.scoring_utils import collect_proteingym_spearman
 from benchmarks.proteingym.scorer import ProteinGymRunner
 from benchmarks.proteingym.compare_scoring_methods import compare_scoring_methods
 from seed_utils import set_global_seed
@@ -299,6 +326,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             tokenizer,
             emb_dict=None,
             ppi=False,
+            sweep_mode: bool = False,
         ):
         # Create initial probe (for single run or as template for multi-run)
         probe = get_probe(self.probe_args)
@@ -317,10 +345,59 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             ppi=ppi,
             log_id=self.random_id,
         )
-        self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
-        self.log_metrics(data_name, model_name, test_metrics, split_name='test')
-        return probe
+        if not sweep_mode:
+            self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
+            self.log_metrics(data_name, model_name, test_metrics, split_name='test')
+        return probe, valid_metrics, test_metrics
 
+    def _train_nn_probe_fold(self, model_name, dms_id, subtrain_seqs, subtrain_labels,
+                            valid_seqs, valid_labels, test_seqs, test_labels, 
+                            emb_dict, fold_info):
+        """Trains a neural network probe on a ProteinGym DMS assay CV fold."""
+
+        train_set = {'seqs': subtrain_seqs, 'labels': subtrain_labels}
+        valid_set = None if (valid_seqs is None or valid_labels is None) else {'seqs': valid_seqs, 'labels': valid_labels}
+        test_set = {'seqs': test_seqs, 'labels': test_labels}
+        
+        # Get tokenizer and determine input dimensions
+        tokenizer = get_tokenizer(model_name)
+        
+        if self._sql:
+            save_path = os.path.join(self.embedding_args.embedding_save_dir, 
+                                    f'{model_name}_{self._full}.db')
+            input_dim = self.get_embedding_dim_sql(save_path, subtrain_seqs[0], tokenizer)
+            emb_for_training = None
+        else:
+            save_path = os.path.join(self.embedding_args.embedding_save_dir,
+                                    f'{model_name}_{self._full}.pth')
+            emb_for_training = torch_load(save_path) if os.path.exists(save_path) else emb_dict
+            input_dim = self.get_embedding_dim_pth(emb_for_training, subtrain_seqs[0], tokenizer)
+        
+        # Configure probe for regression
+        self.probe_args.input_size = input_dim
+        self.probe_args.task_type = 'regression'
+        self.probe_args.num_labels = 1
+        self.trainer_args.task_type = 'regression'
+        
+        probe = get_probe(self.probe_args)
+        _, _, test_metrics = self.trainer_probe(
+            model=probe,
+            tokenizer=tokenizer,
+            model_name=model_name,
+            data_name=f"{dms_id}_{fold_info}",
+            train_dataset=train_set,
+            valid_dataset=valid_set,
+            test_dataset=test_set,
+            emb_dict=emb_for_training,
+            ppi=False,
+            log_id=f"{self.random_id}_{fold_info}",
+        )
+        
+        # Handle both plain and test-prefixed metric keys returned by HF Trainer
+        rho = test_metrics.get('spearman_rho', test_metrics.get('test_spearman_rho', None))
+        mse = test_metrics.get('mse', test_metrics.get('test_mse', None))
+        return rho, mse
+    
     def _run_full_finetuning(
             self,
             model_name,
@@ -329,6 +406,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             valid_set,
             test_set,
             ppi=False,
+            sweep_mode: bool = False,
         ):
         tokenwise = self.probe_args.tokenwise
         num_labels = self.probe_args.num_labels
@@ -351,9 +429,10 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             log_id=self.random_id,
             model_factory=model_factory,
         )
-        self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
-        self.log_metrics(data_name, model_name, test_metrics, split_name='test')
-        return model
+        if not sweep_mode:
+            self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
+            self.log_metrics(data_name, model_name, test_metrics, split_name='test')
+        return model, valid_metrics, test_metrics
 
     def _run_hybrid_probe(
             self,
@@ -365,7 +444,30 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             tokenizer,
             emb_dict=None,
             ppi=False,
+            sweep_mode: bool = False,
         ):
+        # Random models don't have a trainable base model, so fall back to regular probe
+        if "random" in model_name.lower():
+            print_message(f"Model {model_name} does not support hybrid training. Training a linear probe instead.")
+            probe = get_probe(self.probe_args)
+            summary(probe)
+            probe, valid_metrics, test_metrics = self.trainer_probe(
+                model=probe,
+                tokenizer=tokenizer,
+                model_name=model_name,
+                data_name=data_name,
+                train_dataset=train_set,
+                valid_dataset=valid_set,
+                test_dataset=test_set,
+                emb_dict=emb_dict,
+                ppi=ppi,
+                log_id=self.random_id,
+            )
+            if not sweep_mode:
+                self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
+                self.log_metrics(data_name, model_name, test_metrics, split_name='test')
+            return probe, valid_metrics, test_metrics
+        
         tokenwise = self.probe_args.tokenwise
         num_labels = self.probe_args.num_labels
         num_runs = getattr(self.trainer_args, 'num_runs', 1)
@@ -393,9 +495,11 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             model_factory=model_factory,
             probe_factory=probe_factory,
         )
-        self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
-        self.log_metrics(data_name, model_name, test_metrics, split_name='test')
-        return model
+        if not sweep_mode:
+            self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
+            self.log_metrics(data_name, model_name, test_metrics, split_name='test')
+        return model, valid_metrics, test_metrics
+
 
     @log_method_calls
     def run_full_finetuning(self):
@@ -677,27 +781,32 @@ def main(args: SimpleNamespace):
             print_message(f"Scoring method comparison complete. Results saved to {output_csv}")
             return
 
-        # If score_only is set, skip dataset processing and just score
-        if getattr(args, 'score_only', False):
-            # Only runs on existing CSV files
-            print_message("Running ProteinGym scoring...")
-            results_root = getattr(args, 'results_dir', 'results')
-            results_dir = os.path.join(results_root, 'proteingym')
-            
-            # Check if results directory exists
-            if not os.path.exists(results_dir):
-                raise ValueError(f"Results directory not found: {results_dir}. Please ensure CSV files exist in this directory.")
-            
-            dms_ids = getattr(args, 'dms_ids', []) or []
-            mode = getattr(args, 'mode', 'benchmark')
-            dms_ids = expand_dms_ids_all(dms_ids, mode=mode)
-            model_names = getattr(args, 'model_names', []) or []
-            scoring_method = getattr(args, 'scoring_method', 'masked_marginal')
-            
-            runner = ProteinGymRunner(results_dir=results_dir)
-            runner.run_benchmark(model_names, dms_ids, mode, scoring_method)
-            print_message(f"Scoring complete. Results in {os.path.join(results_dir, 'benchmark_performance')}")
-        
+        # Determine if current experiment passed datasets
+        has_datasets = bool(getattr(args, 'data_names', []) or getattr(args, 'data_dirs', []))
+
+        # Run through datasets first (if any)
+        if has_datasets:
+          main.apply_current_settings()
+          main.get_datasets()
+          print_message(f"Number of sequences: {len(main.all_seqs)}")
+          if main.full_args.use_wandb_hyperopt:
+              if not main.full_args.full_finetuning:
+                  main.save_embeddings_to_disk()
+              HyperoptModule.run_wandb_hyperopt(main)
+
+          elif main.full_args.full_finetuning:
+              main.run_full_finetuning()
+
+          elif main.full_args.hybrid_probe:
+              main.save_embeddings_to_disk()
+              main.run_hybrid_probes()
+
+          elif main.full_args.use_scikit:
+              main.save_embeddings_to_disk()
+              main.run_scikit_scheme()
+          else:
+              main.save_embeddings_to_disk()
+              main.run_nn_probes()
         else:
             # Determine if current experiment passed datasets
             has_datasets = bool(getattr(args, 'data_names', []) or getattr(args, 'data_dirs', []))
@@ -745,7 +854,6 @@ def main(args: SimpleNamespace):
         main.write_results()
         main.generate_plots()
         main.end_log()
-
 
 if __name__ == "__main__":
     main(args)

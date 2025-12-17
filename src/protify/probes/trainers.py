@@ -77,6 +77,7 @@ class TrainerArguments:
             full_finetuning: bool = False,
             hybrid_probe: bool = False,
             num_workers: int = 0,
+            make_plots: bool = True,
             num_runs: int = 1,
             **kwargs
     ):
@@ -98,6 +99,7 @@ class TrainerArguments:
         self.full_finetuning = full_finetuning
         self.hybrid_probe = hybrid_probe
         self.num_workers = num_workers
+        self.make_plots = make_plots
         self.num_runs = num_runs
 
     def __call__(self, probe: Optional[bool] = True):
@@ -208,8 +210,7 @@ class TrainerMixin:
         test_metrics['training_time_seconds'] = train_runtime
         print_message(f'y_pred: {y_pred.shape}\ny_true: {y_true.shape}\nFinal test metrics: \n{test_metrics}\n')
 
-        # Generate plots unless skip_plot is True (used for multi-run mode)
-        if not skip_plot:
+        if self.trainer_args.make_plots and self.trainer_args.plots_dir is not None and not skip_plot:
             output_dir = os.path.join(self.trainer_args.plots_dir, log_id)
             os.makedirs(output_dir, exist_ok=True)
             save_path = os.path.join(output_dir, f"{data_name}_{model_name}_{log_id}.png")

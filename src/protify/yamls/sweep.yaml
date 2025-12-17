@@ -1,0 +1,56 @@
+early_terminate: {type: hyperband, min_iter: 10}
+
+parameters:
+  # Common parameters for all probe types
+  lr:
+    distribution: log_uniform_values
+    min: 0.000001
+    max: 0.01
+  weight_decay:
+    distribution: log_uniform_values
+    min: 0.000001
+    max: 0.1
+  
+  # Parameters for both linear and transformer probes
+  hidden_size:
+    distribution: q_uniform
+    min: 64
+    max: 8192
+    q: 8
+  n_layers:
+    distribution: int_uniform
+    min: 1
+    max: 4
+  dropout:
+    distribution: uniform
+    min: 0.0
+    max: 0.5
+  pre_ln:
+    values: [True, False]
+  
+  # Transformer probe specific parameters (only swept when probe_type=transformer)
+  classifier_dropout:
+    distribution: uniform
+    min: 0.0
+    max: 0.5
+  classifier_dim:
+    distribution: q_uniform
+    min: 64
+    max: 8192
+    q: 8
+  
+  # LoRA parameters (only swept when lora=true)
+  lora_r:
+    distribution: q_uniform
+    min: 4
+    max: 128
+    q: 4
+  lora_alpha:
+    distribution: q_uniform
+    min: 4
+    max: 128
+    q: 4
+  lora_dropout:
+    distribution: uniform
+    min: 0.0
+    max: 0.5

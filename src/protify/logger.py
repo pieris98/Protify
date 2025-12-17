@@ -11,7 +11,11 @@ import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from utils import print_message
+
+try:
+    from utils import print_message
+except ImportError:
+    from .utils import print_message
 
 
 def log_method_calls(func):
@@ -142,10 +146,28 @@ class MetricsLogger:
         for model in all_models:
             losses = []
             for ds in datasets:
-                if (ds in self.logger_data_tracking and 
-                    model in self.logger_data_tracking[ds] and 
-                    'eval_loss' in self.logger_data_tracking[ds][model]):
-                    losses.append(self.logger_data_tracking[ds][model]['eval_loss'])
+                if ds in self.logger_data_tracking and model in self.logger_data_tracking[ds]:
+                    metrics = self.logger_data_tracking[ds][model]
+                    
+                    # Try to get eval_loss, handling both numeric and string formats
+                    eval_loss = None
+                    if 'eval_loss_mean' in metrics:
+                        eval_loss = metrics['eval_loss_mean']
+                    elif 'eval_loss' in metrics:
+                        loss_val = metrics['eval_loss']
+                        # Check if it's a string
+                        if isinstance(loss_val, str):
+                            # Parse the mean
+                            try:
+                                eval_loss = float(loss_val.split('±')[0])
+                            except (ValueError, IndexError):
+                                continue
+                        else:
+                            eval_loss = loss_val
+                    
+                    if eval_loss is not None:
+                        losses.append(eval_loss)
+            
             if losses:
                 model_scores[model] = sum(losses) / len(losses)
             else:
@@ -168,10 +190,11 @@ class MetricsLogger:
     def log_metrics(self, dataset, model, metrics_dict, split_name=None):
         try:
             training_time = metrics_dict.get('training_time_seconds')
-            # Preserve training_time_seconds
+            preserve_keys = {'training_time_seconds', 'training_time_seconds_mean', 'training_time_seconds_std'}
+            # Filter out other time-related keys, but preserve training_time_seconds variants
             filtered_dict = {k: v for k, v in metrics_dict.items() 
-                           if not (('time' in k.lower() and k != 'training_time_seconds') or 
-                                  ('second' in k.lower() and k != 'training_time_seconds'))}
+                           if not (('time' in k.lower() and k not in preserve_keys) or 
+                                  ('second' in k.lower() and k not in preserve_keys))}
             if training_time is not None:
                 # Add it in the end
                 filtered_dict.pop('training_time_seconds', None)

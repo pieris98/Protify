@@ -9,10 +9,15 @@ from pandas import read_csv, read_excel
 from datasets import load_dataset, Dataset
 from dataclasses import dataclass
 
-from utils import print_message
-from seed_utils import get_global_seed
-from embedder import get_embedding_filename
-from .supported_datasets import supported_datasets, standard_data_benchmark
+try:
+    from utils import print_message
+    from seed_utils import get_global_seed
+    from embedder import get_embedding_filename
+except ImportError:
+    from ..utils import print_message
+    from ..seed_utils import get_global_seed
+    from ..embedder import get_embedding_filename
+from .supported_datasets import supported_datasets, standard_data_benchmark, vector_benchmark
 
 
 AMINO_ACIDS = set('LAGVSERTIPDKQNFYMHWCXBUOZ*')
@@ -55,6 +60,8 @@ class DataArguments:
         if len(data_names) > 0:
             if data_names[0] == 'standard_benchmark':
                 self.data_paths = [supported_datasets[data_name] for data_name in standard_data_benchmark]
+            elif data_names[0] == 'vector_benchmark':
+                self.data_paths = [supported_datasets[data_name] for data_name in vector_benchmark]
             else:
                 self.data_paths = []
                 for data_name in data_names:
@@ -471,17 +478,32 @@ class DataMixin:
             if not ppi:
                 ppi = self._is_ppi_from_columns(dataset['train'].column_names)
             print_message(f'PPI (or dual sequence input dataset): {ppi}')
-            try:
-                train_set, valid_set, test_set = dataset['train'], dataset['valid'], dataset['test']
-            except:
-                # No valid or test set, make 10% splits randomly
-                seed = get_global_seed() if get_global_seed() is not None else 42
-                train_set = dataset['train'].train_test_split(test_size=0.2, seed=seed + 1)
-                valid_set = train_set['test']
-                train_set = train_set['train']
-                test_set = train_set.train_test_split(test_size=0.5, seed=seed + 2)
-                test_set = test_set['test']
 
+            ### TODO, add better handling for valid, validation, test, testing, etc.
+            assert 'train' in dataset, f'{data_name} does not have a train set'
+            assert 'valid' in dataset or 'test' in dataset, f'{data_name} does not have a valid or test set, needs at least one'
+            
+            if 'valid' not in dataset:
+                seed = get_global_seed() if get_global_seed() is not None else 42
+                train_set = dataset['train']
+                train_valid_set = train_set.train_test_split(test_size=0.1, seed=seed + 1)
+                train_set = train_valid_set['train']
+                valid_set = train_valid_set['test']
+                test_set = dataset['test']
+                print_message(f'{data_name} does not have a valid set, created a 10% validation set')
+            elif 'test' not in dataset:
+                seed = get_global_seed() if get_global_seed() is not None else 42
+                train_set = dataset['train']
+                train_test_set = train_set.train_test_split(test_size=0.1, seed=seed + 2)
+                test_set = train_test_set['test']
+                train_set = train_test_set['train']
+                valid_set = dataset['valid']
+                print_message(f'{data_name} does not have a test set, created a 10% test set')
+            else:
+                train_set, valid_set, test_set = dataset['train'], dataset['valid'], dataset['test']
+                print_message(f'{data_name} has a valid and test set')
+
+            print_message(f'Train set: {len(train_set)}, Valid set: {len(valid_set)}, Test set: {len(test_set)}')
             if ppi:
                 # Standardize PPI columns to 'SeqA', 'SeqB', and 'labels'
                 print('Standardizing PPI column names')

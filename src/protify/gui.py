@@ -1,27 +1,29 @@
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
 import torch
 import tkinter as tk
 import argparse
 import queue
 import traceback
 import webbrowser
-import os
 from types import SimpleNamespace
 from tkinter import ttk, messagebox, filedialog
+from concurrent.futures import ThreadPoolExecutor
+
 from base_models.get_base_models import BaseModelArguments, standard_models
 from data.supported_datasets import supported_datasets, standard_data_benchmark, internal_datasets
 from embedder import EmbeddingArguments
 from probes.get_probe import ProbeArguments
 from probes.trainers import TrainerArguments
 from main import MainProcess
-from concurrent.futures import ThreadPoolExecutor
 from data.data_mixin import DataArguments
 from probes.scikit_classes import ScikitArguments
 from utils import print_message, print_done, print_title
 from visualization.plot_result import create_plots
-
-
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+from benchmarks.proteingym.compare_scoring_methods import compare_scoring_methods
+from benchmarks.proteingym.dms_ids import expand_dms_ids_all
 
 
 class BackgroundTask:
@@ -76,6 +78,7 @@ class GUI(MainProcess):
         self.scikit_tab = ttk.Frame(self.notebook)
         self.replay_tab = ttk.Frame(self.notebook)
         self.viz_tab = ttk.Frame(self.notebook)
+        self.proteingym_tab = ttk.Frame(self.notebook)
 
         # Add tabs to the notebook
         self.notebook.add(self.info_tab, text="Info")
@@ -84,6 +87,7 @@ class GUI(MainProcess):
         self.notebook.add(self.embed_tab, text="Embedding")
         self.notebook.add(self.probe_tab, text="Probe")
         self.notebook.add(self.trainer_tab, text="Trainer")
+        self.notebook.add(self.proteingym_tab, text="ProteinGym")
         self.notebook.add(self.scikit_tab, text="Scikit")
         self.notebook.add(self.replay_tab, text="Replay")
         self.notebook.add(self.viz_tab, text="Visualization")
@@ -103,6 +107,7 @@ class GUI(MainProcess):
         self.build_embed_tab()
         self.build_probe_tab()
         self.build_trainer_tab()
+        self.build_proteingym_tab()
         self.build_scikit_tab()
         self.build_replay_tab()
         self.build_viz_tab()
@@ -634,7 +639,79 @@ class GUI(MainProcess):
         spin_read_scaler.grid(row=11, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.trainer_tab, 11, 2, "Read scaler for SQL storage (multiplier for batch size when reading from SQL database).")
 
+        # Deterministic
+        ttk.Label(self.trainer_tab, text="Deterministic:").grid(row=12, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["deterministic"] = tk.BooleanVar(value=False)
+        check_deterministic = ttk.Checkbutton(self.trainer_tab, variable=self.settings_vars["deterministic"])
+        check_deterministic.grid(row=12, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.trainer_tab, 12, 2, "Enable deterministic behavior for reproducibility (will slow down training).")
+
         run_button = ttk.Button(self.trainer_tab, text="Run trainer", command=self._run_trainer)
+        run_button.grid(row=99, column=0, columnspan=2, pady=(10, 10))
+
+    def build_proteingym_tab(self):
+        # ProteinGym Checkbox
+        ttk.Label(self.proteingym_tab, text="Run ProteinGym:").grid(row=0, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["proteingym"] = tk.BooleanVar(value=False)
+        check_proteingym = ttk.Checkbutton(self.proteingym_tab, variable=self.settings_vars["proteingym"])
+        check_proteingym.grid(row=0, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.proteingym_tab, 0, 2, "Enable ProteinGym zero-shot evaluation.")
+
+        # DMS IDs
+        ttk.Label(self.proteingym_tab, text="DMS IDs (space-separated or 'all'):").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["dms_ids"] = tk.StringVar(value="all")
+        entry_dms_ids = ttk.Entry(self.proteingym_tab, textvariable=self.settings_vars["dms_ids"], width=30)
+        entry_dms_ids.grid(row=1, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.proteingym_tab, 1, 2, "List of DMS IDs to evaluate, or 'all'.")
+
+        # Mode
+        ttk.Label(self.proteingym_tab, text="Mode:").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["mode"] = tk.StringVar(value="benchmark")
+        combo_mode = ttk.Combobox(
+            self.proteingym_tab,
+            textvariable=self.settings_vars["mode"],
+            values=["benchmark", "indels", "multiples", "singles"]
+        )
+        combo_mode.grid(row=2, column=1, padx=10, pady=5)
+        self.add_help_button(self.proteingym_tab, 2, 2, "ProteinGym zero-shot mode.")
+
+        # Scoring Method
+        ttk.Label(self.proteingym_tab, text="Scoring Method:").grid(row=3, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["scoring_method"] = tk.StringVar(value="masked_marginal")
+        combo_scoring_method = ttk.Combobox(
+            self.proteingym_tab,
+            textvariable=self.settings_vars["scoring_method"],
+            values=["masked_marginal", "mutant_marginal", "wildtype_marginal", "pll", "global_log_prob"]
+        )
+        combo_scoring_method.grid(row=3, column=1, padx=10, pady=5)
+        self.add_help_button(self.proteingym_tab, 3, 2, "Scoring method for zero-shot evaluation.")
+
+        # Scoring Window
+        ttk.Label(self.proteingym_tab, text="Scoring Window:").grid(row=4, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["scoring_window"] = tk.StringVar(value="optimal")
+        combo_scoring_window = ttk.Combobox(
+            self.proteingym_tab,
+            textvariable=self.settings_vars["scoring_window"],
+            values=["optimal", "sliding"]
+        )
+        combo_scoring_window.grid(row=4, column=1, padx=10, pady=5)
+        self.add_help_button(self.proteingym_tab, 4, 2, "Windowing strategy for scoring.")
+
+        # Batch Size
+        ttk.Label(self.proteingym_tab, text="Batch Size:").grid(row=5, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["pg_batch_size"] = tk.IntVar(value=32)
+        spin_pg_batch_size = ttk.Spinbox(self.proteingym_tab, from_=1, to=1024, textvariable=self.settings_vars["pg_batch_size"])
+        spin_pg_batch_size.grid(row=5, column=1, padx=10, pady=5)
+        self.add_help_button(self.proteingym_tab, 5, 2, "Batch size for ProteinGym scoring.")
+
+        # Compare Scoring Methods
+        ttk.Label(self.proteingym_tab, text="Compare Scoring Methods:").grid(row=6, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["compare_scoring_methods"] = tk.BooleanVar(value=False)
+        check_compare = ttk.Checkbutton(self.proteingym_tab, variable=self.settings_vars["compare_scoring_methods"])
+        check_compare.grid(row=6, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.proteingym_tab, 6, 2, "Compare different scoring methods across models and DMS assays.")
+
+        run_button = ttk.Button(self.proteingym_tab, text="Run ProteinGym", command=self._run_proteingym)
         run_button.grid(row=99, column=0, columnspan=2, pady=(10, 10))
 
     def build_scikit_tab(self):
@@ -803,6 +880,158 @@ class GUI(MainProcess):
         
         self.run_in_background(background_login)
 
+    def _create_probe_args(self):
+        print_message("Configuring probe...")
+        
+        # Gather settings from variables
+        self.full_args.probe_type = self.settings_vars["probe_type"].get()
+        self.full_args.tokenwise = self.settings_vars["tokenwise"].get()
+        self.full_args.pre_ln = self.settings_vars["pre_ln"].get()
+        self.full_args.n_layers = self.settings_vars["n_layers"].get()
+        self.full_args.hidden_size = self.settings_vars["hidden_size"].get()
+        self.full_args.dropout = self.settings_vars["dropout"].get()
+        
+        self.full_args.classifier_size = self.settings_vars["classifier_size"].get()
+        self.full_args.classifier_dropout = self.settings_vars["classifier_dropout"].get()
+        self.full_args.n_heads = self.settings_vars["n_heads"].get()
+        self.full_args.rotary = self.settings_vars["rotary"].get()
+        
+        pooling_str = self.settings_vars["probe_pooling_types"].get().strip()
+        self.full_args.probe_pooling_types = [p.strip() for p in pooling_str.split(",") if p.strip()]
+        
+        self.full_args.transformer_dropout = self.settings_vars["transformer_dropout"].get()
+        self.full_args.token_attention = self.settings_vars["token_attention"].get()
+        
+        self.full_args.sim_type = self.settings_vars["sim_type"].get()
+        self.full_args.save_model = self.settings_vars["save_model"].get()
+        self.full_args.production_model = self.settings_vars["production_model"].get()
+        
+        self.full_args.use_lora = self.settings_vars["lora"].get()
+        self.full_args.lora_r = self.settings_vars["lora_r"].get()
+        self.full_args.lora_alpha = self.settings_vars["lora_alpha"].get()
+        self.full_args.lora_dropout = self.settings_vars["lora_dropout"].get()
+        
+        # Create ProbeArguments
+        self.probe_args = ProbeArguments(**self.full_args.__dict__)
+        
+        # Update logger args
+        args_dict = {k: v for k, v in self.full_args.__dict__.items() if k != 'all_seqs' and 'token' not in k.lower() and 'api' not in k.lower()}
+        self.logger_args = SimpleNamespace(**args_dict)
+        self._write_args()
+        
+        print_message("Probe configuration saved")
+        print_done()
+
+    def _run_trainer(self):
+        print_message("Starting training...")
+        
+        # Gather settings
+        self.full_args.hybrid_probe = self.settings_vars["hybrid_probe"].get()
+        self.full_args.full_finetuning = self.settings_vars["full_finetuning"].get()
+        self.full_args.num_epochs = self.settings_vars["num_epochs"].get()
+        self.full_args.trainer_batch_size = self.settings_vars["probe_batch_size"].get()
+        self.full_args.base_batch_size = self.settings_vars["base_batch_size"].get()
+        self.full_args.gradient_accumulation_steps = self.settings_vars["probe_grad_accum"].get()
+        self.full_args.base_grad_accum = self.settings_vars["base_grad_accum"].get()
+        self.full_args.lr = self.settings_vars["lr"].get()
+        self.full_args.weight_decay = self.settings_vars["weight_decay"].get()
+        self.full_args.patience = self.settings_vars["patience"].get()
+        self.full_args.seed = self.settings_vars["seed"].get()
+        self.full_args.read_scaler = self.settings_vars["read_scaler"].get()
+        self.full_args.deterministic = self.settings_vars["deterministic"].get()
+        
+        # Create TrainerArguments
+        self.trainer_args = TrainerArguments(**self.full_args.__dict__)
+        
+        # Update logger args
+        args_dict = {k: v for k, v in self.full_args.__dict__.items() if k != 'all_seqs' and 'token' not in k.lower() and 'api' not in k.lower()}
+        self.logger_args = SimpleNamespace(**args_dict)
+        self._write_args()
+        
+        def background_train():
+            if self.full_args.full_finetuning:
+                self.run_full_finetuning()
+            elif self.full_args.hybrid_probe:
+                self.run_hybrid_probes()
+            else:
+                self.run_nn_probes()
+            print_done()
+            
+        self.run_in_background(background_train)
+
+    def _run_proteingym(self):
+        print_message("Starting ProteinGym...")
+        
+        # Gather settings
+        self.full_args.proteingym = self.settings_vars["proteingym"].get()
+        dms_ids_str = self.settings_vars["dms_ids"].get().strip()
+        if dms_ids_str == "all":
+            self.full_args.dms_ids = ["all"]
+        else:
+            self.full_args.dms_ids = dms_ids_str.split()
+            
+        self.full_args.mode = self.settings_vars["mode"].get()
+        self.full_args.scoring_method = self.settings_vars["scoring_method"].get()
+        self.full_args.scoring_window = self.settings_vars["scoring_window"].get()
+        self.full_args.pg_batch_size = self.settings_vars["pg_batch_size"].get()
+        self.full_args.compare_scoring_methods = self.settings_vars["compare_scoring_methods"].get()
+        
+        # Update logger args
+        args_dict = {k: v for k, v in self.full_args.__dict__.items() if k != 'all_seqs' and 'token' not in k.lower() and 'api' not in k.lower()}
+        self.logger_args = SimpleNamespace(**args_dict)
+        self._write_args()
+        
+        def background_proteingym():
+            if self.full_args.compare_scoring_methods and self.full_args.proteingym:
+                print_message("Running scoring method comparison...")
+                dms_ids = expand_dms_ids_all(self.full_args.dms_ids, mode=self.full_args.mode)
+                model_names = self.full_args.model_names
+                
+                if len(model_names) == 0:
+                    print_message("Error: No models selected for comparison")
+                    return
+
+                output_csv = os.path.join(self.full_args.results_dir, 'scoring_methods_comparison.csv')
+                
+                compare_scoring_methods(
+                    model_names=model_names,
+                    device=None,
+                    methods=None,
+                    dms_ids=dms_ids,
+                    progress=True,
+                    output_csv=output_csv
+                )
+                print_message(f"Scoring method comparison complete. Results saved to {output_csv}")
+            
+            elif self.full_args.proteingym:
+                self.run_proteingym_zero_shot()
+                
+            print_done()
+            
+        self.run_in_background(background_proteingym)
+
+    def _run_scikit(self):
+        print_message("Starting Scikit-learn models...")
+        
+        # Gather settings
+        self.full_args.use_scikit = self.settings_vars["use_scikit"].get()
+        self.full_args.scikit_n_iter = self.settings_vars["scikit_n_iter"].get()
+        self.full_args.scikit_cv = self.settings_vars["scikit_cv"].get()
+        self.full_args.scikit_random_state = self.settings_vars["scikit_random_state"].get()
+        self.full_args.scikit_model_name = self.settings_vars["scikit_model_name"].get()
+        self.full_args.n_jobs = self.settings_vars["n_jobs"].get()
+        
+        # Update logger args
+        args_dict = {k: v for k, v in self.full_args.__dict__.items() if k != 'all_seqs' and 'token' not in k.lower() and 'api' not in k.lower()}
+        self.logger_args = SimpleNamespace(**args_dict)
+        self._write_args()
+        
+        def background_scikit():
+            self.run_scikit_scheme()
+            print_done()
+            
+        self.run_in_background(background_scikit)
+
     def _select_models(self):
         print_message("Selecting models...")
         # Gather selected model names
@@ -913,100 +1142,6 @@ class GUI(MainProcess):
             
         self.run_in_background(background_get_embeddings)
 
-    def _create_probe_args(self):
-        print_message("Creating probe arguments...")
-        
-        # Convert pooling types string to list
-        probe_pooling_types = [p.strip() for p in self.settings_vars["probe_pooling_types"].get().split(",")]
-        
-        # Update full_args with probe settings
-        self.full_args.probe_type = self.settings_vars["probe_type"].get()
-        self.full_args.tokenwise = self.settings_vars["tokenwise"].get()
-        self.full_args.hidden_size = self.settings_vars["hidden_size"].get()
-        self.full_args.dropout = self.settings_vars["dropout"].get()
-        self.full_args.n_layers = self.settings_vars["n_layers"].get()
-        self.full_args.pre_ln = self.settings_vars["pre_ln"].get()
-        self.full_args.classifier_size = self.settings_vars["classifier_size"].get()
-        self.full_args.transformer_dropout = self.settings_vars["transformer_dropout"].get()
-        self.full_args.classifier_dropout = self.settings_vars["classifier_dropout"].get()
-        self.full_args.n_heads = self.settings_vars["n_heads"].get()
-        self.full_args.rotary = self.settings_vars["rotary"].get()
-        self.full_args.probe_pooling_types = probe_pooling_types
-        self.full_args.save_model = self.settings_vars["save_model"].get()
-        self.full_args.production_model = self.settings_vars["production_model"].get()
-        self.full_args.token_attention = self.settings_vars["token_attention"].get()
-        self.full_args.sim_type = self.settings_vars["sim_type"].get()
-        self.full_args.lora = self.settings_vars["lora"].get()
-        self.full_args.lora_r = self.settings_vars["lora_r"].get()
-        self.full_args.lora_alpha = self.settings_vars["lora_alpha"].get()
-        self.full_args.lora_dropout = self.settings_vars["lora_dropout"].get()
-
-        # Create probe args from full args
-        self.probe_args = ProbeArguments(**self.full_args.__dict__)
-        
-        print_message("Probe Arguments:")
-        for k, v in self.probe_args.__dict__.items():
-            if k != 'model_names':
-                print(f"{k}:\n{v}")
-        print("========================\n")
-        args_dict = {k: v for k, v in self.full_args.__dict__.items() if k != 'all_seqs' and 'token' not in k.lower() and 'api' not in k.lower()}
-        self.logger_args = SimpleNamespace(**args_dict)
-        self._write_args()
-        print_done()
-
-    def _run_trainer(self):
-        print_message("Starting training process...")
-        # Gather settings
-        self.full_args.lora = self.settings_vars["lora"].get()
-        self.full_args.hybrid_probe = self.settings_vars["hybrid_probe"].get()
-        self.full_args.full_finetuning = self.settings_vars["full_finetuning"].get()
-        self.full_args.lora_r = self.settings_vars["lora_r"].get()
-        self.full_args.lora_alpha = self.settings_vars["lora_alpha"].get()
-        self.full_args.lora_dropout = self.settings_vars["lora_dropout"].get()
-        self.full_args.num_epochs = self.settings_vars["num_epochs"].get()
-        self.full_args.trainer_batch_size = self.settings_vars["probe_batch_size"].get()
-        self.full_args.gradient_accumulation_steps = self.settings_vars["probe_grad_accum"].get()
-        self.full_args.lr = self.settings_vars["lr"].get()
-        self.full_args.weight_decay = self.settings_vars["weight_decay"].get()
-        self.full_args.patience = self.settings_vars["patience"].get()
-        self.full_args.seed = self.settings_vars["seed"].get()
-        self.full_args.read_scaler = self.settings_vars["read_scaler"].get()
-
-        def background_run_trainer():
-            self.trainer_args = TrainerArguments(**self.full_args.__dict__)
-            args_dict = {k: v for k, v in self.full_args.__dict__.items() if k != 'all_seqs' and 'token' not in k.lower() and 'api' not in k.lower()}
-            self.logger_args = SimpleNamespace(**args_dict)
-            self._write_args()
-
-            if self.full_args.full_finetuning:
-                self.run_full_finetuning()
-            elif self.full_args.hybrid_probe:
-                self.run_hybrid_probes()
-            else:
-                self.run_nn_probes()
-            print_done()
-                
-        self.run_in_background(background_run_trainer)
-
-    def _run_scikit(self):
-        print_message("Running scikit-learn models...")
-        # Gather settings for scikit
-        self.full_args.use_scikit = self.settings_vars["use_scikit"].get()
-        self.full_args.scikit_n_iter = self.settings_vars["scikit_n_iter"].get()
-        self.full_args.scikit_cv = self.settings_vars["scikit_cv"].get()
-        self.full_args.scikit_random_state = self.settings_vars["scikit_random_state"].get()
-        self.full_args.scikit_model_name = self.settings_vars["scikit_model_name"].get()
-        self.full_args.n_jobs = self.settings_vars["n_jobs"].get()
-
-        def background_run_scikit():
-            self.scikit_args = ScikitArguments(**self.full_args.__dict__)
-            args_dict = {k: v for k, v in self.full_args.__dict__.items() if k != 'all_seqs' and 'token' not in k.lower() and 'api' not in k.lower()}
-            self.logger_args = SimpleNamespace(**args_dict)
-            self._write_args()
-            
-            self.run_scikit_scheme()
-            print_done()
-            
         self.run_in_background(background_run_scikit)
 
     def _browse_replay_log(self):

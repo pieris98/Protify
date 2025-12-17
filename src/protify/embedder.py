@@ -2,18 +2,25 @@ import os
 import torch
 import warnings
 import sqlite3
-import gzip
+import lz4.frame
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from dataclasses import dataclass
 from typing import Optional, Callable, List
 from huggingface_hub import hf_hub_download
-from seed_utils import seed_worker, dataloader_generator, get_global_seed
 
-from data.dataset_classes import SimpleProteinDataset
-from base_models.get_base_models import get_base_model
-from pooler import Pooler
-from utils import torch_load, print_message
+try:
+    from seed_utils import seed_worker, dataloader_generator, get_global_seed
+    from data.dataset_classes import SimpleProteinDataset
+    from base_models.get_base_models import get_base_model
+    from pooler import Pooler
+    from utils import torch_load, print_message
+except ImportError:
+    from .seed_utils import seed_worker, dataloader_generator, get_global_seed
+    from .data.dataset_classes import SimpleProteinDataset
+    from .base_models.get_base_models import get_base_model
+    from .pooler import Pooler
+    from .utils import torch_load, print_message
 
 
 def build_collator(tokenizer) -> Callable[[List[str]], tuple[torch.Tensor, torch.Tensor]]:
@@ -98,20 +105,20 @@ class Embedder:
         try:
             local_path = hf_hub_download(
                 repo_id=self.download_dir,
-                filename=f'embeddings/{filename}.gz',
+                filename=f'embeddings/{filename}.lz4',
                 repo_type='dataset'
             )
         except:
             print(f'No embeddings found for {model_name} in {self.download_dir}')
             return
 
-        # unzip
-        print_message(f'Unzipping {local_path}')
-        with gzip.open(local_path, 'rb') as f_in:
-            with open(local_path.replace('.gz', ''), 'wb') as f_out:
+        # decompress
+        print_message(f'Decompressing {local_path}')
+        with lz4.frame.open(local_path, 'rb') as f_in:
+            with open(local_path.replace('.lz4', ''), 'wb') as f_out:
                 f_out.write(f_in.read())
         # move to embedding_save_dir
-        unzipped_path = local_path.replace('.gz', '')
+        unzipped_path = local_path.replace('.lz4', '')
         final_path = os.path.join(self.embedding_save_dir, filename)
         
         if os.path.exists(final_path):
@@ -279,7 +286,7 @@ class Embedder:
         if self.sql:
             conn.commit()
             conn.close()
-            return None
+            return embeddings_dict
         
         if self.save_embeddings:
             print_message(f"Saving embeddings to {save_path}")
@@ -307,7 +314,7 @@ class Embedder:
             return self._embed_sequences(to_embed, save_path, model, tokenizer, embeddings_dict)
         else:
             print_message(f"No sequences to embed with {clean_model_name}")
-            return None
+            return embeddings_dict
 
 
 if __name__ == '__main__':
@@ -315,7 +322,7 @@ if __name__ == '__main__':
     # py -m embedder
     import argparse
     from huggingface_hub import upload_file, login
-    from data.supported_datasets import possible_with_vector_reps
+    from data.supported_datasets import vector_benchmark
     from data.data_mixin import DataArguments, DataMixin
     from base_models.get_base_models import BaseModelArguments, get_base_model
     from seed_utils import set_global_seed
@@ -328,6 +335,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--embed_dtype', type=str, default='float16')
     parser.add_argument('--model_names', nargs='+', default=['standard'])
+    parser.add_argument('--models_to_skip', nargs='+', default=[], help='When checking for existing embeddings, skip these models.')
     parser.add_argument('--embedding_save_dir', type=str, default='embeddings')
     parser.add_argument('--download_dir', type=str, default='Synthyra/vector_embeddings')
     parser.add_argument('--embedding_pooling_types', nargs='+', default=['mean', 'var'], help='Pooling types for embeddings.')
@@ -349,44 +357,55 @@ if __name__ == '__main__':
 
     # Get data    
     data_args = DataArguments(
-        data_names=possible_with_vector_reps,
+        data_names=vector_benchmark,
         max_length=1024,
         trim=False
     )
     all_seqs = DataMixin(data_args).get_data()[1]
 
-    # Set up embedder
-    embedder_args = EmbeddingArguments(
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        download_embeddings=True,
-        matrix_embed=False,
-        embedding_pooling_types=args.embedding_pooling_types,
-        save_embeddings=True,
-        embed_dtype=dtype,
-        sql=False,
-        embedding_save_dir='embeddings'
-    )
-    embedder = Embedder(embedder_args, all_seqs)
-
     # Embed for each model
     model_args = BaseModelArguments(model_names=args.model_names)
     for model_name in model_args.model_names:
+
+        embedder_args = EmbeddingArguments(
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            download_embeddings=model_name not in args.models_to_skip,
+            matrix_embed=False,
+            embedding_pooling_types=args.embedding_pooling_types,
+            save_embeddings=True,
+            embed_dtype=dtype,
+            sql=False,
+            embedding_save_dir='embeddings'
+        )
+        embedder = Embedder(embedder_args, all_seqs)
+
         _ = embedder(model_name)
         filename = get_embedding_filename(model_name, False, embedder_args.pooling_types, 'pth')
         save_path = os.path.join(args.embedding_save_dir, filename)
         
-        compressed_path = f"{save_path}.gz"
+        compressed_path = f"{save_path}.lz4"
         print(f"Compressing {save_path} to {compressed_path}")
         with open(save_path, 'rb') as f_in:
-            with gzip.open(compressed_path, 'wb') as f_out:
-                f_out.write(f_in.read())
+            data = f_in.read()
+            # Use high compression level for better compression ratio on dense float data
+            # Try level 9 first (standard max), fall back to lower if not supported
+            try:
+                compressed_data = lz4.frame.compress(
+                    data,
+                    compression_level=9,  # High compression (0-9 standard, up to 16 for HC)
+                    block_size=1048576  # 1MB blocks for better compression
+                )
+            except (ValueError, TypeError):
+                # Fallback to default compression if level 9 not supported
+                compressed_data = lz4.frame.compress(data, block_size=1048576)
+            with open(compressed_path, 'wb') as f_out:
+                f_out.write(compressed_data)
         upload_path = compressed_path
-        path_in_repo = f'embeddings/{filename}.gz'
-
+        path_in_repo = f'embeddings/{filename}.lz4'
             
         upload_file(
-            path_or_fileobj=upload_path,
+             path_or_fileobj=upload_path,
             path_in_repo=path_in_repo,
             repo_id=args.download_dir,
             repo_type='dataset'

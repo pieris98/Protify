@@ -1,6 +1,9 @@
 {
     "PG_data_location": "~/.cache/proteingym",
     "model_list_zero_shot_substitutions_DMS":{
+        "E1-150":{"input_score_name":"E1-150", "location":"E1/150M", "directionality": 1, "key": "mutant","model_type":"Single sequence"},
+        "E1-300":{"input_score_name":"E1-300", "location":"E1/300M", "directionality": 1, "key": "mutant","model_type":"Single sequence"},
+        "E1-600":{"input_score_name":"E1-600", "location":"E1/600M", "directionality": 1, "key": "mutant","model_type":"Single sequence"},
         "ESM2-8M":{"input_score_name":"ESM2-8", "location":"ESM2/8M", "directionality": 1, "key": "mutant","model_type":"Single sequence"},
         "ESM2-35M":{"input_score_name":"ESM2-35", "location":"ESM2/35M", "directionality": 1, "key": "mutant","model_type":"Single sequence"},
         "ESM2-150M":{"input_score_name":"ESM2-150", "location":"ESM2/150M", "directionality": 1, "key": "mutant","model_type":"Single sequence"},

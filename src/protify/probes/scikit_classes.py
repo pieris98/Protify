@@ -2,10 +2,16 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import RandomizedSearchCV
 from typing import Dict, Any, Tuple, Optional
-from metrics import get_regression_scorer, get_classification_scorer, classification_scorer, regression_scorer
 
-from utils import print_message
-from seed_utils import get_global_seed
+try:
+    from metrics import get_regression_scorer, get_classification_scorer, classification_scorer, regression_scorer
+    from utils import print_message
+    from seed_utils import get_global_seed
+except ImportError:
+    from ..metrics import get_regression_scorer, get_classification_scorer, classification_scorer, regression_scorer
+    from ..utils import print_message
+    from ..seed_utils import get_global_seed
+
 from .lazy_predict import (
     LazyRegressor,
     LazyClassifier,

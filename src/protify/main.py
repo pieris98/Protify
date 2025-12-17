@@ -1,16 +1,13 @@
 import os
-import sys
-import subprocess
-import argparse
-import yaml
-import pandas as pd
-import time
-from types import SimpleNamespace
-
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
+import sys
+import subprocess
+import argparse
+import yaml
+from types import SimpleNamespace
 
 
 def parse_arguments():  
@@ -112,6 +109,7 @@ def parse_arguments():
                         help="Enable deterministic behavior for reproducibility (will slow down training).")
     parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning (default: False).")
     parser.add_argument("--hybrid_probe", action="store_true", default=False, help="Hybrid probe (default: False).")
+    parser.add_argument("--num_runs", type=int, default=1, help="Number of training runs with different seeds. Results will show mean±std across runs.")
     
     # ----------------- ProteinGym Arguments ----------------- #
     parser.add_argument("--dms_ids", nargs="+", default=["all"],
@@ -127,6 +125,8 @@ def parse_arguments():
                         help="Batch size for ProteinGym zero-shot scoring (default: 32).")
     parser.add_argument("--compare_scoring_methods", action="store_true", default=False,
                         help="Compare different scoring methods across models and DMS assays (default: False).")
+    parser.add_argument("--score_only", action="store_true", default=False,
+                        help="Only run the ProteinGym benchmarking script on existing CSV files, skip zero-shot scoring (default: False).")
 
     # ----------------- W&B Arguments ----------------- #
     parser.add_argument("--use_wandb_hyperopt", action="store_true", default=False, help="Use Weights & Biases hyperparameter optimization.")
@@ -189,6 +189,9 @@ def parse_arguments():
             yaml_args.mode = None
         if not hasattr(yaml_args, 'scoring_method'):
             yaml_args.scoring_method = "masked_marginal"
+        # Ensure num_runs default exists
+        if not hasattr(yaml_args, 'num_runs'):
+            yaml_args.num_runs = 1
         return yaml_args
     else:
         return args
@@ -246,6 +249,7 @@ from visualization.plot_result import create_plots
 from hyperopt_utils import HyperoptModule
 from benchmarks.proteingym.zero_shot import run_zero_shot
 from benchmarks.proteingym.scoring_utils import collect_proteingym_spearman
+from benchmarks.proteingym.scorer import ProteinGymRunner
 from benchmarks.proteingym.compare_scoring_methods import compare_scoring_methods
 from seed_utils import set_global_seed
 
@@ -297,6 +301,21 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         for model_name in self.model_args.model_names:
             _ = embedder(model_name)
 
+    def _create_model_factory(self, model_name, tokenwise, num_labels, hybrid):
+        """Function for creating fresh models in multi-run mode."""
+        def factory():
+            model, _ = get_base_model_for_training(model_name, tokenwise=tokenwise, num_labels=num_labels, hybrid=hybrid)
+            if self.probe_args.lora:
+                model = wrap_lora(model, self.probe_args.lora_r, self.probe_args.lora_alpha, self.probe_args.lora_dropout)
+            return model
+        return factory
+    
+    def _create_probe_factory(self):
+        """Function for creating fresh probes in multi-run mode."""
+        def factory():
+            return get_probe(self.probe_args)
+        return factory
+
     def _run_nn_probe(
             self,
             model_name,
@@ -309,9 +328,12 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             ppi=False,
             sweep_mode: bool = False,
         ):
+        # Create initial probe (for single run or as template for multi-run)
         probe = get_probe(self.probe_args)
         summary(probe)
-        probe, valid_metrics, test_metrics = self.trainer_probe(
+        
+        # trainer_probe handles multi-run internally if num_runs > 1
+        probe, valid_metrics, test_metrics, _, _ = self.trainer_probe(
             model=probe,
             tokenizer=tokenizer,
             model_name=model_name,
@@ -388,11 +410,14 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         ):
         tokenwise = self.probe_args.tokenwise
         num_labels = self.probe_args.num_labels
+        num_runs = getattr(self.trainer_args, 'num_runs', 1)
+        
+        model_factory = self._create_model_factory(model_name, tokenwise, num_labels, hybrid=False) if num_runs > 1 else None
         model, tokenizer = get_base_model_for_training(model_name, tokenwise=tokenwise, num_labels=num_labels, hybrid=False)
         if self.probe_args.lora:
             model = wrap_lora(model, self.probe_args.lora_r, self.probe_args.lora_alpha, self.probe_args.lora_dropout)
         summary(model)
-        model, valid_metrics, test_metrics = self.trainer_base_model(
+        model, valid_metrics, test_metrics, _, _ = self.trainer_base_model(
             model=model,
             tokenizer=tokenizer,
             model_name=model_name,
@@ -402,6 +427,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             test_dataset=test_set,
             ppi=ppi,
             log_id=self.random_id,
+            model_factory=model_factory,
         )
         if not sweep_mode:
             self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
@@ -444,13 +470,17 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         
         tokenwise = self.probe_args.tokenwise
         num_labels = self.probe_args.num_labels
+        num_runs = getattr(self.trainer_args, 'num_runs', 1)
+        
+        model_factory = self._create_model_factory(model_name, tokenwise, num_labels, hybrid=True) if num_runs > 1 else None
+        probe_factory = self._create_probe_factory() if num_runs > 1 else None
         model, tokenizer = get_base_model_for_training(model_name, tokenwise=tokenwise, num_labels=num_labels, hybrid=True)
         if self.probe_args.lora:
             model = wrap_lora(model, self.probe_args.lora_r, self.probe_args.lora_alpha, self.probe_args.lora_dropout)
         probe = get_probe(self.probe_args)
         summary(model)
         summary(probe)
-        model, valid_metrics, test_metrics = self.trainer_hybrid_model(
+        model, valid_metrics, test_metrics, _, _ = self.trainer_hybrid_model(
             model=model,
             tokenizer=tokenizer,
             probe=probe,
@@ -462,6 +492,8 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             emb_dict=emb_dict,
             ppi=ppi,
             log_id=self.random_id,
+            model_factory=model_factory,
+            probe_factory=probe_factory,
         )
         if not sweep_mode:
             self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
@@ -482,6 +514,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 self.trainer_args.task_type = label_type
                 self.logger.info(f'Training probe for {data_name} with {model_name}')
                 _ = self._run_full_finetuning(model_name, data_name, train_set, valid_set, test_set, ppi)
+                torch.cuda.empty_cache()
 
     @log_method_calls
     def run_hybrid_probes(self):
@@ -545,6 +578,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     emb_dict=emb_dict,
                     ppi=ppi,
                 )
+                torch.cuda.empty_cache()
                 ### TODO may link from probe here to running inference on input csv or HF datasets
 
     @log_method_calls
@@ -616,6 +650,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     emb_dict=emb_dict,
                     ppi=ppi,
                 )
+                torch.cuda.empty_cache()
                 ### TODO may link from probe here to running inference on input csv or HF datasets
 
     @log_method_calls
@@ -652,74 +687,44 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         create_plots(results_file, output_dir)
         print_message("Plots generated successfully!")
         
-    @log_method_calls
     def run_proteingym_zero_shot(self):
         """Run ProteinGym zero-shot for all specified models and DMS ids."""
-        # Signal base model loader to use MaskedLM variants
-        dms_ids = getattr(args, 'dms_ids', []) or []
-        mode = getattr(args, 'mode', 'benchmark')
+        dms_ids = getattr(self.full_args, 'dms_ids', []) or []
+        mode = getattr(self.full_args, 'mode', 'benchmark')
         dms_ids = expand_dms_ids_all(dms_ids, mode=mode)
         if len(dms_ids) == 0:
             raise ValueError("--dms_ids is required when --proteingym is specified")
-        model_names = getattr(args, 'model_names', []) or []
+        model_names = getattr(self.full_args, 'model_names', []) or []
         if len(model_names) == 0:
             raise ValueError("--model_names must specify at least one model")
         # Where to write results
-        results_root = getattr(args, 'results_dir', 'results')
+        results_root = getattr(self.full_args, 'results_dir', 'results')
         results_dir = os.path.join(results_root, 'proteingym')
-        scoring_method = getattr(args, 'scoring_method', 'masked_marginal')
-        scoring_window = getattr(args, 'scoring_window', 'optimal')
+        scoring_method = getattr(self.full_args, 'scoring_method', 'masked_marginal')
+        scoring_window = getattr(self.full_args, 'scoring_window', 'optimal')
         if isinstance(mode, str) and mode.lower() == 'indels':
             print_message("Only pll is currently supported for indels scoring.")
             scoring_method = 'pll'
-        # Track timing per model
-        self._proteingym_timing = {}
-        for model_name in model_names:
-            self.logger.info(f"Running ProteinGym zero-shot with [{scoring_method}] scoring on {len(dms_ids)} DMS ids with model {model_name}")
-            start_time = time.time()
-            _ = run_zero_shot(
-                dms_ids=dms_ids,
-                model_name=model_name,
-                mode=mode,
-                repo_id="GleghornLab/ProteinGym_DMS",
-                results_dir=results_dir,
-                device=None,
-                scoring_method=scoring_method,
-                scoring_window=scoring_window,
-                batch_size=getattr(args, 'pg_batch_size', 32),
-            )
-            elapsed_time = time.time() - start_time
-            self._proteingym_timing[model_name] = elapsed_time
+        
+        # Log the run
+        self.logger.info(f"Running ProteinGym zero-shot with [{scoring_method}] scoring on {len(dms_ids)} DMS ids with models: {model_names}")
+        
+        runner = ProteinGymRunner(
+            results_dir=results_dir,
+            repo_id="GleghornLab/ProteinGym_DMS",
+        )
+        self._proteingym_timing = runner.run(
+            dms_ids=dms_ids,
+            model_names=model_names,
+            mode=mode,
+            scoring_method=scoring_method,
+            scoring_window=scoring_window,
+            batch_size=getattr(self.full_args, 'pg_batch_size', 32),
+        )
         print_message(f"ProteinGym zero-shot complete. Results in {results_dir}")
 
         # After all models are scored, run standardized performance benchmarking
-        try:
-            pg_dir = os.path.join(os.path.dirname(__file__), 'benchmarks', 'proteingym')
-            reference_mapping = os.path.join(pg_dir, 'DMS_substitutions.csv')
-            config_path = os.path.join(pg_dir, 'config.json')
-            perf_out_dir = os.path.join(results_dir, 'benchmark_performance')
-            os.makedirs(perf_out_dir, exist_ok=True)
-
-            script_path = os.path.join(pg_dir, 'DMS_benchmark_performance.py')
-            script_cmd = [
-                sys.executable, script_path,
-                '--input_scoring_files_folder', results_dir,
-                '--output_performance_file_folder', perf_out_dir,
-                '--DMS_reference_file_path', reference_mapping,
-                '--config_file', config_path,
-            ]
-            script_cmd += ['--scoring_method', scoring_method]
-            if isinstance(model_names, (list, tuple)) and len(model_names) > 0:
-                script_cmd += ['--selected_model_names', *model_names]
-            if isinstance(dms_ids, (list, tuple)) and len(dms_ids) > 0:
-                script_cmd += ['--dms_ids', *[str(x) for x in dms_ids]]
-            if isinstance(mode, str) and mode.lower() == 'indels':
-                script_cmd.append('--indel_mode')
-            subprocess.run(script_cmd, check=True)
-            
-            print_message(f"Benchmark performance computed. Outputs in {perf_out_dir}")
-        except Exception as e:
-            print_message(f"Failed to compute benchmark performance: {e}")
+        runner.run_benchmark(model_names, dms_ids, mode, scoring_method)
 
 def main(args: SimpleNamespace):
     chosen_seed = set_global_seed(args.seed)
@@ -803,20 +808,47 @@ def main(args: SimpleNamespace):
               main.save_embeddings_to_disk()
               main.run_nn_probes()
         else:
-            print_message("No datasets specified; proceeding with ProteinGym.")
+            # Determine if current experiment passed datasets
+            has_datasets = bool(getattr(args, 'data_names', []) or getattr(args, 'data_dirs', []))
 
-        if getattr(args, 'proteingym', False):
-            main.run_proteingym_zero_shot()
-            try:
-                pg_scores = collect_proteingym_spearman(args, getattr(args, 'model_names', []))
-                for model_name, score in pg_scores.items():
-                    if isinstance(score, (int, float)):
-                        training_time = getattr(main, '_proteingym_timing', {}).get(model_name, None)
-                        metrics_dict = {'spearman': float(score)}
-                        metrics_dict['training_time_seconds'] = float(training_time)
-                        main.log_metrics('proteingym', model_name, metrics_dict)
-            except Exception as e:
-                print_message(f"Failed to log ProteinGym metrics: {e}")
+            # Run through datasets first (if any)
+            if has_datasets:
+                main.apply_current_settings()
+                main.get_datasets()
+                num_seqs = len(main.all_seqs) if hasattr(main, 'all_seqs') else 0
+                print_message(f"Number of sequences: {num_seqs}")
+
+                if main.full_args.full_finetuning:
+                    main.run_full_finetuning()
+
+                elif main.full_args.hybrid_probe:
+                    main.save_embeddings_to_disk()
+                    main.run_hybrid_probes()
+
+                elif main.full_args.use_scikit:
+                    main.save_embeddings_to_disk()
+                    main.run_scikit_scheme()
+                
+                else:
+                    main.save_embeddings_to_disk()
+                    main.run_nn_probes()
+            else:
+                print_message("No datasets specified; proceeding with ProteinGym.")
+
+            if getattr(args, 'proteingym', False):
+                main.run_proteingym_zero_shot()
+                try:
+                    results_root = getattr(args, 'results_dir', 'results')
+                    results_dir = os.path.join(results_root, 'proteingym')
+                    pg_scores = ProteinGymRunner.collect_spearman(results_dir, getattr(args, 'model_names', []))
+                    for model_name, score in pg_scores.items():
+                        if isinstance(score, (int, float)):
+                            training_time = getattr(main, '_proteingym_timing', {}).get(model_name, None)
+                            metrics_dict = {'spearman': float(score)}
+                            metrics_dict['training_time_seconds'] = float(training_time)
+                            main.log_metrics('proteingym', model_name, metrics_dict)
+                except Exception as e:
+                    print_message(f"Failed to log ProteinGym metrics: {e}")
 
         # Write results and generate plots
         main.write_results()

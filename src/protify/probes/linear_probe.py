@@ -65,6 +65,9 @@ class LinearProbe(PreTrainedModel):
         self.layers = nn.Sequential(*layers)
 
     def forward(self, embeddings: torch.Tensor, labels: Optional[torch.Tensor] = None) -> SequenceClassifierOutput:
+        # Convert embeddings to match model's dtype to avoid dtype mismatch errors
+        # This handles cases where embeddings are fp32 but model is fp16 (or vice versa)
+        embeddings = embeddings.to(next(self.layers.parameters()).dtype)
         logits = self.layers(embeddings)
         if self.task_type == 'sigmoid_regression':
             logits = logits.sigmoid()

@@ -2,9 +2,16 @@ import torch
 import torch.nn as nn
 from typing import Optional
 from transformers import EsmTokenizer, EsmConfig
-from model_components.transformer import TransformerForMaskedLM, TransformerConfig
 from transformers.utils import ModelOutput
 from dataclasses import dataclass
+
+try:
+    from model_components.transformer import TransformerForMaskedLM, TransformerConfig
+except:
+    try:
+        from protify.model_components.transformer import TransformerForMaskedLM, TransformerConfig
+    except:
+        from ..model_components.transformer import TransformerForMaskedLM, TransformerConfig
 
 
 presets = {
@@ -16,10 +23,12 @@ presets = {
     'Random-ESM2-650': 'facebook/esm2_t36_650M_UR50D',
 }
 
+
 @dataclass
 class RandomModelOutput(ModelOutput):
     last_hidden_state: torch.FloatTensor = None
     logits: torch.FloatTensor = None
+
 
 class RandomModel(nn.Module):
     def __init__(self, config: EsmConfig):

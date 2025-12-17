@@ -67,6 +67,7 @@ class SwiGLU(nn.Module):
         hidden = F.silu(x1) * x2
         return self.w3(hidden)
 
+
 def memory_efficient_attention(
     query: torch.Tensor,
     key: torch.Tensor,
@@ -102,6 +103,7 @@ def memory_efficient_attention(
     attn = F.dropout(attn, p)
     attn = attn @ value
     return attn.transpose(1, 2).contiguous()
+
 
 class RMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):

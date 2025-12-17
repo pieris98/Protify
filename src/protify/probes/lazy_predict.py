@@ -21,8 +21,14 @@ from sklearn.metrics import (
     r2_score,
     mean_squared_error,
 )
-from utils import print_message
-from seed_utils import get_global_seed
+
+try:
+    from utils import print_message
+    from seed_utils import get_global_seed
+except ImportError:
+    from ..utils import print_message
+    from ..seed_utils import get_global_seed
+
 warnings.filterwarnings("ignore")
 pd.set_option("display.precision", 2)
 pd.set_option("display.float_format", lambda x: "%.2f" % x)

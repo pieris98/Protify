@@ -113,6 +113,9 @@ class TransformerForSequenceClassification(PreTrainedModel):
             labels: Optional[torch.Tensor] = None,
             output_attentions: Optional[bool] = False,
     ) -> SequenceClassifierOutput:
+        # Convert embeddings to match model's dtype to avoid dtype mismatch errors
+        # This handles cases where embeddings are fp32 but model is fp16 (or vice versa)
+        embeddings = embeddings.to(next(self.input_layer.parameters()).dtype)
         x = self.input_layer(embeddings)
         x = self.transformer(x, attention_mask)
         x = self.pooler(x, attention_mask)
@@ -180,6 +183,9 @@ class TransformerForTokenClassification(PreTrainedModel):
             labels: Optional[torch.Tensor] = None,
             output_attentions: Optional[bool] = False,
     ) -> TokenClassifierOutput:
+        # Convert embeddings to match model's dtype to avoid dtype mismatch errors
+        # This handles cases where embeddings are fp32 but model is fp16 (or vice versa)
+        embeddings = embeddings.to(next(self.input_layer.parameters()).dtype)
         x = self.input_layer(embeddings)
         x = self.transformer(x, attention_mask)
         logits = self.classifier(x)

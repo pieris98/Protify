@@ -876,6 +876,9 @@ def web_interface():
             hybrid_probe, full_finetuning, num_epochs, probe_batch_size,
             base_batch_size, probe_grad_accum, base_grad_accum, lr,
             weight_decay, patience, seed, read_scaler, deterministic,
+            # ProteinGym tab
+            proteingym, dms_ids, mode, scoring_method, scoring_window,
+            pg_batch_size, compare_scoring_methods,
             # Scikit tab
             use_scikit, scikit_n_iter, scikit_cv, scikit_random_state,
             scikit_model_name, n_jobs,
@@ -988,7 +991,16 @@ def web_interface():
             "patience": int(patience) if patience else 1,
             "seed": str_to_int(seed),
             "read_scaler": int(read_scaler) if read_scaler else 100,
+            "read_scaler": int(read_scaler) if read_scaler else 100,
             "deterministic": bool(deterministic),
+            # ProteinGym
+            "proteingym": bool(proteingym),
+            "dms_ids": str_to_list(dms_ids) if dms_ids else ["all"],
+            "mode": str(mode) if mode else "benchmark",
+            "scoring_method": str(scoring_method) if scoring_method else "masked_marginal",
+            "scoring_window": str(scoring_window) if scoring_window else "optimal",
+            "pg_batch_size": int(pg_batch_size) if pg_batch_size else 32,
+            "compare_scoring_methods": bool(compare_scoring_methods),
             # Scikit
             "use_scikit": bool(use_scikit),
             "scikit_n_iter": int(scikit_n_iter) if scikit_n_iter else 10,
@@ -1382,6 +1394,15 @@ def web_interface():
                             seed = gr.Textbox(label="Seed (optional)", value="")
                             read_scaler = gr.Number(label="Read Scaler", value=100, precision=0)
                             deterministic = gr.Checkbox(label="Deterministic", value=False)
+
+                        with gr.Accordion("🧬 ProteinGym Settings", open=False):
+                            proteingym = gr.Checkbox(label="Run ProteinGym", value=False)
+                            dms_ids = gr.Textbox(label="DMS IDs (space-separated or 'all')", value="all")
+                            mode = gr.Dropdown(choices=["benchmark", "indels", "multiples", "singles"], value="benchmark", label="Mode")
+                            scoring_method = gr.Dropdown(choices=["masked_marginal", "mutant_marginal", "wildtype_marginal", "pll", "global_log_prob"], value="masked_marginal", label="Scoring Method")
+                            scoring_window = gr.Dropdown(choices=["optimal", "sliding"], value="optimal", label="Scoring Window")
+                            pg_batch_size = gr.Number(label="ProteinGym Batch Size", value=32, precision=0)
+                            compare_scoring_methods = gr.Checkbox(label="Compare Scoring Methods", value=False)
                         
                         with gr.Accordion("📈 Scikit Settings", open=False):
                             use_scikit = gr.Checkbox(label="Use Scikit", value=False)
@@ -1430,6 +1451,7 @@ def web_interface():
                     hybrid_probe, full_finetuning, num_epochs, probe_batch_size,
                     base_batch_size, probe_grad_accum, base_grad_accum, lr,
                     weight_decay, patience, seed, read_scaler, deterministic,
+                    proteingym, dms_ids, mode, scoring_method, scoring_window, pg_batch_size, compare_scoring_methods,
                     use_scikit, scikit_n_iter, scikit_cv, scikit_random_state,
                     scikit_model_name, n_jobs,
                     job_name

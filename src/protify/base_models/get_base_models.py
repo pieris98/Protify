@@ -1,86 +1,6 @@
 from dataclasses import dataclass
 
-
-currently_supported_models = [
-    'ESM2-8',
-    'ESM2-35',
-    'ESM2-150',
-    'ESM2-650',
-    'ESM2-3B',
-    'Random',
-    'Random-Transformer',
-    'Random-ESM2-8',
-    'Random-ESM2-35', # same as Random-Transformer
-    'Random-ESM2-150',
-    'Random-ESM2-650',
-    'ESMC-300',
-    'ESMC-600',
-    'E1-150',
-    'E1-300',
-    'E1-600',
-    'ProtBert',
-    'ProtBert-BFD',
-    'ProtT5',
-    'ProtT5-XL-UniRef50-full-prec',
-    'ProtT5-XXL-UniRef50',
-    'ProtT5-XL-BFD',
-    'ProtT5-XXL-BFD',
-    'ANKH-Base',
-    'ANKH-Large',
-    'ANKH2-Large',
-    'GLM2-150',
-    'GLM2-650',
-    'GLM2-GAIA',
-    'DPLM-150',
-    'DPLM-650',
-    'DPLM-3B',
-    'DSM-150',
-    'DSM-650',
-    'DSM-PPI',
-    'OneHot-Protein',
-    'OneHot-DNA',
-    'OneHot-RNA',
-    'OneHot-Codon',
-    'AMPLIFY-120',
-    'AMPLIFY-350',
-]
-
-standard_models = [
-    'Random',
-    'Random-Transformer',
-    'OneHot-Protein',
-    'ESM2-8',
-    'ESM2-35',
-    'ESM2-150',
-    'ESM2-650',
-    'ESM2-3B',
-    'ESMC-300',
-    'ESMC-600',
-    'E1-150',
-    'E1-300',
-    'E1-600',
-    'DSM-150',
-    'DSM-650',
-    'DSM-PPI',
-    'ProtBert',
-    'ProtBert-BFD',
-    'ProtT5',
-    'ANKH-Base',
-    'ANKH-Large',
-    'ANKH2-Large',
-    'GLM2-150',
-    'GLM2-650',
-    'GLM2-GAIA',
-    'DPLM-150',
-    'DPLM-650',
-    'DSM-150',
-    'DSM-650',
-    'DSM-PPI',
-    'AMPLIFY-120',
-    'AMPLIFY-350',
-]
-
-experimental_models = []
+from .supported_models import currently_supported_models, standard_models, experimental_models
 
 
 @dataclass
@@ -98,7 +18,10 @@ def get_base_model(model_name: str, masked_lm: bool = False):
     if 'random' in model_name.lower():
         from .random import build_random_model
         return build_random_model(model_name, masked_lm=masked_lm)
-    elif 'esm2' in model_name.lower() or 'dsm' in model_name.lower():
+    elif 'esm2' in model_name.lower() and model_name.lower().count('esm2') == 1:
+        from .esm2 import build_esm2_model
+        return build_esm2_model(model_name, masked_lm=masked_lm)
+    elif 'dsm' in model_name.lower():
         from .esm2 import build_esm2_model
         return build_esm2_model(model_name, masked_lm=masked_lm)
     elif 'esmc' in model_name.lower():
@@ -131,10 +54,13 @@ def get_base_model(model_name: str, masked_lm: bool = False):
     elif 'e1' in model_name.lower():
         from .e1 import build_e1_model
         return build_e1_model(model_name, masked_lm=masked_lm)
+    elif 'vec2vec' in model_name.lower():
+        from .vec2vec import build_vec2vec_model
+        return build_vec2vec_model(model_name, masked_lm=masked_lm)
     elif 'custom' in model_name.lower():
         model_path = model_name.split('---')[-1]
         from .custom_model import build_custom_model
-        return build_custom_model(model_path)
+        return build_custom_model(model_path, masked_lm=masked_lm)
     else:
         raise ValueError(f"Model {model_name} not supported")
 

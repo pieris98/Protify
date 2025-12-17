@@ -25,6 +25,7 @@ pip install -r requirements.txt
 # Install torch and torchvision
 echo "Installing torch and torchvision..."
 pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128 -U
+pip install numpy==1.26.4
 
 # List installed packages for verification
 echo -e "\nInstalled packages:"

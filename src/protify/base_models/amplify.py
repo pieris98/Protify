@@ -74,6 +74,7 @@ class AMPLIFYConfig(PretrainedConfig):
         self.pad_token_id = pad_token_id
         self.max_length = max_length
 
+
 class EncoderBlock(nn.Module):
     """Transformer encoder block."""
 
@@ -229,6 +230,9 @@ class AMPLIFY(AMPLIFYPreTrainedModel):
             pad_mask = None
 
         # RoPE
+        if src.shape[1] > self.freqs_cis.shape[0]:
+            self.freqs_cis = precompute_freqs_cis(self.config.hidden_size // self.config.num_attention_heads, src.shape[1]).to(src.device)
+            
         self.freqs_cis = self.freqs_cis.to(src.device, non_blocking=True)
         freqs_cis = self.freqs_cis[: src.shape[1]]
 
@@ -287,6 +291,7 @@ class AmplifyForEmbedding(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = True,
+        **kwargs,
     ) -> torch.Tensor:
         out = self.plm(
             src=input_ids,

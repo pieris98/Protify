@@ -185,7 +185,8 @@ class TrainerMixin:
         metrics = trainer.evaluate(test_dataset)
         print_message(f'Initial metrics: {metrics}')
 
-        trainer.train()
+        train_output = trainer.train()
+        train_runtime = train_output.metrics.get('train_runtime', 0.0)
 
         valid_metrics = trainer.evaluate(valid_dataset)
         print_message(f'Final validation metrics: {valid_metrics}')
@@ -204,6 +205,7 @@ class TrainerMixin:
         if y_true.ndim == 3 and y_true.shape[1] == 1:
             y_true = y_true.squeeze(1)
         
+        test_metrics['training_time_seconds'] = train_runtime
         print_message(f'y_pred: {y_pred.shape}\ny_true: {y_true.shape}\nFinal test metrics: \n{test_metrics}\n')
 
         # Generate plots unless skip_plot is True (used for multi-run mode)
@@ -474,9 +476,12 @@ class TrainerMixin:
             ppi=False,
             log_id=None,
             skip_plot=False,
+            model_factory=None,
         ):
         task_type = self.probe_args.task_type
         tokenwise = self.probe_args.tokenwise
+        num_runs = getattr(self.trainer_args, 'num_runs', 1)
+        base_seed = self.trainer_args.seed
 
         if ppi:
             DatasetClass = PairStringLabelDataset
@@ -487,22 +492,89 @@ class TrainerMixin:
 
         data_collator = CollatorClass(tokenizer=tokenizer, task_type=task_type, tokenwise=tokenwise)
 
-        train_dataset = DatasetClass(hf_dataset=train_dataset, train=True)
-        valid_dataset = DatasetClass(hf_dataset=valid_dataset, train=False)
-        test_dataset = DatasetClass(hf_dataset=test_dataset, train=False)
+        train_ds = DatasetClass(hf_dataset=train_dataset, train=True)
+        valid_ds = DatasetClass(hf_dataset=valid_dataset, train=False)
+        test_ds = DatasetClass(hf_dataset=test_dataset, train=False)
 
-        return self._train(
-            model=model,
-            train_dataset=train_dataset,
-            valid_dataset=valid_dataset,
-            test_dataset=test_dataset,
-            data_collator=data_collator,
-            log_id=log_id,
-            model_name=model_name,
-            data_name=data_name,
-            probe=False,
-            skip_plot=skip_plot,
-        )
+        # Single run - original behavior
+        if num_runs == 1:
+            return self._train(
+                model=model,
+                train_dataset=train_ds,
+                valid_dataset=valid_ds,
+                test_dataset=test_ds,
+                data_collator=data_collator,
+                log_id=log_id,
+                model_name=model_name,
+                data_name=data_name,
+                probe=False,
+                skip_plot=skip_plot,
+            )
+        
+        # Multi-run mode: train multiple times with different seeds
+        print_message(f"Running {num_runs} full finetuning runs with different seeds for {data_name}/{model_name}")
+        
+        all_valid_metrics = []
+        all_test_metrics = []
+        run_results = []  # Store (run_idx, test_loss, y_pred, y_true, seed, model) for plotting best
+        
+        for run_idx in range(num_runs):
+            run_seed = base_seed + run_idx
+            self.trainer_args.seed = run_seed
+            set_global_seed(run_seed)
+            
+            print_message(f"=== Run {run_idx + 1}/{num_runs} with seed {run_seed} ===")
+            
+            # Create a fresh model for each run using the factory
+            if model_factory is not None:
+                run_model = model_factory()
+            
+            trained_model, valid_metrics, test_metrics, y_pred, y_true = self._train(
+                model=run_model,
+                train_dataset=train_ds,
+                valid_dataset=valid_ds,
+                test_dataset=test_ds,
+                data_collator=data_collator,
+                log_id=f"{log_id}_run{run_idx}",
+                model_name=model_name,
+                data_name=data_name,
+                probe=False,
+                skip_plot=True,  # Skip plots during individual runs
+            )
+            
+            all_valid_metrics.append(valid_metrics)
+            all_test_metrics.append(test_metrics)
+            
+            # Track test loss for determining best run
+            test_loss = test_metrics.get('test_loss', test_metrics.get('eval_loss', float('inf')))
+            run_results.append((run_idx, test_loss, y_pred, y_true, run_seed, trained_model))
+        
+        # Restore original seed
+        self.trainer_args.seed = base_seed
+        
+        # Compute aggregated metrics (mean ± std)
+        aggregated_valid = self._aggregate_metrics(all_valid_metrics)
+        aggregated_test = self._aggregate_metrics(all_test_metrics)
+        
+        # Find the best run (lowest test loss)
+        best_run = min(run_results, key=lambda x: x[1])
+        best_run_idx, best_loss, best_y_pred, best_y_true, best_seed, best_model = best_run
+        print_message(f"Best run: {best_run_idx + 1} (seed={best_seed}, test_loss={best_loss:.4f})")
+        
+        # Generate plot for best run (unless skip_plot is True)
+        if not skip_plot:
+            output_dir = os.path.join(self.trainer_args.plots_dir, log_id)
+            os.makedirs(output_dir, exist_ok=True)
+            save_path = os.path.join(output_dir, f"{data_name}_{model_name}_{log_id}_best.png")
+            title = f"{data_name} {model_name} (best of {num_runs} runs, seed={best_seed})"
+            
+            if task_type == 'regression':
+                regression_ci_plot(best_y_true, best_y_pred, save_path, title)
+            else:
+                classification_ci_plot(best_y_true, best_y_pred, save_path, title)
+        
+        # Return the best model along with aggregated metrics
+        return best_model, aggregated_valid, aggregated_test, best_y_pred, best_y_true
 
     def trainer_hybrid_model(
             self,
@@ -518,8 +590,124 @@ class TrainerMixin:
             ppi=False,
             log_id=None,
             skip_plot=False,
+            model_factory=None,
+            probe_factory=None,
         ):
-            probe, _, _, _, _ = self.trainer_probe(
+            num_runs = getattr(self.trainer_args, 'num_runs', 1)
+            base_seed = self.trainer_args.seed
+            
+            # Single run - original behavior
+            if num_runs == 1:
+                return self._train_hybrid_single_run(
+                    model=model,
+                    tokenizer=tokenizer,
+                    probe=probe,
+                    model_name=model_name,
+                    data_name=data_name,
+                    train_dataset=train_dataset,
+                    valid_dataset=valid_dataset,
+                    test_dataset=test_dataset,
+                    emb_dict=emb_dict,
+                    ppi=ppi,
+                    log_id=log_id,
+                    skip_plot=skip_plot,
+                )
+            
+            # Multi-run mode for hybrid probe
+            # For hybrid probe, we only care about final metrics, not intermediate probe metrics
+            # training_time_seconds should sum both probe and model+probe training times
+            print_message(f"Running {num_runs} hybrid probe runs with different seeds for {data_name}/{model_name}")
+            
+            all_valid_metrics = []
+            all_test_metrics = []
+            run_results = []  # Store (run_idx, test_loss, y_pred, y_true, seed, model) for plotting best
+            
+            for run_idx in range(num_runs):
+                run_seed = base_seed + run_idx
+                self.trainer_args.seed = run_seed
+                set_global_seed(run_seed)
+                
+                print_message(f"=== Hybrid Run {run_idx + 1}/{num_runs} with seed {run_seed} ===")
+                
+                # Create fresh probe and model for each run using factories
+                if probe_factory is not None:
+                    run_probe = probe_factory()
+                if model_factory is not None:
+                    run_model = model_factory()
+                
+                trained_model, valid_metrics, test_metrics, y_pred, y_true = self._train_hybrid_single_run(
+                    model=run_model,
+                    tokenizer=tokenizer,
+                    probe=run_probe,
+                    model_name=model_name,
+                    data_name=data_name,
+                    train_dataset=train_dataset,
+                    valid_dataset=valid_dataset,
+                    test_dataset=test_dataset,
+                    emb_dict=emb_dict,
+                    ppi=ppi,
+                    log_id=f"{log_id}_run{run_idx}",
+                    skip_plot=True,  # Skip plots during individual runs
+                )
+                
+                # Only collect final metrics (not intermediate probe metrics)
+                all_valid_metrics.append(valid_metrics)
+                all_test_metrics.append(test_metrics)
+                
+                # Track test loss for determining best run
+                test_loss = test_metrics.get('test_loss', test_metrics.get('eval_loss', float('inf')))
+                run_results.append((run_idx, test_loss, y_pred, y_true, run_seed, trained_model))
+            
+            # Restore original seed
+            self.trainer_args.seed = base_seed
+            
+            # Compute aggregated metrics (mean ± std)
+            # This will include training_time_seconds which already has probe + base time summed per run
+            aggregated_valid = self._aggregate_metrics(all_valid_metrics)
+            aggregated_test = self._aggregate_metrics(all_test_metrics)
+            
+            # Find the best run (lowest test loss)
+            best_run = min(run_results, key=lambda x: x[1])
+            best_run_idx, best_loss, best_y_pred, best_y_true, best_seed, best_model = best_run
+            print_message(f"Best hybrid run: {best_run_idx + 1} (seed={best_seed}, test_loss={best_loss:.4f})")
+            
+            # Generate plot for best run (unless skip_plot is True)
+            task_type = self.probe_args.task_type
+            if not skip_plot:
+                output_dir = os.path.join(self.trainer_args.plots_dir, log_id)
+                os.makedirs(output_dir, exist_ok=True)
+                save_path = os.path.join(output_dir, f"{data_name}_{model_name}_{log_id}_best.png")
+                title = f"{data_name} {model_name} hybrid (best of {num_runs} runs, seed={best_seed})"
+                
+                if task_type == 'regression':
+                    regression_ci_plot(best_y_true, best_y_pred, save_path, title)
+                else:
+                    classification_ci_plot(best_y_true, best_y_pred, save_path, title)
+            
+            # Return the best model along with aggregated metrics
+            return best_model, aggregated_valid, aggregated_test, best_y_pred, best_y_true
+
+    def _train_hybrid_single_run(
+            self,
+            model,
+            tokenizer,
+            probe,
+            model_name,
+            data_name,
+            train_dataset,
+            valid_dataset,
+            test_dataset,
+            emb_dict=None,
+            ppi=False,
+            log_id=None,
+            skip_plot=False,
+        ):
+            """Single run of hybrid probe training (probe first, then model+probe)."""
+            # Store original num_runs and temporarily set to 1 for the probe phase
+            original_num_runs = getattr(self.trainer_args, 'num_runs', 1)
+            self.trainer_args.num_runs = 1
+            
+            probe, _, probe_test_metrics, _, _ = self.trainer_probe(
                 model=probe,
                 tokenizer=tokenizer,
                 model_name=model_name,
@@ -532,6 +720,13 @@ class TrainerMixin:
                 log_id=log_id,
                 skip_plot=True,  # Always skip plot for probe phase in hybrid
             )
+            
+            # Restore num_runs
+            self.trainer_args.num_runs = original_num_runs
+            
+            probe_time = probe_test_metrics.get('training_time_seconds')
+            if not isinstance(probe_time, (int, float)):
+                raise ValueError(f"Probe time is not a number: {probe_time}") # ensure we are capturing the time correctly
             config = HybridProbeConfig(
                 tokenwise=self.probe_args.tokenwise,
                 matrix_embed=self.embedding_args.matrix_embed,
@@ -539,8 +734,11 @@ class TrainerMixin:
             )
 
             hybrid_model = HybridProbe(config=config, model=model, probe=probe)
+
+            # Temporarily set num_runs to 1 for the base model phase
+            self.trainer_args.num_runs = 1
             
-            return self.trainer_base_model(
+            base_model, base_valid_metrics, base_test_metrics, y_pred, y_true = self.trainer_base_model(
                 model=hybrid_model,
                 tokenizer=tokenizer,
                 model_name=model_name,
@@ -552,3 +750,15 @@ class TrainerMixin:
                 log_id=log_id,
                 skip_plot=skip_plot,
             )
+            
+            # Restore num_runs
+            self.trainer_args.num_runs = original_num_runs
+            
+            # Sum probe time and base time for total training time
+            if probe_time is not None:
+                base_time = base_test_metrics.get('training_time_seconds')
+                if isinstance(base_time, (int, float)):
+                    base_test_metrics['training_time_seconds'] = base_time + probe_time
+                elif base_time is None:
+                    base_test_metrics['training_time_seconds'] = probe_time
+            return base_model, base_valid_metrics, base_test_metrics, y_pred, y_true

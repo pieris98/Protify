@@ -274,6 +274,21 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         for model_name in self.model_args.model_names:
             _ = embedder(model_name)
 
+    def _create_model_factory(self, model_name, tokenwise, num_labels, hybrid):
+        """Function for creating fresh models in multi-run mode."""
+        def factory():
+            model, _ = get_base_model_for_training(model_name, tokenwise=tokenwise, num_labels=num_labels, hybrid=hybrid)
+            if self.probe_args.lora:
+                model = wrap_lora(model, self.probe_args.lora_r, self.probe_args.lora_alpha, self.probe_args.lora_dropout)
+            return model
+        return factory
+    
+    def _create_probe_factory(self):
+        """Function for creating fresh probes in multi-run mode."""
+        def factory():
+            return get_probe(self.probe_args)
+        return factory
+
     def _run_nn_probe(
             self,
             model_name,
@@ -306,54 +321,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         self.log_metrics(data_name, model_name, test_metrics, split_name='test')
         return probe
 
-    def _train_nn_probe_fold(self, model_name, dms_id, subtrain_seqs, subtrain_labels,
-                            valid_seqs, valid_labels, test_seqs, test_labels, 
-                            emb_dict, fold_info):
-        """Trains a neural network probe on a ProteinGym DMS assay CV fold."""
-
-        train_set = {'seqs': subtrain_seqs, 'labels': subtrain_labels}
-        valid_set = None if (valid_seqs is None or valid_labels is None) else {'seqs': valid_seqs, 'labels': valid_labels}
-        test_set = {'seqs': test_seqs, 'labels': test_labels}
-        
-        # Get tokenizer and determine input dimensions
-        tokenizer = get_tokenizer(model_name)
-        
-        if self._sql:
-            save_path = os.path.join(self.embedding_args.embedding_save_dir, 
-                                    f'{model_name}_{self._full}.db')
-            input_dim = self.get_embedding_dim_sql(save_path, subtrain_seqs[0], tokenizer)
-            emb_for_training = None
-        else:
-            save_path = os.path.join(self.embedding_args.embedding_save_dir,
-                                    f'{model_name}_{self._full}.pth')
-            emb_for_training = torch_load(save_path) if os.path.exists(save_path) else emb_dict
-            input_dim = self.get_embedding_dim_pth(emb_for_training, subtrain_seqs[0], tokenizer)
-        
-        # Configure probe for regression
-        self.probe_args.input_dim = input_dim
-        self.probe_args.task_type = 'regression'
-        self.probe_args.num_labels = 1
-        self.trainer_args.task_type = 'regression'
-        
-        probe = get_probe(self.probe_args)
-        _, _, test_metrics, _, _ = self.trainer_probe(
-            model=probe,
-            tokenizer=tokenizer,
-            model_name=model_name,
-            data_name=f"{dms_id}_{fold_info}",
-            train_dataset=train_set,
-            valid_dataset=valid_set,
-            test_dataset=test_set,
-            emb_dict=emb_for_training,
-            ppi=False,
-            log_id=f"{self.random_id}_{fold_info}",
-        )
-        
-        # Handle both plain and test-prefixed metric keys returned by HF Trainer
-        rho = test_metrics.get('spearman_rho', test_metrics.get('test_spearman_rho', None))
-        mse = test_metrics.get('mse', test_metrics.get('test_mse', None))
-        return rho, mse
-    
     def _run_full_finetuning(
             self,
             model_name,
@@ -365,6 +332,9 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         ):
         tokenwise = self.probe_args.tokenwise
         num_labels = self.probe_args.num_labels
+        num_runs = getattr(self.trainer_args, 'num_runs', 1)
+        
+        model_factory = self._create_model_factory(model_name, tokenwise, num_labels, hybrid=False) if num_runs > 1 else None
         model, tokenizer = get_base_model_for_training(model_name, tokenwise=tokenwise, num_labels=num_labels, hybrid=False)
         if self.probe_args.lora:
             model = wrap_lora(model, self.probe_args.lora_r, self.probe_args.lora_alpha, self.probe_args.lora_dropout)
@@ -379,6 +349,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             test_dataset=test_set,
             ppi=ppi,
             log_id=self.random_id,
+            model_factory=model_factory,
         )
         self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
         self.log_metrics(data_name, model_name, test_metrics, split_name='test')
@@ -397,6 +368,10 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         ):
         tokenwise = self.probe_args.tokenwise
         num_labels = self.probe_args.num_labels
+        num_runs = getattr(self.trainer_args, 'num_runs', 1)
+        
+        model_factory = self._create_model_factory(model_name, tokenwise, num_labels, hybrid=True) if num_runs > 1 else None
+        probe_factory = self._create_probe_factory() if num_runs > 1 else None
         model, tokenizer = get_base_model_for_training(model_name, tokenwise=tokenwise, num_labels=num_labels, hybrid=True)
         if self.probe_args.lora:
             model = wrap_lora(model, self.probe_args.lora_r, self.probe_args.lora_alpha, self.probe_args.lora_dropout)
@@ -415,6 +390,8 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             emb_dict=emb_dict,
             ppi=ppi,
             log_id=self.random_id,
+            model_factory=model_factory,
+            probe_factory=probe_factory,
         )
         self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
         self.log_metrics(data_name, model_name, test_metrics, split_name='test')
@@ -433,6 +410,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 self.trainer_args.task_type = label_type
                 self.logger.info(f'Training probe for {data_name} with {model_name}')
                 _ = self._run_full_finetuning(model_name, data_name, train_set, valid_set, test_set, ppi)
+                torch.cuda.empty_cache()
 
     @log_method_calls
     def run_hybrid_probes(self):
@@ -496,6 +474,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     emb_dict=emb_dict,
                     ppi=ppi,
                 )
+                torch.cuda.empty_cache()
                 ### TODO may link from probe here to running inference on input csv or HF datasets
 
     @log_method_calls
@@ -567,6 +546,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     emb_dict=emb_dict,
                     ppi=ppi,
                 )
+                torch.cuda.empty_cache()
                 ### TODO may link from probe here to running inference on input csv or HF datasets
 
     @log_method_calls

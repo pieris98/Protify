@@ -1,7 +1,10 @@
-from src.protify.probes.lazy_predict import LazyClassifier 
-from src.protify.probes.lazy_predict import LazyRegressor
+from src.protify.probes.lazy_predict import LazyClassifier, LazyRegressor
 import numpy as np
 import argparse
+
+# Example usage:
+#python -m src.protify.testing_suite.test_lazy_predict --verbose 1
+#python -m src.protify.testing_suite.test_lazy_predict --verbose 0
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--verbose", type=int, default=0, help="0=summary, 1=full table")

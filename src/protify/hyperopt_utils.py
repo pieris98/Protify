@@ -9,6 +9,7 @@ from utils import torch_load, print_message
 from embedder import get_embedding_filename
 from base_models.get_base_models import get_tokenizer
 
+
 class HyperoptModule:
     def __init__(
         self, 

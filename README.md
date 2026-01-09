@@ -253,7 +253,7 @@ git clone https://github.com/Gleghorn-Lab/Protify.git
 cd Protify
 git submodule update --init --remote --recursive
 docker build -t protify-env:latest .
-docker run --rm --gpus all -v ${PWD}:/workspace protify-env:latest python -m main
+docker run --rm --gpus all -v ${PWD}:/workspace protify-env:latest bash -lc "cd src/protify && python -m main"
 ```
 Note: You may need to include `sudo` before the docker commands.
 

@@ -5,7 +5,7 @@ import numpy as np
 from scipy.stats import spearmanr, pearsonr
 from sklearn.metrics import r2_score
 
-from .pauc.pauc.roc_auc_ci import plot_roc_with_ci
+from .pauc.pauc import plot_roc_with_ci
 
 
 def regression_ci_plot(y_true, y_pred, save_path, title=None):

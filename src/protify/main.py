@@ -232,7 +232,6 @@ if __name__ == "__main__":
 
 import torch
 from torchinfo import summary
-import numpy as np
 
 from probes.get_probe import ProbeArguments, get_probe
 from base_models.get_base_models import BaseModelArguments, get_tokenizer, get_base_model_for_training

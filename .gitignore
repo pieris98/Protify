@@ -22,7 +22,6 @@ src/protify/private_yamls
 !yamls/sweep_probe.yaml
 !yamls/sweep_transformer_probe.yaml
 outputs/
-src/protify/benchmarks/proteingym/
 src/protify/results/
 *.lock
 !yamls/vector_benchmark.yaml

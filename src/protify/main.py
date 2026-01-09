@@ -245,8 +245,6 @@ from logger import MetricsLogger, log_method_calls
 from utils import torch_load, print_message, expand_dms_ids_all
 from visualization.plot_result import create_plots
 from hyperopt_utils import HyperoptModule
-from benchmarks.proteingym.zero_shot import run_zero_shot
-from benchmarks.proteingym.scoring_utils import collect_proteingym_spearman
 from benchmarks.proteingym.scorer import ProteinGymRunner
 from benchmarks.proteingym.compare_scoring_methods import compare_scoring_methods
 from seed_utils import set_global_seed

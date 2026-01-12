@@ -61,6 +61,7 @@ supported_datasets = {
     'realness': 'GleghornLab/realness_dataset',
     'million_full': 'GleghornLab/millionfull_round_1_oct_2025',
     'soluprot': 'GleghornLab/soluprot',
+    'ecoli_expression': 'GleghornLab/ecoli_expression',
 }
 
 internal_datasets = {

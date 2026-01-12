@@ -57,6 +57,9 @@ def get_base_model(model_name: str, masked_lm: bool = False):
     elif 'vec2vec' in model_name.lower():
         from .vec2vec import build_vec2vec_model
         return build_vec2vec_model(model_name, masked_lm=masked_lm)
+    elif 'calm' in model_name.lower():
+        from .calm import build_calm_model
+        return build_calm_model(model_name, masked_lm=masked_lm)
     elif 'custom' in model_name.lower():
         model_path = model_name.split('---')[-1]
         from .custom_model import build_custom_model
@@ -96,6 +99,9 @@ def get_base_model_for_training(model_name: str, tokenwise: bool = False, num_la
     elif 'amplify' in model_name.lower():
         from .amplify import get_amplify_for_training
         return get_amplify_for_training(model_name, tokenwise, num_labels, hybrid)
+    elif 'calm' in model_name.lower():
+        from .calm import get_calm_for_training
+        return get_calm_for_training(model_name, tokenwise, num_labels, hybrid)
     else:
         raise ValueError(f"Model {model_name} not supported")
 
@@ -138,6 +144,9 @@ def get_tokenizer(model_name: str):
     elif 'amplify' in model_name.lower():
         from .amplify import get_amplify_tokenizer
         return get_amplify_tokenizer(model_name)
+    elif 'calm' in model_name.lower():
+        from .calm import get_calm_tokenizer
+        return get_calm_tokenizer(model_name)
     else:
         raise ValueError(f"Model {model_name} not supported")
 

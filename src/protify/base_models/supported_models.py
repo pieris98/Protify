@@ -65,6 +65,8 @@ all_presets_with_paths = {
     'vec2vec-ESM2-150-ESM2-650': 'Synthyra/ESM2-150-ESM2-650-sequence-sequence',
     'vec2vec-ESM2-150-ESM2-3B': 'Synthyra/ESM2-150-ESM2-3B-sequence-sequence',
     'vec2vec-ESM2-650-ESM2-3B': 'Synthyra/ESM2-650-ESM2-3B-sequence-sequence',
+    # CaLM models (from calm.py)
+    'CaLM': 'multimolecule/calm',
 }
 
 
@@ -110,6 +112,7 @@ currently_supported_models = [
     'OneHot-Codon',
     'AMPLIFY-120',
     'AMPLIFY-350',
+    'CaLM',
 ]
 
 standard_models = [

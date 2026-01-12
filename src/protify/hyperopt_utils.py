@@ -1,5 +1,4 @@
 import copy
-import wandb
 import os
 import yaml
 import json
@@ -8,6 +7,12 @@ from typing import Dict, Any, List, Tuple
 from utils import torch_load, print_message
 from embedder import get_embedding_filename
 from base_models.get_base_models import get_tokenizer
+
+
+if os.environ.get('WANDB_AVAILABLE') == 'true':
+    import wandb
+else:
+    pass
 
 
 class HyperoptModule:

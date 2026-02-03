@@ -6,7 +6,6 @@ import warnings
 import xgboost
 import lightgbm
 from tqdm import tqdm
-from joblib import Parallel, delayed
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder, OrdinalEncoder
@@ -249,7 +248,6 @@ class LazyClassifier:
         predictions=False,
         random_state=None,
         classifiers="all",
-        n_jobs=1,
     ):
         self.verbose = verbose
         self.ignore_warnings = ignore_warnings
@@ -258,7 +256,6 @@ class LazyClassifier:
         self.models = {}
         self.random_state = random_state or get_global_seed()
         self.classifiers = classifiers
-        self.n_jobs = n_jobs
 
     def fit(self, X_train, X_test, y_train, y_test):
         """Fit Classification algorithms to X_train and y_train, predict and score on X_test, y_test.
@@ -326,8 +323,9 @@ class LazyClassifier:
                 print_message(exception)
                 print_message("Invalid Classifier(s)")
 
-        def _fit_classifier(name, model):
-            """Train a single classifier and return results."""
+        pbar = tqdm(self.classifiers)
+        for name, model in pbar:
+            pbar.set_description(f"Training {name}")
             start = time.time()
             try:
                 if "random_state" in model().get_params().keys():
@@ -343,57 +341,63 @@ class LazyClassifier:
                     )
 
                 pipe.fit(X_train, y_train)
+                self.models[name] = pipe
                 y_pred = pipe.predict(X_test)
                 accuracy = accuracy_score(y_test, y_pred, normalize=True)
                 b_accuracy = balanced_accuracy_score(y_test, y_pred)
                 f1 = f1_score(y_test, y_pred, average="weighted")
                 try:
                     roc_auc = roc_auc_score(y_test, y_pred)
-                except:
+                except Exception as exception:
                     roc_auc = None
-                fit_time = time.time() - start
-                custom = self.custom_metric(y_test, y_pred) if self.custom_metric else None
-                return {"name": name, "pipe": pipe, "y_pred": y_pred, "accuracy": accuracy, 
-                        "b_accuracy": b_accuracy, "roc_auc": roc_auc, "f1": f1, 
-                        "time": fit_time, "custom": custom, "failed": False}
-            except Exception as e:
-                return {"name": name, "failed": True, "error": e}
+                    if self.ignore_warnings is False:
+                        print_message("ROC AUC couldn't be calculated for " + name)
+                        print_message(exception)
+                names.append(name)
+                Accuracy.append(accuracy)
+                B_Accuracy.append(b_accuracy)
+                ROC_AUC.append(roc_auc)
+                F1.append(f1)
+                TIME.append(time.time() - start)
 
-        # Parallel or sequential execution
-        if self.n_jobs != 1:
-            results = Parallel(n_jobs=self.n_jobs, prefer="threads")(
-                delayed(_fit_classifier)(name, model) for name, model in self.classifiers
-            )
-        else:
-            results = [_fit_classifier(name, model) for name, model in tqdm(self.classifiers, desc="Training classifiers")]
-
-        # Collect results
-        for r in results:
-            if r["failed"]:
-                if self.ignore_warnings is False:
-                    print_message(f'\n{r["name"]} model failed to execute')
-                    print_message(r["error"])
-            else:
-                self.models[r["name"]] = r["pipe"]
-                names.append(r["name"])
-                Accuracy.append(r["accuracy"])
-                B_Accuracy.append(r["b_accuracy"])
-                ROC_AUC.append(r["roc_auc"])
-                F1.append(r["f1"])
-                TIME.append(r["time"])
                 if self.custom_metric is not None:
-                    CUSTOM_METRIC.append(r["custom"])
+                    custom_metric = self.custom_metric(y_test, y_pred)
+                    CUSTOM_METRIC.append(custom_metric)
+
                 if self.verbose > 0:
                     if self.custom_metric is not None:
-                        print_message({"Model": r["name"], "Accuracy": r["accuracy"], 
-                                       "Balanced Accuracy": r["b_accuracy"], "ROC AUC": r["roc_auc"],
-                                       "F1 Score": r["f1"], "Custom Metric": r["custom"], "Time taken": r["time"]})
+                        print_message(
+                            {
+                                "Model": name,
+                                "Accuracy": accuracy,
+                                "Balanced Accuracy": b_accuracy,
+                                "ROC AUC": roc_auc,
+                                "F1 Score": f1,
+                                "Custom Metric": custom_metric,
+                                "Time taken": time.time() - start,
+                            }
+                        )
                     else:
-                        print_message({"Model": r["name"], "Accuracy": r["accuracy"],
-                                       "Balanced Accuracy": r["b_accuracy"], "ROC AUC": r["roc_auc"],
-                                       "F1 Score": r["f1"], "Time taken": r["time"]})
+                        print_message(
+                            {
+                                "Model": name,
+                                "Accuracy": accuracy,
+                                "Balanced Accuracy": b_accuracy,
+                                "ROC AUC": roc_auc,
+                                "F1 Score": f1,
+                                "Time taken": time.time() - start,
+                            }
+                        )
                 if self.predictions:
-                    predictions[r["name"]] = r["y_pred"]
+                    predictions[name] = y_pred
+
+
+            except Exception as exception:
+                if self.ignore_warnings is False:
+                    print_message(f'\n{name} model failed to execute')
+                    print_message(exception)
+            pbar.update(1)
+        pbar.close()
 
         if self.custom_metric is None:
             scores = pd.DataFrame(
@@ -488,7 +492,6 @@ class LazyRegressor:
         predictions=False,
         random_state=None,
         regressors="all",
-        n_jobs=1,
     ):
         self.verbose = verbose
         self.ignore_warnings = ignore_warnings
@@ -497,7 +500,6 @@ class LazyRegressor:
         self.models = {}
         self.random_state = random_state or get_global_seed()
         self.regressors = regressors
-        self.n_jobs = n_jobs
 
     def fit(self, X_train, X_test, y_train, y_test):
         """Fit Regression algorithms to X_train and y_train, predict and score on X_test, y_test.
@@ -565,10 +567,9 @@ class LazyRegressor:
                 print_message(exception)
                 print_message("Invalid Regressor(s)")
 
-        n_test, n_features = X_test.shape[0], X_test.shape[1]
-
-        def _fit_regressor(name, model):
-            """Train a single regressor and return results."""
+        pbar = tqdm(self.regressors)
+        for name, model in pbar:
+            pbar.set_description(f"Training {name}")
             start = time.time()
             try:
                 if "random_state" in model().get_params().keys():
@@ -584,51 +585,48 @@ class LazyRegressor:
                     )
 
                 pipe.fit(X_train, y_train)
+                self.models[name] = pipe
                 y_pred = pipe.predict(X_test)
 
                 r_squared = r2_score(y_test, y_pred)
-                adj_rsquared = adjusted_rsquared(r_squared, n_test, n_features)
+                adj_rsquared = adjusted_rsquared(
+                    r_squared, X_test.shape[0], X_test.shape[1]
+                )
                 rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 
-                fit_time = time.time() - start
-                custom = self.custom_metric(y_test, y_pred) if self.custom_metric else None
-                return {"name": name, "pipe": pipe, "y_pred": y_pred, "r2": r_squared,
-                        "adj_r2": adj_rsquared, "rmse": rmse, "time": fit_time, 
-                        "custom": custom, "failed": False}
-            except Exception as e:
-                return {"name": name, "failed": True, "error": e}
+                names.append(name)
+                R2.append(r_squared)
+                ADJR2.append(adj_rsquared)
+                RMSE.append(rmse)
+                TIME.append(time.time() - start)
 
-        # Parallel or sequential execution
-        if self.n_jobs != 1:
-            results = Parallel(n_jobs=self.n_jobs, prefer="threads")(
-                delayed(_fit_regressor)(name, model) for name, model in self.regressors
-            )
-        else:
-            results = [_fit_regressor(name, model) for name, model in tqdm(self.regressors, desc="Training regressors")]
-
-        # Collect results
-        for r in results:
-            if r["failed"]:
-                if self.ignore_warnings is False:
-                    print_message(f'\n{r["name"]} model failed to execute')
-                    print_message(r["error"])
-            else:
-                self.models[r["name"]] = r["pipe"]
-                names.append(r["name"])
-                R2.append(r["r2"])
-                ADJR2.append(r["adj_r2"])
-                RMSE.append(r["rmse"])
-                TIME.append(r["time"])
                 if self.custom_metric:
-                    CUSTOM_METRIC.append(r["custom"])
+                    custom_metric = self.custom_metric(y_test, y_pred)
+                    CUSTOM_METRIC.append(custom_metric)
+
                 if self.verbose > 0:
-                    scores_verbose = {"Model": r["name"], "R-Squared": r["r2"],
-                                      "Adjusted R-Squared": r["adj_r2"], "RMSE": r["rmse"], "Time taken": r["time"]}
+                    scores_verbose = {
+                        "Model": name,
+                        "R-Squared": r_squared,
+                        "Adjusted R-Squared": adj_rsquared,
+                        "RMSE": rmse,
+                        "Time taken": time.time() - start,
+                    }
+
                     if self.custom_metric:
-                        scores_verbose[self.custom_metric.__name__] = r["custom"]
+                        scores_verbose[self.custom_metric.__name__] = custom_metric
+
                     print_message(scores_verbose)
                 if self.predictions:
-                    predictions[r["name"]] = r["y_pred"]
+                    predictions[name] = y_pred
+
+            except Exception as exception:
+                if self.ignore_warnings is False:
+                    print_message(f'\n{name} model failed to execute')
+                    print_message(exception)
+
+            pbar.update(1)
+        pbar.close()
 
         scores = {
             "Model": names,

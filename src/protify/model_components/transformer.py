@@ -16,10 +16,11 @@ class TransformerBlock(nn.Module):
         expansion_ratio: float = 8 / 3,
         dropout: float = 0.1,
         rotary: bool = False,
+        use_bias: bool = False,
     ):
         super().__init__()
         self.attn = MultiHeadAttention(hidden_size, n_heads, rotary)
-        self.ffn = swiglu_ln_ffn(hidden_size, expansion_ratio, dropout)
+        self.ffn = swiglu_ln_ffn(hidden_size, expansion_ratio, dropout, use_bias)
 
     def forward(
         self,
@@ -40,10 +41,11 @@ class Transformer(nn.Module):
             expansion_ratio: float = 8 / 3,
             dropout: float = 0.1,
             rotary: bool = False,
+            use_bias: bool = False
     ):
         super().__init__()
         self.layers = nn.ModuleList([
-            TransformerBlock(hidden_size, n_heads, expansion_ratio, dropout, rotary) for _ in range(n_layers)
+            TransformerBlock(hidden_size, n_heads, expansion_ratio, dropout, rotary, use_bias) for _ in range(n_layers)
         ])
 
     def forward(self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -95,6 +97,7 @@ class TokenFormer(nn.Module):
         expansion_ratio: float = 8 / 3,
         dropout: float = 0.1,
         rotary: bool = False,
+        use_bias: bool = False
     ):
         super().__init__()
         self.layers = nn.ModuleList([

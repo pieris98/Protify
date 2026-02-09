@@ -24,7 +24,8 @@ class HyperoptModule:
         dataset: Tuple,
         emb_dict: Any,
         sweep_config: Dict[str, Any],
-        results_list: List[Dict[str, Any]]
+        results_list: List[Dict[str, Any]],
+        swept_param_keys: List[str] = None
     ):
         self.mp = main_process
         self.model_name = model_name
@@ -33,22 +34,26 @@ class HyperoptModule:
         self.emb_dict = emb_dict
         self.sweep_config = sweep_config
         self.results_list = results_list
+        self.swept_param_keys = swept_param_keys or []
         
         self.base_probe_args = copy.deepcopy(self.mp.probe_args.__dict__)
         self.base_trainer_args = copy.deepcopy(self.mp.trainer_args.__dict__)
         
         self.probe_keys = {
-            'hidden_size','dropout','n_layers','pre_ln','classifier_dim',
-            'classifier_dropout','n_heads','rotary',
-            'lora','lora_r','lora_alpha','lora_dropout','probe_type','tokenwise'
+            'hidden_size','dropout','n_layers','pre_ln','classifier_size',
+            'classifier_dropout','n_heads','rotary','use_bias','probe_pooling_types',
+            'lora','lora_r','lora_alpha','lora_dropout','probe_type','tokenwise', 'pooling_types'
         }
         self.trainer_keys = {
             'lr','weight_decay','num_epochs','probe_batch_size',
             'base_batch_size','probe_grad_accum','base_grad_accum',
             'patience','seed'
         }
+        self.embedding_keys = {
+            'embedding_pooling_types'
+        }
         self.int_keys = {
-            'hidden_size', 'n_layers', 'classifier_dim', 'n_heads', 
+            'hidden_size', 'n_layers', 'classifier_size', 'n_heads', 
             'lora_r', 'lora_alpha', 'num_epochs', 'probe_batch_size',
             'base_batch_size', 'probe_grad_accum', 'base_grad_accum',
             'patience', 'seed'
@@ -72,11 +77,20 @@ class HyperoptModule:
         if 'dropout' in cfg:
             cfg['transformer_dropout'] = cfg['dropout']
 
+        if 'probe_pooling_types' in cfg:
+            cfg['pooling_types'] = cfg['probe_pooling_types']
+
         for k, v in cfg.items():
             if k in self.probe_keys and hasattr(self.mp.probe_args, k):
                 setattr(self.mp.probe_args, k, v)
             if k in self.trainer_keys and hasattr(self.mp.trainer_args, k):
                 setattr(self.mp.trainer_args, k, v)
+            # Handle embedding pooling types
+            if k in self.embedding_keys:
+                if k == 'embedding_pooling_types':
+                    if isinstance(v, str):
+                        v = [v]
+                    self.mp.embedding_args.pooling_types = v
 
     def train_model(self, sweep_mode=True):
         train_set, valid_set, test_set, _, _, ppi = self.dataset
@@ -135,9 +149,34 @@ class HyperoptModule:
         )
         run.name = f"sweep-{self.model_name}_{self.data_name}-{run.id[:6]}"
         
-        self.apply_config(dict(wandb.config))
+        # Store only the actual hyperparameters used for this run
+        full_config = dict(wandb.config)
+        self.apply_config(full_config)
+        # Filter to only include the hyperparameters that were actually tuned
+        applied_config = {k: v for k, v in full_config.items() if k in self.swept_param_keys}
         self.mp.trainer_args.make_plots = False
         self.mp.trainer_args.sweep_mode = True
+        
+        # Reload embeddings if pooling type changed
+        if 'embedding_pooling_types' in full_config and not self.mp.full_args.full_finetuning:
+            _, _, _, _, _, ppi = self.dataset
+            tokenizer = get_tokenizer(self.model_name)
+            test_seq = self.mp.all_seqs[0]
+            
+            if self.mp._sql:
+                filename = get_embedding_filename(self.model_name, self.mp._full, 
+                                                 self.mp.embedding_args.pooling_types, 'db')
+                save_path = os.path.join(self.mp.embedding_args.embedding_save_dir, filename)
+                input_dim = self.mp.get_embedding_dim_sql(save_path, test_seq, tokenizer)
+                self.emb_dict = None
+            else:
+                filename = get_embedding_filename(self.model_name, self.mp._full, 
+                                                 self.mp.embedding_args.pooling_types, 'pth')
+                save_path = os.path.join(self.mp.embedding_args.embedding_save_dir, filename)
+                self.emb_dict = torch_load(save_path)
+                input_dim = self.mp.get_embedding_dim_pth(self.emb_dict, test_seq, tokenizer)
+            
+            self.mp.probe_args.input_size = input_dim * 2 if (ppi and not self.mp._full) else input_dim
         
         _, valid_metrics, test_metrics = self.train_model(sweep_mode=True)
         
@@ -161,7 +200,7 @@ class HyperoptModule:
         self.results_list.append({
             "wandb_run_id": run.id,
             dataset_metric: metric_value,
-            "config": dict(run.config),
+            "config": applied_config,
             "valid_metrics": valid_metrics,
             "test_metrics": test_metrics,
         })
@@ -189,9 +228,9 @@ class HyperoptModule:
         use_lora = getattr(mp.probe_args, 'lora', False)
         
         # Define which parameters are relevant for each probe type
-        linear_probe_params = {'lr', 'weight_decay', 'hidden_size', 'n_layers', 'dropout', 'pre_ln'}
+        linear_probe_params = {'lr', 'weight_decay', 'hidden_size', 'n_layers', 'dropout', 'pre_ln', 'use_bias', 'embedding_pooling_types', 'probe_batch_size'}
         transformer_probe_params = {'lr', 'weight_decay', 'hidden_size', 'n_layers', 'dropout', 'pre_ln', 
-                                     'classifier_dropout', 'classifier_dim'}
+                                     'classifier_dropout', 'classifier_size', 'use_bias', 'probe_pooling_types', 'embedding_pooling_types', 'probe_batch_size'}
         lora_params = {'lora_r', 'lora_alpha', 'lora_dropout'}
         
         # Determine which parameters to include
@@ -291,7 +330,8 @@ class HyperoptModule:
                     dataset=dataset,
                     emb_dict=emb_dict,
                     sweep_config=sweep_config,
-                    results_list=results_list
+                    results_list=results_list,
+                    swept_param_keys=list(params_to_hyperopt.keys())
                 )
 
                 wb_sweep = {
@@ -334,6 +374,37 @@ class HyperoptModule:
                 mp.trainer_args.__dict__.update(copy.deepcopy(base_trainer))
                 hyperopt_module.apply_config(best_config)
                 mp.trainer_args.make_plots = True
+                
+                final_config = {
+                    **best_config,
+                    'probe_batch_size': mp.trainer_args.probe_batch_size,
+                    'seed': mp.trainer_args.seed,
+                    'patience': mp.trainer_args.patience,
+                    'num_epochs': mp.trainer_args.num_epochs,
+                }
+                print_message(f"Final training config: {json.dumps(final_config, indent=2)}")
+
+                # Create a fresh wandb run for the final model to track it
+                final_run = wandb.init(
+                    project=mp.full_args.wandb_project,
+                    entity=mp.full_args.wandb_entity,
+                    config=final_config,
+                    reinit=True,
+                    tags=["final_model", f"model:{model_name}", f"data:{data_name}", f"best_sweep_score:{best_score}"],
+                    name=f"final-{model_name}_{data_name}-best",
+                )
 
                 # Run best model with the best hyperparameters, log metrics, create plots
-                hyperopt_module.train_model(sweep_mode=False)
+                _, valid_metrics, test_metrics = hyperopt_module.train_model(sweep_mode=False)
+                
+                # Log final model metrics to wandb
+                all_final_metrics = {}
+                if isinstance(valid_metrics, dict):
+                    for k, v in valid_metrics.items():
+                        all_final_metrics[f"final_{k}"] = v
+                if isinstance(test_metrics, dict):
+                    for k, v in test_metrics.items():
+                        all_final_metrics[f"final_{k}"] = v
+                wandb.log(all_final_metrics)
+                
+                final_run.finish()

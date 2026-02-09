@@ -24,6 +24,7 @@ class LinearProbeConfig(PretrainedConfig):
             n_layers: int = 1,
             task_type: str = 'singlelabel',
             pre_ln: bool = True,
+            use_bias: bool = False,
             **kwargs,
     ):
         super().__init__(**kwargs)
@@ -34,6 +35,7 @@ class LinearProbeConfig(PretrainedConfig):
         self.num_labels = num_labels
         self.n_layers = n_layers
         self.pre_ln = pre_ln
+        self.use_bias = use_bias
 
 
 class LinearProbe(PreTrainedModel):
@@ -44,24 +46,25 @@ class LinearProbe(PreTrainedModel):
         self.task_type = config.task_type
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels
+        use_bias = config.use_bias
         layers = []
         if config.pre_ln:
             layers.append(nn.LayerNorm(config.input_size))
-        layers.append(nn.Linear(config.input_size, config.hidden_size))
+        layers.append(nn.Linear(config.input_size, config.hidden_size, bias=use_bias))
         layers.append(nn.ReLU())
         layers.append(nn.Dropout(config.dropout))
         
         for _ in range(config.n_layers):
-            layers.append(nn.Linear(config.hidden_size, config.hidden_size))
+            layers.append(nn.Linear(config.hidden_size, config.hidden_size, bias=use_bias))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(config.dropout))
 
         proj_dim = intermediate_correction_fn(2, config.num_labels) # finds nearest multiple of 256 of 2 * num_labels
         layers.append(nn.LayerNorm(config.hidden_size))
-        layers.append(nn.Linear(config.hidden_size, proj_dim))
+        layers.append(nn.Linear(config.hidden_size, proj_dim, bias=use_bias))
         layers.append(nn.ReLU())
         layers.append(nn.Dropout(config.dropout))
-        layers.append(nn.Linear(proj_dim, config.num_labels))
+        layers.append(nn.Linear(proj_dim, config.num_labels, bias=use_bias))
         self.layers = nn.Sequential(*layers)
 
     def forward(self, embeddings: torch.Tensor, labels: Optional[torch.Tensor] = None) -> SequenceClassifierOutput:

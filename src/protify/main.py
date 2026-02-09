@@ -42,8 +42,8 @@ def parse_arguments():
     # ----------------- ProbeArguments ----------------- #
     parser.add_argument("--probe_type", choices=["linear", "transformer", "retrievalnet", "lyra"], default="linear", help="Type of probe.")
     parser.add_argument("--tokenwise", action="store_true", default=False, help="Tokenwise probe (default: False).")
-    ### TODO refactor to hidden_size
-    parser.add_argument("--hidden_size", type=int, default=8192, help="Hidden dimension size.")
+    parser.add_argument("--hidden_size", type=int, default=8192, help="Hidden dimension size for linear probe MLP.")
+    parser.add_argument("--transformer_hidden_size", type=int, default=512, help="Hidden dimension size for transformer probe.")
     parser.add_argument("--dropout", type=float, default=0.2, help="Dropout rate.")
     parser.add_argument("--n_layers", type=int, default=1, help="Number of layers.")
     parser.add_argument("--pre_ln", action="store_false", default=True,
@@ -55,6 +55,7 @@ def parse_arguments():
     parser.add_argument("--rotary", action="store_false", default=True,
                         help="Disable rotary embeddings (default: enabled). Use --rotary to toggle off.")
     parser.add_argument("--probe_pooling_types", nargs="+", default=["mean", "var"], help="Pooling types to use.")
+    parser.add_argument("--use_bias", action="store_true", default=False,help="Use bias in Linear layers (default: False)")
     parser.add_argument("--save_model", action="store_true", default=False, help="Save trained model (default: False).")
     parser.add_argument("--production_model", action="store_true", default=False, help="Production model (default: False).")
     parser.add_argument("--lora", action="store_true", default=False, help="Use LoRA (default: False).")

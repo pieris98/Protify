@@ -493,7 +493,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             self.log_metrics(data_name, model_name, test_metrics, split_name='test')
         return model, valid_metrics, test_metrics
 
-
     @log_method_calls
     def run_full_finetuning(self):
         total_combinations = len(self.model_args.model_names) * len(self.datasets)

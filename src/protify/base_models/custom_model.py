@@ -13,6 +13,8 @@ class CustomModelForEmbedding(nn.Module):
     def __init__(self, model_path: str):
         super().__init__()
         self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True)
+        if hasattr(self.model, 'tokenizer'):
+            self.tokenizer = self.model.tokenizer
 
     def forward(
             self,

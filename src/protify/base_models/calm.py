@@ -166,6 +166,7 @@ class CaLmPreTrainedModel(PreTrainedModel):
     """
 
     config_class = CaLmConfig
+    all_tied_weights_keys = {}
     base_model_prefix = "calm"
     supports_gradient_checkpointing = True
     _no_split_modules = ["CaLmLayer", "CaLmEmbeddings"]

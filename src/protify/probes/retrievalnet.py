@@ -54,6 +54,7 @@ class RetrievalNetConfig(PretrainedConfig):
 
 class RetrievalNetForSequenceClassification(PreTrainedModel):
     config_class = RetrievalNetConfig
+    all_tied_weights_keys = {}
     def __init__(self, config: RetrievalNetConfig):
         super().__init__(config)
         # If n_layers == 0, only learn how to distribute labels over the raw embeddings
@@ -124,6 +125,7 @@ class RetrievalNetForSequenceClassification(PreTrainedModel):
 
 class RetrievalNetForTokenClassification(PreTrainedModel):
     config_class = RetrievalNetConfig
+    all_tied_weights_keys = {}
     def __init__(self, config: RetrievalNetConfig):
         super().__init__(config)
         if config.n_layers > 0:

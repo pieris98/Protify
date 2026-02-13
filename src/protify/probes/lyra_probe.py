@@ -270,6 +270,7 @@ class LyraConfig(PretrainedConfig):
 
 class LyraForSequenceClassification(PreTrainedModel):
     config_class = LyraConfig
+    all_tied_weights_keys = {}
     def __init__(self, config: LyraConfig):
         super().__init__(config)
         self.lyra = Lyra(
@@ -327,6 +328,7 @@ class LyraForSequenceClassification(PreTrainedModel):
 
 class LyraForTokenClassification(PreTrainedModel):
     config_class = LyraConfig
+    all_tied_weights_keys = {}
     def __init__(self, config: LyraConfig):
         super().__init__(config)
         self.lyra = Lyra(

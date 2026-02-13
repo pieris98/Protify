@@ -26,6 +26,7 @@ class T5ClassificationHead(nn.Module):
 
 class T5ForSequenceClassification(T5EncoderModel):
     config_class = T5Config
+    all_tied_weights_keys = {}
     def __init__(self, config: T5Config):
         super().__init__(config)
         self.classifier = T5ClassificationHead(config)
@@ -89,6 +90,7 @@ class T5ForSequenceClassification(T5EncoderModel):
 
 class T5ForTokenClassification(T5EncoderModel):
     config_class = T5Config
+    all_tied_weights_keys = {}
     def __init__(self, config: T5Config):
         super().__init__(config)
         self.classifier = T5ClassificationHead(config)

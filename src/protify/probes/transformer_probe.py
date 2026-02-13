@@ -66,6 +66,7 @@ class TransformerProbeConfig(PretrainedConfig):
 
 class TransformerForSequenceClassification(PreTrainedModel):
     config_class = TransformerProbeConfig
+    all_tied_weights_keys = {}
     def __init__(self, config: TransformerProbeConfig):
         super().__init__(config)
         self.config = config
@@ -143,6 +144,7 @@ class TransformerForSequenceClassification(PreTrainedModel):
 
 class TransformerForTokenClassification(PreTrainedModel):
     config_class = TransformerProbeConfig
+    all_tied_weights_keys = {}
     def __init__(self, config: TransformerProbeConfig):
         super().__init__(config)
         self.config = config

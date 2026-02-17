@@ -1,3 +1,5 @@
+import entrypoint_setup
+
 import os
 import torch
 import warnings
@@ -208,8 +210,10 @@ class Embedder:
         if os.name == 'posix':
             try:
                 torch.compile(model)
+                print_message("Model compiled")
             except:
-                print_message("Model cannot be compiled")
+                print_message("Not linux system, will not compile model")
+        
         device = self.device
         collate_fn = build_collator(tokenizer)
         print_message(f'Pooling types: {self.pooling_types}')
@@ -326,8 +330,6 @@ if __name__ == '__main__':
     from data.data_mixin import DataArguments, DataMixin
     from base_models.get_base_models import BaseModelArguments, get_base_model
     from seed_utils import set_global_seed
-
-    os.environ['HF_HUB_DISABLE_SYMLINKS_WARNING'] = '1' # prevent cache warning on Windows machines
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--token', default=None, help='Huggingface token')

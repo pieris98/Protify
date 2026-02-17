@@ -1,5 +1,3 @@
-import entrypoint_setup
-
 import os
 import argparse
 import yaml
@@ -102,7 +100,7 @@ def parse_arguments():
     parser.add_argument("--patience", type=int, default=1, help="Patience for early stopping.")
     parser.add_argument("--seed", type=int, default=None, help="Seed for reproducibility (if omitted, current time is used).")
     parser.add_argument("--deterministic", action="store_true", default=False,
-                        help="Enable deterministic behavior for reproducibility (will slow down training).")
+                        help="Enable deterministic behavior for reproducibility (can slightly slow down training).")
     parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning (default: False).")
     parser.add_argument("--hybrid_probe", action="store_true", default=False, help="Hybrid probe (default: False).")
     parser.add_argument("--num_runs", type=int, default=1, help="Number of training runs with different seeds. Results will show mean±std across runs.")
@@ -226,6 +224,8 @@ if __name__ == "__main__":
     if args.deterministic:
         from seed_utils import set_determinism
         set_determinism()
+    
+    import entrypoint_setup # needs to happen after set_determinism()
 
 
 import torch

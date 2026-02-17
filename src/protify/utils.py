@@ -43,6 +43,17 @@ def expand_dms_ids_all(dms_ids, mode: str = None):
             dms_ids = list(ALL_SUBSTITUTION_DMS_IDS)
     return dms_ids
 
+
+def maybe_compile(model: torch.nn.Module):
+    if os.name == 'posix':
+        try:
+            torch.compile(model)
+            print_message("Model compiled")
+        except:
+            print_message("Not linux system, will not compile model")
+    return model
+
+
 if __name__ == '__main__':
     folders_to_clean = ['logs', 'results', 'plots', 'embeddings', 'weights']
     

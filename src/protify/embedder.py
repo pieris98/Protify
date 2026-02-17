@@ -16,13 +16,13 @@ try:
     from data.dataset_classes import SimpleProteinDataset
     from base_models.get_base_models import get_base_model
     from pooler import Pooler
-    from utils import torch_load, print_message
+    from utils import torch_load, print_message, maybe_compile
 except ImportError:
     from .seed_utils import seed_worker, dataloader_generator, get_global_seed
     from .data.dataset_classes import SimpleProteinDataset
     from .base_models.get_base_models import get_base_model
     from .pooler import Pooler
-    from .utils import torch_load, print_message
+    from .utils import torch_load, print_message, maybe_compile
 
 
 def build_collator(tokenizer) -> Callable[[List[str]], tuple[torch.Tensor, torch.Tensor]]:
@@ -207,13 +207,7 @@ class Embedder:
             embeddings_dict: dict[str, torch.Tensor]) -> Optional[dict[str, torch.Tensor]]:
         os.makedirs(self.embedding_save_dir, exist_ok=True)
         model = embedding_model.to(self.device).eval()
-        if os.name == 'posix':
-            try:
-                torch.compile(model)
-                print_message("Model compiled")
-            except:
-                print_message("Not linux system, will not compile model")
-        
+        model = maybe_compile(model)
         device = self.device
         collate_fn = build_collator(tokenizer)
         print_message(f'Pooling types: {self.pooling_types}')

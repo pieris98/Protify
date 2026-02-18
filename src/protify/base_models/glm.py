@@ -1,7 +1,13 @@
 import torch
 import torch.nn as nn
 from typing import Optional, Union, List, Dict
-from transformers import AutoTokenizer, AutoModel, AutoModelForTokenClassification, AutoModelForSequenceClassification, AutoModelForMaskedLM
+from transformers import (
+    AutoTokenizer,
+    AutoModel,
+    AutoModelForTokenClassification,
+    AutoModelForSequenceClassification,
+    AutoModelForMaskedLM
+)
 
 from .base_tokenizer import BaseSequenceTokenizer
 

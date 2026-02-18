@@ -16,16 +16,16 @@ source ~/protify_venv/bin/activate
 
 # Update pip and setuptools
 echo "Upgrading pip and setuptools..."
-pip install --upgrade pip setuptools
+pip install pip setuptools -U
 
 # Install requirements with force reinstall
 echo "Installing requirements"
-pip install -r requirements.txt
+pip install -r requirements.txt -U
 
 # Install torch and torchvision
 echo "Installing torch and torchvision..."
 pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128 -U
-pip install numpy==1.26.4
+pip install --force-reinstall numpy==1.26.4
 
 # List installed packages for verification
 echo -e "\nInstalled packages:"

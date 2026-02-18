@@ -899,6 +899,14 @@ presets = {
 }
 
 
+def _normalize_calm_preset(preset: str) -> str:
+    if preset in presets:
+        return preset
+    if 'calm' in preset.lower():
+        return 'CaLM'
+    raise ValueError(f"Model {preset} not supported")
+
+
 class CaLMTokenizerWrapper(BaseSequenceTokenizer):
     def __init__(self, tokenizer: RnaTokenizer):
         super().__init__(tokenizer)
@@ -934,25 +942,28 @@ class CaLmForEmbedding(nn.Module):
 
 
 def get_calm_tokenizer(preset: str):
-    return CaLMTokenizerWrapper(RnaTokenizer.from_pretrained('multimolecule/calm'))
+    normalized_preset = _normalize_calm_preset(preset)
+    return CaLMTokenizerWrapper(RnaTokenizer.from_pretrained(presets[normalized_preset]))
 
 
 def build_calm_model(preset: str, masked_lm: bool = False, **kwargs):
+    normalized_preset = _normalize_calm_preset(preset)
     if masked_lm:
         raise ValueError(f"Model {preset} does not support masked language modeling")
     else:
-        model = CaLmForEmbedding(presets[preset]).eval()
-    tokenizer = get_calm_tokenizer(preset)
+        model = CaLmForEmbedding(presets[normalized_preset]).eval()
+    tokenizer = get_calm_tokenizer(normalized_preset)
     return model, tokenizer
 
 
 def get_calm_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):
-    model_path = presets[preset]
+    normalized_preset = _normalize_calm_preset(preset)
+    model_path = presets[normalized_preset]
     if hybrid:
         model = CaLmModel.from_pretrained(model_path).eval()
     else:
         raise ValueError(f"Model {preset} does not support training")
-    tokenizer = get_calm_tokenizer(preset)
+    tokenizer = get_calm_tokenizer(normalized_preset)
     return model, tokenizer
 
 

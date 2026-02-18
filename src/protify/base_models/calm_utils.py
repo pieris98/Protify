@@ -29,7 +29,7 @@ import os
 from torch import Tensor
 from functools import lru_cache
 from itertools import product
-from typing import Sequence, Tuple, List
+from typing import Any, Sequence, Tuple, List
 from pathlib import Path
 from collections import OrderedDict
 from transformers.tokenization_utils import PreTrainedTokenizer
@@ -192,6 +192,37 @@ class Alphabet:
         return ", ".join(repr_parts)
 
 
+def _merge_extra_special_tokens(
+    additional_special_tokens: List | Tuple | None,
+    kwargs: dict[str, Any],
+) -> List | Tuple | None:
+    if "extra_special_tokens" not in kwargs:
+        return additional_special_tokens
+
+    extra_special_tokens = kwargs.pop("extra_special_tokens")
+    if additional_special_tokens is None:
+        merged_special_tokens = []
+    else:
+        merged_special_tokens = list(additional_special_tokens)
+
+    if isinstance(extra_special_tokens, dict):
+        extra_tokens = list(extra_special_tokens.values())
+    elif isinstance(extra_special_tokens, (list, tuple)):
+        extra_tokens = list(extra_special_tokens)
+    else:
+        raise TypeError(
+            f"extra_special_tokens must be dict, list, or tuple, got {type(extra_special_tokens).__name__}"
+        )
+
+    for token in extra_tokens:
+        token_value = token
+        if isinstance(token, dict) and "content" in token:
+            token_value = token["content"]
+        if token_value not in merged_special_tokens:
+            merged_special_tokens.append(token_value)
+    return merged_special_tokens
+
+
 def generate_kmer_vocabulary(vocabulary: Tuple[str, ...], nmers: int = 1) -> Tuple[str, ...]:
     """
     Generates a kmer vocabulary given an original vocabulary and the size of kmer.
@@ -307,6 +338,7 @@ class Tokenizer(PreTrainedTokenizer):
             mask_token = self.identify_special_token(alphabet, "mask")
         if null_token is ...:
             null_token = self.identify_special_token(alphabet, "null")
+        additional_special_tokens = _merge_extra_special_tokens(additional_special_tokens, kwargs)
         if additional_special_tokens is None:
             additional_special_tokens = []
         if null_token in alphabet and null_token not in additional_special_tokens:  # type: ignore[operator]
@@ -509,6 +541,7 @@ class RnaTokenizer(Tokenizer):
             nmers = 3  # set to 3 to get correct vocab
         if not isinstance(alphabet, Alphabet):
             alphabet = get_alphabet(alphabet, nmers=nmers)
+        additional_special_tokens = _merge_extra_special_tokens(additional_special_tokens, kwargs)
         super().__init__(
             alphabet=alphabet,
             nmers=nmers,

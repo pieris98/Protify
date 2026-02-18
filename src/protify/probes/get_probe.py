@@ -22,7 +22,7 @@ class ProbeArguments:
             pre_ln: bool = True,
             sim_type: str = 'dot',
             token_attention: bool = False,
-            use_bias: bool = True,
+            use_bias: bool = False,
             add_token_ids: bool = False,
             ### Transformer Probe
             transformer_hidden_size: int = 512,  # For transformer probe

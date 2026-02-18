@@ -61,7 +61,7 @@ def parse_arguments():
     parser.add_argument("--rotary", action="store_false", default=True,
                         help="Disable rotary embeddings (default: enabled). Use --rotary to toggle off.")
     parser.add_argument("--probe_pooling_types", nargs="+", default=["mean", "var"], help="Pooling types to use.")
-    parser.add_argument("--use_bias", action="store_true", default=False,help="Use bias in Linear layers (default: False)")
+    parser.add_argument("--use_bias", action="store_true", default=False, help="Use bias in Linear layers (default: False)")
     parser.add_argument("--save_model", action="store_true", default=False, help="Save trained model (default: False).")
     parser.add_argument("--production_model", action="store_true", default=False, help="Production model (default: False).")
     parser.add_argument("--lora", action="store_true", default=False, help="Use LoRA (default: False).")

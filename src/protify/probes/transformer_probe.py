@@ -46,7 +46,7 @@ class TransformerProbeConfig(PretrainedConfig):
             rotary: bool = True,
             pre_ln: bool = True,
             probe_pooling_types: List[str] = ['mean', 'cls'],
-            use_bias: bool = True,
+            use_bias: bool = False,
             add_token_ids: bool = False,
             **kwargs,
     ):

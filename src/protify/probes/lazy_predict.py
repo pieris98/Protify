@@ -323,9 +323,11 @@ class LazyClassifier:
                 print_message(exception)
                 print_message("Invalid Classifier(s)")
 
-        pbar = tqdm(self.classifiers)
-        for name, model in pbar:
-            pbar.set_description(f"Training {name}")
+        # Track failed models
+        failed_models = []
+        total_start = time.time()
+
+        for name, model in tqdm(self.classifiers, desc="Training classifiers"):
             start = time.time()
             try:
                 if "random_state" in model().get_params().keys():
@@ -353,51 +355,26 @@ class LazyClassifier:
                     if self.ignore_warnings is False:
                         print_message("ROC AUC couldn't be calculated for " + name)
                         print_message(exception)
+                fit_time = time.time() - start
                 names.append(name)
                 Accuracy.append(accuracy)
                 B_Accuracy.append(b_accuracy)
                 ROC_AUC.append(roc_auc)
                 F1.append(f1)
-                TIME.append(time.time() - start)
+                TIME.append(fit_time)
 
                 if self.custom_metric is not None:
                     custom_metric = self.custom_metric(y_test, y_pred)
                     CUSTOM_METRIC.append(custom_metric)
 
-                if self.verbose > 0:
-                    if self.custom_metric is not None:
-                        print_message(
-                            {
-                                "Model": name,
-                                "Accuracy": accuracy,
-                                "Balanced Accuracy": b_accuracy,
-                                "ROC AUC": roc_auc,
-                                "F1 Score": f1,
-                                "Custom Metric": custom_metric,
-                                "Time taken": time.time() - start,
-                            }
-                        )
-                    else:
-                        print_message(
-                            {
-                                "Model": name,
-                                "Accuracy": accuracy,
-                                "Balanced Accuracy": b_accuracy,
-                                "ROC AUC": roc_auc,
-                                "F1 Score": f1,
-                                "Time taken": time.time() - start,
-                            }
-                        )
                 if self.predictions:
                     predictions[name] = y_pred
 
-
             except Exception as exception:
+                failed_models.append(name)
                 if self.ignore_warnings is False:
                     print_message(f'\n{name} model failed to execute')
                     print_message(exception)
-            pbar.update(1)
-        pbar.close()
 
         if self.custom_metric is None:
             scores = pd.DataFrame(
@@ -426,10 +403,28 @@ class LazyClassifier:
             "Model"
         )
 
+        # Print summary
+        total_time = time.time() - total_start
+        n_success = len(names)
+        n_failed = len(failed_models)
+        best_model = scores.index[0] if len(scores) > 0 else "N/A"
+        best_score = scores["Balanced Accuracy"].iloc[0] if len(scores) > 0 else 0
+
+        if self.verbose > 0:
+            # Full table + failed models
+            summary = f"\nLazyClassifier Results ({n_success} succeeded, {n_failed} failed, {total_time:.1f}s)\n"
+            summary += scores.to_string()
+            if failed_models:
+                summary += f"\n\nFailed: {', '.join(failed_models)}"
+            print_message(summary)
+        else:
+            # 1-line summary
+            print_message(f"Completed {n_success + n_failed} classifiers in {total_time:.1f}s | {n_success} succeeded, {n_failed} failed | Best: {best_model} ({best_score:.2f})")
+
         if self.predictions:
             predictions_df = pd.DataFrame.from_dict(predictions)
-        
-        return scores, predictions_df if self.predictions is True else scores
+            return scores, predictions_df
+        return scores
 
     def provide_models(self, X_train, X_test, y_train, y_test):
         """
@@ -567,9 +562,11 @@ class LazyRegressor:
                 print_message(exception)
                 print_message("Invalid Regressor(s)")
 
-        pbar = tqdm(self.regressors)
-        for name, model in pbar:
-            pbar.set_description(f"Training {name}")
+        # Track failed models
+        failed_models = []
+        total_start = time.time()
+
+        for name, model in tqdm(self.regressors, desc="Training regressors"):
             start = time.time()
             try:
                 if "random_state" in model().get_params().keys():
@@ -594,39 +591,25 @@ class LazyRegressor:
                 )
                 rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 
+                fit_time = time.time() - start
                 names.append(name)
                 R2.append(r_squared)
                 ADJR2.append(adj_rsquared)
                 RMSE.append(rmse)
-                TIME.append(time.time() - start)
+                TIME.append(fit_time)
 
                 if self.custom_metric:
                     custom_metric = self.custom_metric(y_test, y_pred)
                     CUSTOM_METRIC.append(custom_metric)
 
-                if self.verbose > 0:
-                    scores_verbose = {
-                        "Model": name,
-                        "R-Squared": r_squared,
-                        "Adjusted R-Squared": adj_rsquared,
-                        "RMSE": rmse,
-                        "Time taken": time.time() - start,
-                    }
-
-                    if self.custom_metric:
-                        scores_verbose[self.custom_metric.__name__] = custom_metric
-
-                    print_message(scores_verbose)
                 if self.predictions:
                     predictions[name] = y_pred
 
             except Exception as exception:
+                failed_models.append(name)
                 if self.ignore_warnings is False:
                     print_message(f'\n{name} model failed to execute')
                     print_message(exception)
-
-            pbar.update(1)
-        pbar.close()
 
         scores = {
             "Model": names,
@@ -644,9 +627,28 @@ class LazyRegressor:
             "Model"
         )
 
+        # Print summary
+        total_time = time.time() - total_start
+        n_success = len(names)
+        n_failed = len(failed_models)
+        best_model = scores.index[0] if len(scores) > 0 else "N/A"
+        best_score = scores["Adjusted R-Squared"].iloc[0] if len(scores) > 0 else 0
+
+        if self.verbose > 0:
+            # Full table + failed models
+            summary = f"\nLazyRegressor Results ({n_success} succeeded, {n_failed} failed, {total_time:.1f}s)\n"
+            summary += scores.to_string()
+            if failed_models:
+                summary += f"\n\nFailed: {', '.join(failed_models)}"
+            print_message(summary)
+        else:
+            # 1-line summary
+            print_message(f"Completed {n_success + n_failed} regressors in {total_time:.1f}s | {n_success} succeeded, {n_failed} failed | Best: {best_model} ({best_score:.2f})")
+
         if self.predictions:
             predictions_df = pd.DataFrame.from_dict(predictions)
-        return scores, predictions_df if self.predictions is True else scores
+            return scores, predictions_df
+        return scores
 
     def provide_models(self, X_train, X_test, y_train, y_test):
         """

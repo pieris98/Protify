@@ -202,6 +202,7 @@ class EncoderBlock(nn.Module):
 
 class AMPLIFYPreTrainedModel(PreTrainedModel):
     config_class = AMPLIFYConfig
+    all_tied_weights_keys = {}
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):

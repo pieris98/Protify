@@ -144,6 +144,7 @@ class TransformerOutput(ModelOutput):
 
 class TransformerForMaskedLM(PreTrainedModel):
     config_class = TransformerConfig
+    all_tied_weights_keys = {}
     def __init__(self, config: TransformerConfig):
         super().__init__(config)
         self.embeddings = nn.Embedding(config.vocab_size, config.hidden_size)

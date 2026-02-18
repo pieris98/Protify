@@ -40,6 +40,7 @@ class LinearProbeConfig(PretrainedConfig):
 
 class LinearProbe(PreTrainedModel):
     config_class = LinearProbeConfig
+    all_tied_weights_keys = {}
     def __init__(self, config: LinearProbeConfig):
         super().__init__(config)
         self.config = config

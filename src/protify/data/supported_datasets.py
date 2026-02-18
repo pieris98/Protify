@@ -62,6 +62,8 @@ supported_datasets = {
     'million_full': 'GleghornLab/millionfull_round_1_oct_2025',
     'soluprot': 'GleghornLab/soluprot',
     'ecoli_expression': 'GleghornLab/ecoli_expression',
+    'KSMoFinder-clustered': 'GleghornLab/ksmo_clustered',
+    'KSMoFinder': 'GleghornLab/KSmo_fixed',
 }
 
 internal_datasets = {

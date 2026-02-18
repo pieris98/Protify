@@ -1,5 +1,3 @@
-import entrypoint_setup
-
 import os
 import argparse
 import yaml
@@ -35,6 +33,13 @@ def parse_arguments():
                         )
     parser.add_argument("--data_names", nargs="+", default=[], help="List of HF dataset names.") # TODO rename to data_names
     parser.add_argument("--data_dirs", nargs="+", default=[], help="List of local data directories.")
+    parser.add_argument("--aa_to_dna", action="store_true", default=False, help="Translate amino-acid sequences to DNA codon sequences using common human synonymous codons.")
+    parser.add_argument("--aa_to_rna", action="store_true", default=False, help="Translate amino-acid sequences to RNA codon sequences using common human synonymous codons.")
+    parser.add_argument("--dna_to_aa", action="store_true", default=False, help="Translate DNA codon sequences to amino-acid sequences.")
+    parser.add_argument("--rna_to_aa", action="store_true", default=False, help="Translate RNA codon sequences to amino-acid sequences.")
+    parser.add_argument("--codon_to_aa", action="store_true", default=False, help="Translate codon-token sequences to amino-acid sequences and drop stop codons.")
+    parser.add_argument("--aa_to_codon", action="store_true", default=False, help="Translate amino-acid sequences to codon-token sequences.")
+    parser.add_argument("--random_pair_flipping", action="store_true", default=False, help="Enable random swapping of paired inputs during training.")
 
     # ----------------- BaseModelArguments ----------------- #
     parser.add_argument("--model_names", nargs="+", default=["ESM2-8"], help="List of model names to use. To use a custom model, use the format 'custom---<path_to_model>'.")
@@ -65,6 +70,7 @@ def parse_arguments():
     parser.add_argument("--lora_dropout", type=float, default=0.01, help="Dropout rate for the LoRA model.")
     parser.add_argument("--sim_type", choices=["dot", "euclidean", "cosine"], default="dot", help="Cross-attention mechanism for token-parameter-attention")
     parser.add_argument("--token_attention", action="store_true", default=False, help="If true, use TokenFormer instead of Transformer blocks")
+    parser.add_argument("--add_token_ids", action="store_true", default=False, help="If true, add learned token type embeddings to distinguish protein A vs B in PPI tasks.")
 
     # ----------------- ScikitArguments ----------------- #
     parser.add_argument("--scikit_n_iter", type=int, default=10, help="Number of iterations for scikit model.")
@@ -76,6 +82,7 @@ def parse_arguments():
 
     # ----------------- EmbeddingArguments ----------------- #
     parser.add_argument("--embedding_batch_size", type=int, default=16, help="Batch size for embedding generation.")
+    parser.add_argument("--embedding_num_workers", type=int, default=0, help="Number of worker processes for embedding generation.")
     parser.add_argument("--num_workers", type=int, default=0, help="Number of worker processes for data loading.")
     parser.add_argument("--download_embeddings", action="store_true", default=False, help="Whether to download embeddings (default: False).")
     parser.add_argument("--matrix_embed", action="store_true", default=False, help="Use matrix embedding (default: False).")
@@ -104,7 +111,7 @@ def parse_arguments():
     parser.add_argument("--patience", type=int, default=1, help="Patience for early stopping.")
     parser.add_argument("--seed", type=int, default=None, help="Seed for reproducibility (if omitted, current time is used).")
     parser.add_argument("--deterministic", action="store_true", default=False,
-                        help="Enable deterministic behavior for reproducibility (will slow down training).")
+                        help="Enable deterministic behavior for reproducibility (can slightly slow down training).")
     parser.add_argument("--full_finetuning", action="store_true", default=False, help="Full finetuning (default: False).")
     parser.add_argument("--hybrid_probe", action="store_true", default=False, help="Hybrid probe (default: False).")
     parser.add_argument("--num_runs", type=int, default=1, help="Number of training runs with different seeds. Results will show mean±std across runs.")
@@ -178,6 +185,13 @@ def parse_arguments():
         yaml_args.sweep_metric_reg = args.sweep_metric_reg
         yaml_args.sweep_goal = args.sweep_goal
         yaml_args.yaml_path = args.yaml_path
+        yaml_args.aa_to_dna = args.aa_to_dna
+        yaml_args.aa_to_rna = args.aa_to_rna
+        yaml_args.dna_to_aa = args.dna_to_aa
+        yaml_args.rna_to_aa = args.rna_to_aa
+        yaml_args.codon_to_aa = args.codon_to_aa
+        yaml_args.aa_to_codon = args.aa_to_codon
+        yaml_args.random_pair_flipping = args.random_pair_flipping
         # Ensure ProteinGym defaults exist when using YAML configs
         if not hasattr(yaml_args, 'proteingym'):
             yaml_args.proteingym = False
@@ -232,6 +246,8 @@ if __name__ == "__main__":
     if args.deterministic:
         from seed_utils import set_determinism
         set_determinism()
+    
+    import entrypoint_setup # needs to happen after set_determinism()
 
 
 import torch
@@ -287,6 +303,12 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         self._trim = self.full_args.trim
         self._delimiter = self.full_args.delimiter
         self._col_names = self.full_args.col_names
+        self._aa_to_dna = self.full_args.aa_to_dna
+        self._aa_to_rna = self.full_args.aa_to_rna
+        self._dna_to_aa = self.full_args.dna_to_aa
+        self._rna_to_aa = self.full_args.rna_to_aa
+        self._codon_to_aa = self.full_args.codon_to_aa
+        self._aa_to_codon = self.full_args.aa_to_codon
         self._multi_column = getattr(self.full_args, 'multi_column', None)
 
     @log_method_calls
@@ -498,7 +520,6 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
             self.log_metrics(data_name, model_name, test_metrics, split_name='test')
         return model, valid_metrics, test_metrics
-
 
     @log_method_calls
     def run_full_finetuning(self):

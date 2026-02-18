@@ -234,6 +234,7 @@ class Vec2VecModel(PreTrainedModel):
     """
     
     config_class = Vec2VecConfig
+    all_tied_weights_keys = {}
     
     def __init__(self, config: Vec2VecConfig):
         super().__init__(config)

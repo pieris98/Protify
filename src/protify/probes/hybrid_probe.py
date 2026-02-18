@@ -28,6 +28,7 @@ class HybridProbeConfig(PretrainedConfig):
 
 class HybridProbe(PreTrainedModel):
     config_class = HybridProbeConfig
+    all_tied_weights_keys = {}
     def __init__(self, config: HybridProbeConfig, model: nn.Module, probe: nn.Module):
         super().__init__(config)
         self.config = config

@@ -23,6 +23,7 @@ class ProbeArguments:
             sim_type: str = 'dot',
             token_attention: bool = False,
             use_bias: bool = True,
+            add_token_ids: bool = False,
             ### Transformer Probe
             transformer_hidden_size: int = 512,  # For transformer probe
             classifier_size: int = 4096,
@@ -51,6 +52,7 @@ class ProbeArguments:
         self.n_layers = n_layers
         self.sim_type = sim_type
         self.token_attention = token_attention
+        self.add_token_ids = add_token_ids
         self.task_type = task_type
         self.pre_ln = pre_ln
         self.use_bias = use_bias

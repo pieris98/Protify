@@ -146,6 +146,8 @@ class ModifiedEsmEncoder(EsmEncoder):
 
 
 class ModifiedEsmModel(EsmModel):
+    config_class = EsmModel.config_class
+    all_tied_weights_keys = {}
     def __init__(self, config, add_pooling_layer=True):
         EsmPreTrainedModel.__init__(self, config)
         self.config = config
@@ -266,6 +268,8 @@ class ModifiedEsmModel(EsmModel):
 
 @register_model('mlm_esm')
 class EsmForDPLM(EsmForMaskedLM):
+    config_class = EsmForMaskedLM.config_class
+    all_tied_weights_keys = {}
     def __init__(self, config, dropout=0.1):
         tokenizer = AutoTokenizer.from_pretrained(config._name_or_path)
         config.hidden_dropout_prob = dropout

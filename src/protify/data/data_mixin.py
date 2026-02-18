@@ -18,12 +18,21 @@ except ImportError:
     from ..seed_utils import get_global_seed
     from ..embedder import get_embedding_filename
 from .supported_datasets import supported_datasets, standard_data_benchmark, vector_benchmark
+from .utils import (
+    AA_SET,
+    CODON_SET,
+    DNA_SET,
+    RNA_SET,
+    NONCANONICAL_AMINO_ACIDS,
+    AMINO_ACID_TO_HUMAN_CODON,
+    NONCANONICAL_ALANINE_CODON,
+    AA_TO_CODON_TOKEN,
+    CODON_TO_AA,
+    DNA_CODON_TO_AA,
+    RNA_CODON_TO_AA,
+)
 
 
-AMINO_ACIDS = set('LAGVSERTIPDKQNFYMHWCXBUOZ*')
-CODONS = set('aA@bB#$%rRnNdDcCeEqQ^G&ghHiIj+MmlJLkK(fFpPoO=szZwSXTtxWyYuvUV]})')
-DNA = set('ATCG')
-RNA = set('AUCG')
 
 
 @dataclass
@@ -46,6 +55,12 @@ class DataArguments:
             trim: bool = False,
             data_dirs: Optional[List[str]] = [],
             multi_column: Optional[List[str]] = None,
+            aa_to_dna: bool = False,
+            aa_to_rna: bool = False,
+            dna_to_aa: bool = False,
+            rna_to_aa: bool = False,
+            codon_to_aa: bool = False,
+            aa_to_codon: bool = False,
             **kwargs
         ):
         self.data_names = data_names
@@ -56,6 +71,12 @@ class DataArguments:
         self.trim = trim
         self.protein_gym = False
         self.multi_column = multi_column
+        self.aa_to_dna = aa_to_dna
+        self.aa_to_rna = aa_to_rna
+        self.dna_to_aa = dna_to_aa
+        self.rna_to_aa = rna_to_aa
+        self.codon_to_aa = codon_to_aa
+        self.aa_to_codon = aa_to_codon
 
         if len(data_names) > 0:
             if data_names[0] == 'standard_benchmark':
@@ -93,8 +114,21 @@ class DataMixin:
         self._trim = False
         self._delimiter = ','
         self._col_names = ['seqs', 'labels']
+        self._aa_to_dna = False
+        self._aa_to_rna = False
+        self._dna_to_aa = False
+        self._rna_to_aa = False
+        self._codon_to_aa = False
+        self._aa_to_codon = False
         self.data_args = data_args
         self._multi_column = None if data_args is None else getattr(data_args, 'multi_column', None)
+        if data_args is not None:
+            self._aa_to_dna = data_args.aa_to_dna
+            self._aa_to_rna = data_args.aa_to_rna
+            self._dna_to_aa = data_args.dna_to_aa
+            self._rna_to_aa = data_args.rna_to_aa
+            self._codon_to_aa = data_args.codon_to_aa
+            self._aa_to_codon = data_args.aa_to_codon
 
     def _not_regression(self, labels): # not a great assumption but works most of the time
         if isinstance(labels, list):
@@ -195,6 +229,113 @@ class DataMixin:
         ex['SeqB'] = trunc_b
         return ex
 
+    def _active_translation_mode(self):
+        mode_to_flag = {
+            'aa_to_dna': self._aa_to_dna,
+            'aa_to_rna': self._aa_to_rna,
+            'dna_to_aa': self._dna_to_aa,
+            'rna_to_aa': self._rna_to_aa,
+            'codon_to_aa': self._codon_to_aa,
+            'aa_to_codon': self._aa_to_codon,
+        }
+        active_modes = [mode for mode, enabled in mode_to_flag.items() if enabled]
+        assert len(active_modes) <= 1, f'Only one translation mode can be enabled at a time, found: {active_modes}'
+        return active_modes[0] if len(active_modes) == 1 else None
+
+    def _assert_characters_in_set(self, seq, allowed_chars, mode):
+        bad_chars = sorted({char for char in seq if char.upper() not in allowed_chars})
+        assert len(bad_chars) == 0, f'Invalid characters for {mode}: {bad_chars}.'
+
+    def _validate_translated_output(self, translated_seq, allowed_chars, mode):
+        bad_chars = sorted({char for char in translated_seq if char not in allowed_chars})
+        assert len(bad_chars) == 0, f'Translation output for {mode} contains unexpected characters: {bad_chars}.'
+
+    def _translate_aa_to_dna(self, seq):
+        dna_codons = []
+        for residue in seq:
+            residue = residue.upper()
+            if residue in AMINO_ACID_TO_HUMAN_CODON:
+                dna_codons.append(AMINO_ACID_TO_HUMAN_CODON[residue])
+            elif residue in NONCANONICAL_AMINO_ACIDS:
+                dna_codons.append(NONCANONICAL_ALANINE_CODON)
+            else:
+                raise AssertionError(f'Unexpected amino acid token "{residue}" while converting aa_to_dna.')
+        translated = ''.join(dna_codons)
+        self._validate_translated_output(translated, DNA_SET, 'aa_to_dna')
+        return translated
+
+    def _translate_aa_to_rna(self, seq):
+        dna_translated = self._translate_aa_to_dna(seq)
+        translated = dna_translated.replace('T', 'U')
+        self._validate_translated_output(translated, RNA_SET, 'aa_to_rna')
+        return translated
+
+    def _translate_dna_to_aa(self, seq):
+        dna_seq = seq.upper()
+        self._assert_characters_in_set(dna_seq, DNA_SET, 'dna_to_aa')
+        assert len(dna_seq) % 3 == 0, f'dna_to_aa requires sequence length multiple of 3, got {len(dna_seq)}.'
+        aa_seq = []
+        for idx in range(0, len(dna_seq), 3):
+            codon = dna_seq[idx:idx + 3]
+            assert codon in DNA_CODON_TO_AA, f'Unknown DNA codon for dna_to_aa: {codon}'
+            aa_seq.append(DNA_CODON_TO_AA[codon])
+        translated = ''.join(aa_seq)
+        self._validate_translated_output(translated, AA_SET, 'dna_to_aa')
+        return translated
+
+    def _translate_rna_to_aa(self, seq):
+        rna_seq = seq.upper()
+        self._assert_characters_in_set(rna_seq, RNA_SET, 'rna_to_aa')
+        assert len(rna_seq) % 3 == 0, f'rna_to_aa requires sequence length multiple of 3, got {len(rna_seq)}.'
+        aa_seq = []
+        for idx in range(0, len(rna_seq), 3):
+            codon = rna_seq[idx:idx + 3]
+            assert codon in RNA_CODON_TO_AA, f'Unknown RNA codon for rna_to_aa: {codon}'
+            aa_seq.append(RNA_CODON_TO_AA[codon])
+        translated = ''.join(aa_seq)
+        self._validate_translated_output(translated, AA_SET, 'rna_to_aa')
+        return translated
+
+    def _translate_codon_to_aa(self, seq):
+        aa_seq = []
+        for token in seq:
+            assert token in CODON_TO_AA, f'Unknown codon token for codon_to_aa: {token}'
+            translated_char = CODON_TO_AA[token]
+            if translated_char != '*':
+                aa_seq.append(translated_char)
+        translated = ''.join(aa_seq)
+        self._validate_translated_output(translated, AA_SET - {'*'}, 'codon_to_aa')
+        return translated
+
+    def _translate_aa_to_codon(self, seq):
+        codon_tokens = []
+        for residue in seq:
+            residue = residue.upper()
+            if residue in AA_TO_CODON_TOKEN:
+                codon_tokens.append(AA_TO_CODON_TOKEN[residue])
+            elif residue in NONCANONICAL_AMINO_ACIDS:
+                codon_tokens.append(AA_TO_CODON_TOKEN['A'])
+            else:
+                raise AssertionError(f'Unexpected amino acid token "{residue}" while converting aa_to_codon.')
+        translated = ''.join(codon_tokens)
+        self._validate_translated_output(translated, CODON_SET, 'aa_to_codon')
+        return translated
+
+    def _translate_sequence_for_mode(self, seq, mode):
+        if mode == 'aa_to_dna':
+            return self._translate_aa_to_dna(seq)
+        if mode == 'aa_to_rna':
+            return self._translate_aa_to_rna(seq)
+        if mode == 'dna_to_aa':
+            return self._translate_dna_to_aa(seq)
+        if mode == 'rna_to_aa':
+            return self._translate_rna_to_aa(seq)
+        if mode == 'codon_to_aa':
+            return self._translate_codon_to_aa(seq)
+        if mode == 'aa_to_codon':
+            return self._translate_aa_to_codon(seq)
+        raise AssertionError(f'Unsupported translation mode: {mode}')
+
     def _find_first_present_column(self, available_columns, candidates_ordered):
         """Return the first column from candidates_ordered that exists in available_columns (case-insensitive)."""
         lowercase_to_actual = {col.lower(): col for col in available_columns}
@@ -265,6 +406,7 @@ class DataMixin:
         )-> Tuple[Dict[str, Tuple[Dataset, Dataset, Dataset, int, str, bool]], List[str]]:
         max_length = self._max_length
         datasets, all_seqs = {}, set()
+        translation_mode = self._active_translation_mode()
         for dataset, data_name in zip(hf_datasets, data_names):
             print_message(f'Processing {data_name}')
             train_set, valid_set, test_set, ppi = dataset
@@ -303,24 +445,25 @@ class DataMixin:
                     f"Removed None / NaN rows - train: {before_train - len(train_set)}, valid: {before_valid - len(valid_set)}, test: {before_test - len(test_set)}"
                 )
 
-            # 2) Remove non-amino acid characters
-            if ppi:
-                train_set = train_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
-                                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
-                valid_set = valid_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
-                                                     'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
-                test_set = test_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AMINO_ACIDS),
-                                                    'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AMINO_ACIDS)})
-            elif self.data_args.multi_column:
-                cols = self.data_args.multi_column
-                for col in cols:
-                    train_set = train_set.map(lambda x, _col=col: { _col: ''.join(aa for aa in x[_col] if aa in AMINO_ACIDS) })
-                    valid_set = valid_set.map(lambda x, _col=col: { _col: ''.join(aa for aa in x[_col] if aa in AMINO_ACIDS) })
-                    test_set = test_set.map(lambda x, _col=col: { _col: ''.join(aa for aa in x[_col] if aa in AMINO_ACIDS) })
-            else:
-                train_set = train_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
-                valid_set = valid_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
-                test_set = test_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AMINO_ACIDS)})
+            # 2) Legacy sanitization for non-translation workflows
+            if translation_mode is None:
+                if ppi:
+                    train_set = train_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AA_SET),
+                                                         'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AA_SET)})
+                    valid_set = valid_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AA_SET),
+                                                         'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AA_SET)})
+                    test_set = test_set.map(lambda x: {'SeqA': ''.join(aa for aa in x['SeqA'] if aa in AA_SET),
+                                                        'SeqB': ''.join(aa for aa in x['SeqB'] if aa in AA_SET)})
+                elif self.data_args.multi_column:
+                    cols = self.data_args.multi_column
+                    for col in cols:
+                        train_set = train_set.map(lambda x, _col=col: {_col: ''.join(aa for aa in x[_col] if aa in AA_SET)})
+                        valid_set = valid_set.map(lambda x, _col=col: {_col: ''.join(aa for aa in x[_col] if aa in AA_SET)})
+                        test_set = test_set.map(lambda x, _col=col: {_col: ''.join(aa for aa in x[_col] if aa in AA_SET)})
+                else:
+                    train_set = train_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AA_SET)})
+                    valid_set = valid_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AA_SET)})
+                    test_set = test_set.map(lambda x: {'seqs': ''.join(aa for aa in x['seqs'] if aa in AA_SET)})
 
             # 3) Remove any length 0 sequences
             before_train, before_valid, before_test = len(train_set), len(valid_set), len(test_set)
@@ -391,7 +534,28 @@ class DataMixin:
                     test: {(before_test - len(test_set)) / before_test * 100:.2f}%"
                 )
 
-            # 5) Record all_seqs
+            # 5) Optional sequence translation (post-trim/truncate)
+            if translation_mode is not None:
+                if ppi:
+                    train_set = train_set.map(lambda x: {'SeqA': self._translate_sequence_for_mode(x['SeqA'], translation_mode),
+                                                         'SeqB': self._translate_sequence_for_mode(x['SeqB'], translation_mode)})
+                    valid_set = valid_set.map(lambda x: {'SeqA': self._translate_sequence_for_mode(x['SeqA'], translation_mode),
+                                                         'SeqB': self._translate_sequence_for_mode(x['SeqB'], translation_mode)})
+                    test_set = test_set.map(lambda x: {'SeqA': self._translate_sequence_for_mode(x['SeqA'], translation_mode),
+                                                       'SeqB': self._translate_sequence_for_mode(x['SeqB'], translation_mode)})
+                elif self.data_args.multi_column:
+                    cols = self.data_args.multi_column
+                    for col in cols:
+                        train_set = train_set.map(lambda x, _col=col: {_col: self._translate_sequence_for_mode(x[_col], translation_mode)})
+                        valid_set = valid_set.map(lambda x, _col=col: {_col: self._translate_sequence_for_mode(x[_col], translation_mode)})
+                        test_set = test_set.map(lambda x, _col=col: {_col: self._translate_sequence_for_mode(x[_col], translation_mode)})
+                else:
+                    train_set = train_set.map(lambda x: {'seqs': self._translate_sequence_for_mode(x['seqs'], translation_mode)})
+                    valid_set = valid_set.map(lambda x: {'seqs': self._translate_sequence_for_mode(x['seqs'], translation_mode)})
+                    test_set = test_set.map(lambda x: {'seqs': self._translate_sequence_for_mode(x['seqs'], translation_mode)})
+                print_message(f"Translated sequences with mode {translation_mode} (post-trim/truncate).")
+
+            # 6) Record all_seqs
             if ppi:
                 all_seqs.update(list(train_set['SeqA']) + list(train_set['SeqB']))
                 all_seqs.update(list(valid_set['SeqA']) + list(valid_set['SeqB']))

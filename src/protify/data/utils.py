@@ -119,7 +119,6 @@ CODON_TO_AA = {
     '}':'*',
     ')':'*',
 }
-
 DNA_CODON_TO_AA = {
     'TTT': 'F', 'TTC': 'F', 'TTA': 'L', 'TTG': 'L',
     'TCT': 'S', 'TCC': 'S', 'TCA': 'S', 'TCG': 'S',

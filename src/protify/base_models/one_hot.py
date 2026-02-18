@@ -105,16 +105,16 @@ class OneHotModel(nn.Module):
         return one_hot
 
 
-AMINO_ACIDS = 'LAGVSERTIPDKQNFYMHWCXBUOZ*'
-CODONS      = 'aA@bB#$%rRnNdDcCeEqQ^G&ghHiIj+MmlJLkK(fFpPoO=szZwSXTtxWyYuvUV]})'
-DNA         = 'ATCG'
-RNA         = 'AUCG'
+AA_SET = 'LAGVSERTIPDKQNFYMHWCXBUOZ*'
+CODON_SET = 'aA@bB#$%rRnNdDcCeEqQ^G&ghHiIj+MmlJLkK(fFpPoO=szZwSXTtxWyYuvUV]})'
+DNA_SET = 'ATCG'
+RNA_SET = 'AUCG'
 
 ALPHABET_DICT = {
-    'OneHot-Protein': AMINO_ACIDS,
-    'OneHot-DNA':     DNA,
-    'OneHot-RNA':     RNA,
-    'OneHot-Codon':   CODONS
+    'OneHot-Protein': AA_SET,
+    'OneHot-DNA': DNA_SET,
+    'OneHot-RNA': RNA_SET,
+    'OneHot-Codon': CODON_SET
 }
 
 

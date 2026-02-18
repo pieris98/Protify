@@ -205,8 +205,9 @@ class PairCollator_ab:
 
 
 class PairEmbedsLabelsCollator:
-    def __init__(self, full=False, **kwargs):
+    def __init__(self, full=False, use_token_type_ids=False, **kwargs):
         self.full = full
+        self.use_token_type_ids = use_token_type_ids
         
     def __call__(self, batch: List[Tuple[torch.Tensor, torch.Tensor, Union[float, int]]]) -> Dict[str, torch.Tensor]:
         if self.full:
@@ -219,6 +220,24 @@ class PairEmbedsLabelsCollator:
             embeds, attention_mask = pad_and_concatenate_dimer(embeds_a, embeds_b, attention_mask_a, attention_mask_b)
 
             labels = torch.stack([ex[2] for ex in batch])
+
+            # For tasks requiring token type IDs, provide them so the model knows
+            # which tokens belong to protein A vs protein B
+            if self.use_token_type_ids:
+                batch_size = embeds.size(0)
+                max_len = embeds.size(1)
+                token_type_ids = torch.zeros(batch_size, max_len, dtype=torch.long)
+                for i in range(batch_size):
+                    a_len = int(attention_mask_a[i].sum().item())
+                    b_len = int(attention_mask_b[i].sum().item())
+                    # type 0 for protein A, type 1 for protein B
+                    token_type_ids[i, a_len:a_len + b_len] = 1
+                return {
+                    'embeddings': embeds,
+                    'attention_mask': attention_mask,
+                    'token_type_ids': token_type_ids,
+                    'labels': labels
+                }
 
             return {
                 'embeddings': embeds,

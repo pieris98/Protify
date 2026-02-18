@@ -350,7 +350,8 @@ class TrainerMixin:
         hf_dataset, col_a, col_b, label_col, input_size, task_type, db_path, emb_dict, batch_size, read_scaler, full, train
         """
 
-        data_collator = CollatorClass(tokenizer=tokenizer, full=full, task_type=task_type, tokenwise=tokenwise)
+        add_token_ids = getattr(self.probe_args, 'add_token_ids', False)
+        data_collator = CollatorClass(tokenizer=tokenizer, full=full, task_type=task_type, tokenwise=tokenwise, add_token_ids=add_token_ids)
         common_kwargs = dict(
             hf_dataset=train_dataset,
             input_size=input_size,

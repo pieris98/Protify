@@ -46,6 +46,7 @@ class TransformerProbeConfig(PretrainedConfig):
             rotary: bool = True,
             pre_ln: bool = True,
             probe_pooling_types: List[str] = ['mean', 'cls'],
+            add_token_ids: bool = False,
             **kwargs,
     ):
         super().__init__(**kwargs)
@@ -62,6 +63,7 @@ class TransformerProbeConfig(PretrainedConfig):
         self.pre_ln = pre_ln
         self.pooling_types = probe_pooling_types
         self.token_attention = token_attention
+        self.add_token_ids = add_token_ids
 
 
 class TransformerForSequenceClassification(PreTrainedModel):
@@ -74,6 +76,7 @@ class TransformerForSequenceClassification(PreTrainedModel):
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels
         self.input_size = config.input_size
+        self.add_token_ids = getattr(config, 'add_token_ids', False)
 
         if config.pre_ln:
             self.input_layer = nn.Sequential(
@@ -82,6 +85,12 @@ class TransformerForSequenceClassification(PreTrainedModel):
             )
         else:
             self.input_layer = nn.Linear(config.input_size, config.hidden_size)
+
+        # Learned token type embeddings (e.g. protein A vs protein B for PPI tasks):
+        # type 0 = protein A, type 1 = protein B
+        # Gives the model an explicit signal for which tokens belong to which segment
+        if self.add_token_ids:
+            self.token_type_embedding = nn.Embedding(2, config.hidden_size)
 
         transformer_class = TokenFormer if config.token_attention else Transformer
         self.transformer = transformer_class(
@@ -111,6 +120,7 @@ class TransformerForSequenceClassification(PreTrainedModel):
             self,
             embeddings,
             attention_mask: Optional[torch.Tensor] = None,
+            token_type_ids: Optional[torch.Tensor] = None,
             labels: Optional[torch.Tensor] = None,
             output_attentions: Optional[bool] = False,
     ) -> SequenceClassifierOutput:
@@ -118,6 +128,11 @@ class TransformerForSequenceClassification(PreTrainedModel):
         # This handles cases where embeddings are fp32 but model is fp16 (or vice versa)
         embeddings = embeddings.to(next(self.input_layer.parameters()).dtype)
         x = self.input_layer(embeddings)
+
+        # Add token type embeddings to break A/B symmetry (e.g. for PPI tasks)
+        if self.add_token_ids and token_type_ids is not None:
+            x = x + self.token_type_embedding(token_type_ids)
+
         x = self.transformer(x, attention_mask)
         x = self.pooler(x, attention_mask)
         logits = self.classifier(x)

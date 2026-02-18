@@ -79,6 +79,7 @@ def parse_arguments():
 
     # ----------------- EmbeddingArguments ----------------- #
     parser.add_argument("--embedding_batch_size", type=int, default=16, help="Batch size for embedding generation.")
+    parser.add_argument("--embedding_num_workers", type=int, default=0, help="Number of worker processes for embedding generation.")
     parser.add_argument("--num_workers", type=int, default=0, help="Number of worker processes for data loading.")
     parser.add_argument("--download_embeddings", action="store_true", default=False, help="Whether to download embeddings (default: False).")
     parser.add_argument("--matrix_embed", action="store_true", default=False, help="Use matrix embedding (default: False).")

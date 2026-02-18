@@ -39,6 +39,7 @@ def parse_arguments():
     parser.add_argument("--rna_to_aa", action="store_true", default=False, help="Translate RNA codon sequences to amino-acid sequences.")
     parser.add_argument("--codon_to_aa", action="store_true", default=False, help="Translate codon-token sequences to amino-acid sequences and drop stop codons.")
     parser.add_argument("--aa_to_codon", action="store_true", default=False, help="Translate amino-acid sequences to codon-token sequences.")
+    parser.add_argument("--random_pair_flipping", action="store_true", default=False, help="Enable random swapping of paired inputs during training.")
 
     # ----------------- BaseModelArguments ----------------- #
     parser.add_argument("--model_names", nargs="+", default=["ESM2-8"], help="List of model names to use. To use a custom model, use the format 'custom---<path_to_model>'.")
@@ -186,6 +187,7 @@ def parse_arguments():
         yaml_args.rna_to_aa = args.rna_to_aa
         yaml_args.codon_to_aa = args.codon_to_aa
         yaml_args.aa_to_codon = args.aa_to_codon
+        yaml_args.random_pair_flipping = args.random_pair_flipping
         # Ensure ProteinGym defaults exist when using YAML configs
         if not hasattr(yaml_args, 'proteingym'):
             yaml_args.proteingym = False

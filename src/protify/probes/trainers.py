@@ -361,6 +361,7 @@ class TrainerMixin:
             read_scaler=read_scaler,
             full=full,
             train=True,
+            random_pair_flipping=self.full_args.random_pair_flipping,
         )
         if use_multi:
             train_ds = DatasetClass(seq_cols=use_multi, **deepcopy(common_kwargs))
@@ -493,9 +494,9 @@ class TrainerMixin:
 
         data_collator = CollatorClass(tokenizer=tokenizer, task_type=task_type, tokenwise=tokenwise)
 
-        train_ds = DatasetClass(hf_dataset=train_dataset, train=True)
-        valid_ds = DatasetClass(hf_dataset=valid_dataset, train=False)
-        test_ds = DatasetClass(hf_dataset=test_dataset, train=False)
+        train_ds = DatasetClass(hf_dataset=train_dataset, train=True, random_pair_flipping=self.full_args.random_pair_flipping)
+        valid_ds = DatasetClass(hf_dataset=valid_dataset, train=False, random_pair_flipping=self.full_args.random_pair_flipping)
+        test_ds = DatasetClass(hf_dataset=test_dataset, train=False, random_pair_flipping=self.full_args.random_pair_flipping)
 
         # Single run - original behavior
         if num_runs == 1:

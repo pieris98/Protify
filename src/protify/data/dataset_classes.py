@@ -27,6 +27,8 @@ class PairEmbedsLabelsDatasetFromDisk(TorchDataset):
             read_scaler=100,
             input_size=768,
             task_type='regression',
+            train=True,
+            random_pair_flipping=False,
             **kwargs
         ):
         self.seqs_a, self.seqs_b, self.labels = list(hf_dataset[col_a]), list(hf_dataset[col_b]), list(hf_dataset[label_col])
@@ -39,6 +41,8 @@ class PairEmbedsLabelsDatasetFromDisk(TorchDataset):
         self.embeddings_a, self.embeddings_b, self.current_labels = [], [], []
         self.count, self.index = 0, 0
         self.task_type = task_type
+        self.train = train
+        self.random_pair_flipping = random_pair_flipping
 
     def __len__(self):
         return self.length
@@ -99,8 +103,8 @@ class PairEmbedsLabelsDatasetFromDisk(TorchDataset):
 
         self.index += 1
 
-        # 50% chance to switch the order of a and b
-        if random.random() < 0.5:
+        # Optional random pair order augmentation during training only.
+        if self.train and self.random_pair_flipping and random.random() < 0.5:
             emb_a, emb_b = emb_b, emb_a
 
         if self.task_type in ['multilabel', 'regression', 'sigmoid_regression']:
@@ -122,6 +126,8 @@ class PairEmbedsLabelsDataset(TorchDataset):
             label_col='labels',
             input_size=768,
             task_type='regression',
+            train=True,
+            random_pair_flipping=False,
             **kwargs
         ):
         self.seqs_a = list(hf_dataset[col_a])
@@ -130,6 +136,8 @@ class PairEmbedsLabelsDataset(TorchDataset):
         self.input_size = input_size // 2 if not full else input_size # already scaled if ppi
         self.task_type = task_type
         self.full = full
+        self.train = train
+        self.random_pair_flipping = random_pair_flipping
 
         # Combine seqs_a and seqs_b to find all unique sequences needed
         needed_seqs = set(list(hf_dataset[col_a]) + list(hf_dataset[col_b]))
@@ -148,8 +156,8 @@ class PairEmbedsLabelsDataset(TorchDataset):
         emb_a = self.emb_dict.get(seq_a).reshape(-1, self.input_size)
         emb_b = self.emb_dict.get(seq_b).reshape(-1, self.input_size)
         
-        # 50% chance to switch the order of a and b
-        if random.random() < 0.5:
+        # Optional random pair order augmentation during training only.
+        if self.train and self.random_pair_flipping and random.random() < 0.5:
             emb_a, emb_b = emb_b, emb_a
 
         # Prepare the label
@@ -307,10 +315,11 @@ class StringLabelDataset(TorchDataset):
     
 
 class PairStringLabelDataset(TorchDataset):
-    def __init__(self, hf_dataset, col_a='SeqA', col_b='SeqB', label_col='labels', train=True, **kwargs):
+    def __init__(self, hf_dataset, col_a='SeqA', col_b='SeqB', label_col='labels', train=True, random_pair_flipping=False, **kwargs):
         self.seqs_a, self.seqs_b = list(hf_dataset[col_a]), list(hf_dataset[col_b])
         self.labels = list(hf_dataset[label_col])
         self.train = train
+        self.random_pair_flipping = random_pair_flipping
 
     def avg(self):
         return sum(len(seqa) + len(seqb) for seqa, seqb in zip(self.seqs_a, self.seqs_b)) / len(self.seqs_a)
@@ -320,7 +329,7 @@ class PairStringLabelDataset(TorchDataset):
 
     def __getitem__(self, idx):
         seq_a, seq_b = self.seqs_a[idx], self.seqs_b[idx]
-        if self.train and random.random() < 0.5:
+        if self.train and self.random_pair_flipping and random.random() < 0.5:
             seq_a, seq_b = seq_b, seq_a
         return seq_a, seq_b, self.labels[idx]
 

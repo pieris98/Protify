@@ -103,7 +103,7 @@ class ModifiedEsmSelfAttention(EsmSelfAttention):
         key_layer = key_layer.contiguous()
         value_layer = value_layer.contiguous()
         context_layer = F.scaled_dot_product_attention(query_layer, key_layer, value_layer, attn_mask=attention_mask, scale=1.0)
-        if head_mask is not None:
+        if head_mask is not None and torch.is_tensor(head_mask):
             context_layer = context_layer * head_mask
         
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()

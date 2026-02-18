@@ -250,7 +250,19 @@ class DataMixin:
         bad_chars = sorted({char for char in translated_seq if char not in allowed_chars})
         assert len(bad_chars) == 0, f'Translation output for {mode} contains unexpected characters: {bad_chars}.'
 
+    def _normalize_aa_for_nucleotide_translation(self, seq):
+        canonical_aas = set(AMINO_ACID_TO_HUMAN_CODON.keys())
+        normalized = []
+        for residue in seq:
+            residue = residue.upper()
+            if residue in canonical_aas:
+                normalized.append(residue)
+            else:
+                normalized.append('X')
+        return ''.join(normalized)
+
     def _translate_aa_to_dna(self, seq):
+        seq = self._normalize_aa_for_nucleotide_translation(seq)
         dna_codons = []
         for residue in seq:
             residue = residue.upper()

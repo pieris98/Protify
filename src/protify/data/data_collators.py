@@ -205,9 +205,9 @@ class PairCollator_ab:
 
 
 class PairEmbedsLabelsCollator:
-    def __init__(self, full=False, use_token_type_ids=False, **kwargs):
+    def __init__(self, full=False, add_token_ids=False, **kwargs):
         self.full = full
-        self.use_token_type_ids = use_token_type_ids
+        self.add_token_ids = add_token_ids
         
     def __call__(self, batch: List[Tuple[torch.Tensor, torch.Tensor, Union[float, int]]]) -> Dict[str, torch.Tensor]:
         if self.full:
@@ -223,7 +223,7 @@ class PairEmbedsLabelsCollator:
 
             # For tasks requiring token type IDs, provide them so the model knows
             # which tokens belong to protein A vs protein B
-            if self.use_token_type_ids:
+            if self.add_token_ids:
                 batch_size = embeds.size(0)
                 max_len = embeds.size(1)
                 token_type_ids = torch.zeros(batch_size, max_len, dtype=torch.long)

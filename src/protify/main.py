@@ -67,7 +67,7 @@ def parse_arguments():
     parser.add_argument("--lora_dropout", type=float, default=0.01, help="Dropout rate for the LoRA model.")
     parser.add_argument("--sim_type", choices=["dot", "euclidean", "cosine"], default="dot", help="Cross-attention mechanism for token-parameter-attention")
     parser.add_argument("--token_attention", action="store_true", default=False, help="If true, use TokenFormer instead of Transformer blocks")
-    parser.add_argument("--use_token_type_ids", action="store_true", default=False, help="If true, add learned token type embeddings to distinguish protein A vs B in PPI tasks.")
+    parser.add_argument("--add_token_ids", action="store_true", default=False, help="If true, add learned token type embeddings to distinguish protein A vs B in PPI tasks.")
 
     # ----------------- ScikitArguments ----------------- #
     parser.add_argument("--scikit_n_iter", type=int, default=10, help="Number of iterations for scikit model.")

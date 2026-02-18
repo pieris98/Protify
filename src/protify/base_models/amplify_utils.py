@@ -67,75 +67,34 @@ class SwiGLU(nn.Module):
         hidden = F.silu(x1) * x2
         return self.w3(hidden)
 
-
-def memory_efficient_attention(
-    query: torch.Tensor,
-    key: torch.Tensor,
-    value: torch.Tensor,
-    attn_bias: Optional[torch.Tensor] = None,
-    p: float = 0.0,
-    scale: Optional[float] = None,
-) -> torch.Tensor:
-    """
-    Implements the attention mechanism in a memory-efficient way using PyTorch.
-    
-    Args:
-        query: Tensor of shape [batch_size, seq_len_q, num_heads, head_dim]
-        key: Tensor of shape [batch_size, seq_len_k, num_heads, head_dim]
-        value: Tensor of shape [batch_size, seq_len_k, num_heads, head_dim]
-        attn_bias: Optional tensor to be added to attention scores, of shape 
-                   [batch_size, num_heads, seq_len_q, seq_len_k]
-        p: Dropout probability. Disabled if set to 0.0
-        scale: Scaling factor for query @ key.transpose(). If None, defaults to 
-               1 / sqrt(head_dim)
-    Returns:
-        Tensor of shape [batch_size, seq_len_q, num_heads, head_dim]
-    """
-    scale = 1.0 / query.shape[-1] ** 0.5
-    query = query * scale
-    query = query.transpose(1, 2)
-    key = key.transpose(1, 2)
-    value = value.transpose(1, 2)
-    attn = query @ key.transpose(-2, -1)
-    if attn_bias is not None:
-        attn = attn + attn_bias
-    attn = attn.softmax(-1)
-    attn = F.dropout(attn, p)
-    attn = attn @ value
-    return attn.transpose(1, 2).contiguous()
-
-
 class RMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
         """
         Initialize the RMSNorm normalization layer.
-
         Args:
             dim (int): The dimension of the input tensor.
             eps (float, optional): A small value added to the denominator for numerical stability. Default is 1e-6.
-
         Attributes:
             eps (float): A small value added to the denominator for numerical stability.
             weight (nn.Parameter): Learnable scaling parameter.
-
         """
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
 
+    def _norm(self, x):
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+
     def forward(self, x):
         """
         Forward pass through the RMSNorm layer.
-
         Args:
             x (torch.Tensor): The input tensor.
-
         Returns:
             torch.Tensor: The output tensor after applying RMSNorm.
-
         """
-        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps) * self.weight
-
+        output = self._norm(x.float()).type_as(x) # Avoids mixed precision issues as in https://github.com/chandar-lab/AMPLIFY/issues/19
+        return output * self.weight
 
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
     """

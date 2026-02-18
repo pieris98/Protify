@@ -257,6 +257,20 @@ docker run --rm --gpus all -v ${PWD}:/workspace protify-env:latest python -m mai
 ```
 Note: You may need to include `sudo` before the docker commands.
 
+### Optional: xformers for AMPLIFY
+
+If you plan to use the AMPLIFY model with the `--use_xformers` flag for memory-efficient attention, you'll need to install xformers separately:
+
+```bash
+pip install xformers
+```
+
+**Note for aarch64 systems**: The standard pip installation is not supported on aarch64 architectures. If you encounter installation errors, use this alternative method:
+
+```bash
+pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers --no-build-isolation
+```
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Usage

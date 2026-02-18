@@ -29,16 +29,37 @@ parameters:
     values: [True, False]
   
   # Transformer probe specific parameters (only swept when probe_type=transformer)
+  transformer_hidden_size:
+    distribution: q_uniform
+    min: 64
+    max: 2048
+    q: 16
   classifier_dropout:
     distribution: uniform
     min: 0.0
     max: 0.5
-  classifier_dim:
+  classifier_size:
     distribution: q_uniform
     min: 64
     max: 8192
     q: 8
   
+  # Transformer probe pooling (only swept when probe_type=transformer)
+  probe_pooling_types:
+    values:
+      - ['mean']
+      - ['cls']
+      - ['mean', 'cls']
+      - ['mean', 'var']
+
+  # Embedding pooling (only swept when probe_type=transformer)
+  embedding_pooling_types:
+    values:
+      - ['mean']
+      - ['var']
+      - ['mean', 'var']
+      - ['cls']
+
   # LoRA parameters (only swept when lora=true)
   lora_r:
     distribution: q_uniform

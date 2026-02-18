@@ -192,7 +192,7 @@ class ProteinGymScorer:
     }
     
     # Models that don't append EOS token
-    GLM2_MODELS = ["GLM2-150", "GLM2-650", "GLM2-GAIA"]
+    GLM2_MODELS = ["GLM2-150", "GLM2-650"]
     
     def __init__(
         self,
@@ -323,8 +323,7 @@ class ProteinGymScorer:
         iterator.close()
         
         # Grab normalized PLL for indels
-        pll_cache = {seq: result for seq, result in zip(seqs_to_score, pll_results)}
-        
+        pll_cache = {seq: result[0] for seq, result in zip(seqs_to_score, pll_results)}        
         # Add a mapped column of per-window scores, then average by mutated_seq
         sliced_df['window_score'] = sliced_df['sliced_mutated_seq'].map(pll_cache)
         scores_by_variant = (
@@ -1026,6 +1025,10 @@ class ProteinGymRunner:
                         on='mutated_seq',
                         how='outer',
                     )
+                # Re-apply target_seq after merge
+                if 'target_seq' in merged.columns and first_target_seq is not None:
+                    merged['target_seq'] = ''
+                    merged.iloc[0, merged.columns.get_loc('target_seq')] = first_target_seq
                 merged.to_csv(per_dms_path, index=False)
             except Exception as e:
                 print(f"Error merging results for {dms_id}: {e}")

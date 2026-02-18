@@ -69,19 +69,43 @@ class RandomTransformer(nn.Module):
             return self.transformer(input_ids, attention_mask).last_hidden_state
 
 
+class RandomTransformerForMaskedLM(nn.Module):
+    """Random-initialized transformer that returns logits for ProteinGym scoring."""
+    def __init__(self, config: TransformerConfig):
+        super().__init__()
+        self.config = config
+        self.transformer = TransformerForMaskedLM(config)
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> RandomModelOutput:
+        out = self.transformer(input_ids, attention_mask, return_preds=False)
+        return RandomModelOutput(last_hidden_state=out.last_hidden_state, logits=out.logits)
+
+
+def _build_random_transformer_config(preset: str) -> TransformerConfig:
+    esm_config = EsmConfig.from_pretrained(presets[preset])
+    config = TransformerConfig()
+    config.hidden_size = esm_config.hidden_size
+    config.n_heads = esm_config.num_attention_heads
+    config.n_layers = esm_config.num_hidden_layers
+    config.vocab_size = esm_config.vocab_size
+    config.attn_implementation = 'sdpa'
+    return config
+
+
 def build_random_model(preset: str, masked_lm: bool = False, **kwargs):
     tokenizer = EsmTokenizer.from_pretrained('facebook/esm2_t12_35M_UR50D')
     if preset == 'Random':
         model = RandomModel(EsmConfig.from_pretrained('facebook/esm2_t12_35M_UR50D'))
     else:
-        esm_config = EsmConfig.from_pretrained(presets[preset])
-        config = TransformerConfig()
-        config.hidden_size = esm_config.hidden_size
-        config.n_heads = esm_config.num_attention_heads
-        config.n_layers = esm_config.num_hidden_layers
-        config.vocab_size = esm_config.vocab_size
-        config.attn_implementation = 'sdpa'
-        model = RandomTransformer(config).eval()
+        config = _build_random_transformer_config(preset)
+        if masked_lm:
+            model = RandomTransformerForMaskedLM(config).eval()
+        else:
+            model = RandomTransformer(config).eval()
     return model, tokenizer
 
 

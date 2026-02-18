@@ -38,6 +38,7 @@ def parse_arguments():
 
     # ----------------- BaseModelArguments ----------------- #
     parser.add_argument("--model_names", nargs="+", default=["ESM2-8"], help="List of model names to use. To use a custom model, use the format 'custom---<path_to_model>'.")
+    parser.add_argument("--use_xformers", action="store_true", default=False, help="Use xformers memory efficient attention for AMPLIFY models (default: False).")
 
     # ----------------- ProbeArguments ----------------- #
     parser.add_argument("--probe_type", choices=["linear", "transformer", "retrievalnet", "lyra"], default="linear", help="Type of probe.")
@@ -203,6 +204,10 @@ if __name__ == "__main__":
     has_proteingym = bool(getattr(args, 'proteingym', False))
     if not has_datasets and not has_proteingym:
         raise AssertionError("No datasets specified. Provide --data_names or --data_dirs, or run a ProteinGym experiment.")
+
+    if args.use_xformers:
+        os.environ["_USE_XFORMERS"] = "1"
+        print("xformers memory efficient attention enabled for AMPLIFY models")
 
     if args.hf_home is not None:
         # Needs to happen before any HF imports

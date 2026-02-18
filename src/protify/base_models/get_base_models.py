@@ -39,6 +39,9 @@ def get_base_model(model_name: str, masked_lm: bool = False):
     elif 'glm' in model_name.lower():
         from .glm import build_glm2_model
         return build_glm2_model(model_name, masked_lm=masked_lm)
+    elif 'dplm2' in model_name.lower():
+        from .dplm2 import build_dplm2_model
+        return build_dplm2_model(model_name, masked_lm=masked_lm)
     elif 'dplm' in model_name.lower():
         from .dplm import build_dplm_model
         return build_dplm_model(model_name, masked_lm=masked_lm)
@@ -87,6 +90,9 @@ def get_base_model_for_training(model_name: str, tokenwise: bool = False, num_la
     elif 'glm' in model_name.lower():
         from .glm import get_glm2_for_training
         return get_glm2_for_training(model_name, tokenwise, num_labels, hybrid)
+    elif 'dplm2' in model_name.lower():
+        from .dplm2 import get_dplm2_for_training
+        return get_dplm2_for_training(model_name, tokenwise, num_labels, hybrid)
     elif 'dplm' in model_name.lower():
         from .dplm import get_dplm_for_training
         return get_dplm_for_training(model_name, tokenwise, num_labels, hybrid)
@@ -129,6 +135,9 @@ def get_tokenizer(model_name: str):
     elif 'glm' in model_name.lower():
         from .glm import get_glm2_tokenizer
         return get_glm2_tokenizer(model_name)
+    elif 'dplm2' in model_name.lower():
+        from .dplm2 import get_dplm2_tokenizer
+        return get_dplm2_tokenizer(model_name)
     elif 'dplm' in model_name.lower():
         from .dplm import get_dplm_tokenizer
         return get_dplm_tokenizer(model_name)

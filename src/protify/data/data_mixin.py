@@ -290,9 +290,11 @@ class DataMixin:
         for idx in range(0, len(dna_seq), 3):
             codon = dna_seq[idx:idx + 3]
             assert codon in DNA_CODON_TO_AA, f'Unknown DNA codon for dna_to_aa: {codon}'
-            aa_seq.append(DNA_CODON_TO_AA[codon])
+            translated_char = DNA_CODON_TO_AA[codon]
+            if translated_char != '*':
+                aa_seq.append(translated_char)
         translated = ''.join(aa_seq)
-        self._validate_translated_output(translated, AA_SET, 'dna_to_aa')
+        self._validate_translated_output(translated, AA_SET - {'*'}, 'dna_to_aa')
         return translated
 
     def _translate_rna_to_aa(self, seq):
@@ -303,9 +305,11 @@ class DataMixin:
         for idx in range(0, len(rna_seq), 3):
             codon = rna_seq[idx:idx + 3]
             assert codon in RNA_CODON_TO_AA, f'Unknown RNA codon for rna_to_aa: {codon}'
-            aa_seq.append(RNA_CODON_TO_AA[codon])
+            translated_char = RNA_CODON_TO_AA[codon]
+            if translated_char != '*':
+                aa_seq.append(translated_char)
         translated = ''.join(aa_seq)
-        self._validate_translated_output(translated, AA_SET, 'rna_to_aa')
+        self._validate_translated_output(translated, AA_SET - {'*'}, 'rna_to_aa')
         return translated
 
     def _translate_codon_to_aa(self, seq):

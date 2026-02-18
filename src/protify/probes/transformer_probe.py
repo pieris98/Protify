@@ -46,6 +46,7 @@ class TransformerProbeConfig(PretrainedConfig):
             rotary: bool = True,
             pre_ln: bool = True,
             probe_pooling_types: List[str] = ['mean', 'cls'],
+            use_bias: bool = True,
             add_token_ids: bool = False,
             **kwargs,
     ):
@@ -63,6 +64,7 @@ class TransformerProbeConfig(PretrainedConfig):
         self.pre_ln = pre_ln
         self.pooling_types = probe_pooling_types
         self.token_attention = token_attention
+        self.use_bias = use_bias
         self.add_token_ids = add_token_ids
 
 
@@ -76,15 +78,16 @@ class TransformerForSequenceClassification(PreTrainedModel):
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels
         self.input_size = config.input_size
+        use_bias = config.use_bias
         self.add_token_ids = getattr(config, 'add_token_ids', False)
 
         if config.pre_ln:
             self.input_layer = nn.Sequential(
                 nn.LayerNorm(config.input_size),
-                nn.Linear(config.input_size, config.hidden_size)
+                nn.Linear(config.input_size, config.hidden_size, bias=use_bias)
             )
         else:
-            self.input_layer = nn.Linear(config.input_size, config.hidden_size)
+            self.input_layer = nn.Linear(config.input_size, config.hidden_size, bias=use_bias)
 
         # Learned token type embeddings (e.g. protein A vs protein B for PPI tasks):
         # type 0 = protein A, type 1 = protein B
@@ -100,19 +103,20 @@ class TransformerForSequenceClassification(PreTrainedModel):
             expansion_ratio=8/3,
             dropout=config.transformer_dropout,
             rotary=True,
+            use_bias=use_bias,
         )
 
         classifier_input_size = config.hidden_size * len(config.pooling_types)
         proj_dim = intermediate_correction_fn(expansion_ratio=2, hidden_size=config.num_labels)
         self.classifier = nn.Sequential(
             nn.LayerNorm(classifier_input_size),
-            nn.Linear(classifier_input_size, config.classifier_size),
+            nn.Linear(classifier_input_size, config.classifier_size, bias=use_bias),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
-            nn.Linear(config.classifier_size, proj_dim),
+            nn.Linear(config.classifier_size, proj_dim, bias=use_bias),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
-            nn.Linear(proj_dim, config.num_labels)
+            nn.Linear(proj_dim, config.num_labels, bias=use_bias)
         )
         self.pooler = Pooler(config.pooling_types)
 
@@ -167,7 +171,8 @@ class TransformerForTokenClassification(PreTrainedModel):
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels
         self.input_size = config.input_size
-        self.input_layer = nn.Linear(config.input_size, config.hidden_size)
+        use_bias = config.use_bias
+        self.input_layer = nn.Linear(config.input_size, config.hidden_size, bias=use_bias)
 
         transformer_class = TokenFormer if config.token_attention else Transformer
         self.transformer = transformer_class(
@@ -177,20 +182,21 @@ class TransformerForTokenClassification(PreTrainedModel):
             expansion_ratio=8/3,
             dropout=config.transformer_dropout,
             rotary=True,
+            use_bias=use_bias,
         )
 
         proj_dim = intermediate_correction_fn(expansion_ratio=2, hidden_size=config.num_labels)
         self.classifier = nn.Sequential(
             nn.LayerNorm(config.hidden_size),
-            nn.Linear(config.hidden_size, config.classifier_size),
+            nn.Linear(config.hidden_size, config.classifier_size, bias=use_bias),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
-            nn.Linear(config.classifier_size, proj_dim),
+            nn.Linear(config.classifier_size, proj_dim, bias=use_bias),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
-            nn.Linear(proj_dim, proj_dim),
+            nn.Linear(proj_dim, proj_dim, bias=use_bias),
             nn.ReLU(),
-            nn.Linear(proj_dim, config.num_labels)
+            nn.Linear(proj_dim, config.num_labels, bias=use_bias)
         )
 
     def forward(

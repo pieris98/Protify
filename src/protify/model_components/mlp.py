@@ -1,10 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from functools import partial
-
-
-Linear = partial(nn.Linear, bias=False)
 
 
 def intermediate_correction_fn(expansion_ratio: float, hidden_size: int) -> int:
@@ -20,13 +16,12 @@ class SwiGLU(nn.Module):
         return F.silu(x1) * x2
 
 
-def swiglu_ln_ffn(hidden_size: int, expansion_ratio: float, dropout: float = 0.1):
+def swiglu_ln_ffn(hidden_size: int, expansion_ratio: float, dropout: float = 0.1, use_bias: bool = False):
+    intermediate_size = intermediate_correction_fn(expansion_ratio, hidden_size)
     return nn.Sequential(
         nn.LayerNorm(hidden_size),
-        Linear(
-            hidden_size, intermediate_correction_fn(expansion_ratio, hidden_size) * 2
-        ),
+        nn.Linear(hidden_size, intermediate_size * 2, bias=use_bias),
         SwiGLU(),
         nn.Dropout(dropout),
-        Linear(intermediate_correction_fn(expansion_ratio, hidden_size), hidden_size),
+        nn.Linear(intermediate_size, hidden_size, bias=use_bias),
     )

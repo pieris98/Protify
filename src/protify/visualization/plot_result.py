@@ -164,13 +164,33 @@ def bar_plot(datasets: List[str],
     plt.close()
 
 
+def normalize_per_dataset(arr: np.ndarray) -> np.ndarray:
+    """
+    Normalize array per dataset (row-wise).
+    
+    Args:
+        arr: Array of shape (num_datasets, num_models)
+    
+    Returns:
+        Normalized array of same shape, with each row normalized to [0, 1]
+    """
+    normalized_data = np.zeros_like(arr)
+    for i in range(arr.shape[0]):
+        lowest_performance = np.nanmin(arr[i, :])
+        best_performance = np.nanmax(arr[i, :])
+        denom = best_performance - lowest_performance
+        denom = 1 if denom == 0 else denom
+        normalized_data[i, :] = (arr[i, :] - lowest_performance) / denom
+    return normalized_data
+
 def heatmap_plot(datasets: List[str],
                  models: List[str],
                  data: List[List[float]],
                  metric_name: str,
                  outfile: Path,
                  normalize: bool = False,
-                 display_strings: List[List[str]] = None):
+                 display_strings: List[List[str]] = None,
+                 no_std: bool = False):
     """
     Create a heatmap plot.
     
@@ -197,7 +217,7 @@ def heatmap_plot(datasets: List[str],
     print(datasets_plus_avg)
 
     # Build display string matrix if provided
-    if display_strings is not None:
+    if display_strings is not None and not no_std:
         # Transpose to match arr shape: (num_datasets, num_models)
         display_arr = np.array(display_strings).T.tolist()
         # Add average row display strings
@@ -205,7 +225,7 @@ def heatmap_plot(datasets: List[str],
         for j in range(len(models)):
             model_vals = [arr[i, j] for i in range(arr.shape[0]) if not math.isnan(arr[i, j])]
             if model_vals:
-                avg_display.append(f"{np.mean(model_vals):.2f}")
+                avg_display.append(f"{np.mean(model_vals):.4f}")
             else:
                 avg_display.append("")
         display_arr.append(avg_display)
@@ -215,13 +235,7 @@ def heatmap_plot(datasets: List[str],
     # For annotations: use normalized or original values based on normalize parameter
     if normalize:
         # Normalize values for display in annotations
-        normalized_data = np.zeros_like(arr)
-        for i in range(arr.shape[0]):
-            lowest_performance = np.nanmin(arr[i, :])
-            best_performance = np.nanmax(arr[i, :])
-            denom = best_performance - lowest_performance
-            denom = 1 if denom == 0 else denom
-            normalized_data[i, :] = (arr[i, :] - lowest_performance) / denom
+        normalized_data = normalize_per_dataset(arr)
         
         # Add average row to normalized data
         avg_row_norm = np.nanmean(normalized_data, axis=0, keepdims=True)
@@ -246,13 +260,19 @@ def heatmap_plot(datasets: List[str],
             color_arr[i, :] = (arr_with_avg[i, :] - row_min) / denom
 
     # Calculate figure size based on content
-    # Increase cell width if we have mean±std strings
-    has_std = display_arr is not None and any('±' in str(s) for row in display_arr for s in row)
-    cell_width = 1.4 if has_std else 1.0  # wider cells for mean±std display
-    cell_height = 0.8  # height per cell in inches
+    # Increase cell width if we have mean±std strings or normalized values
+    has_std = display_arr is not None
+    #if normalize:
+    #    cell_width = 1.1
+    #elif has_std:
+    #    cell_width = 1.1
+    #else:
+    #    cell_width = 0.85  # standard width for .2f format
+    cell_width = 1.3
+    cell_height = 0.7  # height per cell in inches
     
     fig_width = max(8, cell_width * len(clean_model_names))
-    fig_height = max(6, cell_height * len(clean_dataset_names))
+    fig_height = max(6, cell_height * len(clean_dataset_names) + 1)
     
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
     
@@ -266,25 +286,28 @@ def heatmap_plot(datasets: List[str],
     
     # Add colorbar with "Worst to Best" label
     cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label('Worst to Best', fontsize=14)
+    cbar.set_label('Worst to Best', fontsize=16)
     cbar.set_ticks([0, 0.5, 1])
-    cbar.set_ticklabels(['Worst', 'Mid', 'Best'])
+    cbar.set_ticklabels(['Worst', 'Mid', 'Best'], fontsize=11)
     
     # Set ticks and labels
     ax.set_xticks(np.arange(len(clean_model_names)))
     ax.set_yticks(np.arange(len(clean_dataset_names)))
-    ax.set_xticklabels(clean_model_names, rotation=45, ha='right', fontsize=12)
-    ax.set_yticklabels(clean_dataset_names, rotation=0, fontsize=12)
+    ax.set_xticklabels(clean_model_names, rotation=45, ha='right', fontsize=16)
+    ax.set_yticklabels(clean_dataset_names, rotation=0, fontsize=16)
     
     # Add value annotations
     # Use smaller font if displaying mean±std
-    font_size = 9 if has_std else 12
+    font_size = 10 if has_std else 16
     for i in range(annot_arr.shape[0]):
         for j in range(annot_arr.shape[1]):
             if display_arr is not None and i < len(display_arr) and j < len(display_arr[i]):
                 text_str = display_arr[i][j]
             else:
-                text_str = f'{annot_arr[i, j]:.2f}'
+                if i == annot_arr.shape[0] - 1:  # Average row
+                    text_str = f'{annot_arr[i, j]:.4f}'
+                else:
+                    text_str = f'{annot_arr[i, j]:.2f}'
             text = ax.text(j, i, text_str,
                           ha="center", va="center", color="black", fontsize=font_size)
     
@@ -301,9 +324,9 @@ def heatmap_plot(datasets: List[str],
     else:
         title = f'{annot_label} Heatmap (Cls→F1, Reg→Spearman)\nColors normalized per dataset'
         
-    plt.title(title, pad=20, fontsize=20)
-    plt.ylabel('Dataset', fontsize=16)
-    plt.xlabel('Model', fontsize=16)
+    plt.title(title, pad=20, fontsize=21)
+    plt.ylabel('Dataset', fontsize=17)
+    plt.xlabel('Model', fontsize=17)
     plt.tight_layout()
     plt.savefig(outfile, dpi=450, bbox_inches='tight')
     plt.close()
@@ -317,7 +340,7 @@ def load_tsv(tsv: Path) -> pd.DataFrame:
     return df
 
 
-def create_plots(tsv: str, outdir: str):
+def create_plots(tsv: str, outdir: str, no_std: bool = False):
     tsv, outdir = Path(tsv), Path(outdir)
     df = load_tsv(tsv)
     models = [c for c in df.columns if c != "dataset"]
@@ -342,7 +365,11 @@ def create_plots(tsv: str, outdir: str):
 
         datasets.append(name)
         for m in models:
-            mean_val, std_val, display_str = get_metric_value_with_std(row[m], suffix)
+            if no_std:
+                mean_val, std_val, display_str = get_metric_value_with_std(row[m], suffix)
+                display_str = f"{mean_val:.2f}"
+            else:
+                mean_val, std_val, display_str = get_metric_value_with_std(row[m], suffix)
             scores_by_model[m].append(mean_val)
             display_by_model[m].append(display_str)
 
@@ -396,6 +423,16 @@ def create_plots(tsv: str, outdir: str):
     sorted_plot_matrix = [plot_matrix[i] for i in sorted_indices]
     sorted_display_matrix = [display_matrix[i] for i in sorted_indices]
 
+    # For normalized heatmap, sort based on normalized averages
+    arr_for_norm = np.array(plot_matrix).T  # shape: (num_datasets, num_models)
+    normalized_data = normalize_per_dataset(arr_for_norm)
+    # Calculate normalized averages for each model (column-wise mean)
+    normalized_model_avgs = np.nanmean(normalized_data, axis=0)
+    sorted_indices_norm = np.argsort(normalized_model_avgs)
+    sorted_models_norm = [models[i] for i in sorted_indices_norm]
+    sorted_plot_matrix_norm = [plot_matrix[i] for i in sorted_indices_norm]
+    sorted_display_matrix_norm = [display_matrix[i] for i in sorted_indices_norm]
+
     fig_tag = tsv.stem
     outdir = outdir / fig_tag
     outdir.mkdir(parents=True, exist_ok=True)
@@ -442,10 +479,10 @@ def create_plots(tsv: str, outdir: str):
     bar_plot(datasets, sorted_models, arr_norm.tolist(), metric_name + " (Normalized)", bar_path_norm)
     # Heatmap - pass display strings for mean±std annotation
     heatmap_plot(datasets, sorted_models, sorted_plot_matrix, metric_name, heatmap_path, 
-                 normalize=False, display_strings=sorted_display_matrix)
-    heatmap_plot(datasets, sorted_models, sorted_plot_matrix, metric_name, heatmap_path_norm, 
-                 normalize=True, display_strings=sorted_display_matrix)
-
+                 normalize=False, display_strings=sorted_display_matrix, no_std=no_std)
+    # Normalized heatmap uses sorting based on normalized averages
+    heatmap_plot(datasets, sorted_models_norm, sorted_plot_matrix_norm, metric_name, heatmap_path_norm, 
+                 normalize=True, display_strings=sorted_display_matrix_norm, no_std=no_std)
     print(f"Radar saved to {radar_path}")
     print(f"Radar (normalized) saved to {radar_path_norm}")
     print(f"Bar   saved to {bar_path}")
@@ -458,67 +495,73 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Generate radar, bar, and heatmap plots for all datasets. Always saves both normalized and unnormalized versions.")
     ap.add_argument("--input", required=True, help="TSV file with metrics")
     ap.add_argument("--output_dir", default="plots", help="Directory for plots")
+    ap.add_argument("--no_std", action="store_true", help="Do not display standard deviation in heatmap plots")
     args = ap.parse_args()
 
-    create_plots(Path(args.input), Path(args.output_dir))
+    create_plots(Path(args.input), Path(args.output_dir), no_std=args.no_std)
     print("Finished.")
 
 
 if __name__ == "__main__":
     # py -m visualization.plot_result
-
-    # --- TESTS FOR PLOTTING FUNCTIONS ---
-    print("\nRunning plot function tests...")
-    from pathlib import Path
-    tmpdir = Path("plots/test_plots")
-    tmpdir.mkdir(parents=True, exist_ok=True)
-    # Dummy data
-    categories = ["A", "B", "C"]
-    models = ["Model1", "Model2"]
-    data = [
-        [0.8, 0.6, 0.7],
-        [0.5, 0.9, 0.4],
-    ]
-    # Radar plot
-    radar_path = tmpdir / "test_radar.png"
-    plot_radar(categories=categories, models=models, data=data, title="Test Radar", outfile=radar_path)
-    assert radar_path.exists(), "Radar plot not created!"
-    print(f"Radar plot test passed: {radar_path}")
-    # Normalized radar plot
-    radar_path_norm = tmpdir / "test_radar_normalized.png"
-    plot_radar(categories=categories, models=models, data=data, title="Test Radar (Normalized)", outfile=radar_path_norm, normalize=True)
-    assert radar_path_norm.exists(), "Normalized radar plot not created!"
-    print(f"Normalized radar plot test passed: {radar_path_norm}")
-    # Bar plot
-    bar_path = tmpdir / "test_bar.png"
-    bar_plot(categories, models, data, "Test Metric", bar_path)
-    assert bar_path.exists(), "Bar plot not created!"
-    print(f"Bar plot test passed: {bar_path}")
-    # Normalized bar plot
-    arr = np.asarray(data)
-    rng = np.where(np.ptp(arr, axis=0) == 0, 1, np.ptp(arr, axis=0))
-    arr_norm = (arr - arr.min(0)) / rng
-    bar_path_norm = tmpdir / "test_bar_normalized.png"
-    bar_plot(categories, models, arr_norm.tolist(), "Test Metric (Normalized)", bar_path_norm)
-    assert bar_path_norm.exists(), "Normalized bar plot not created!"
-    print(f"Normalized bar plot test passed: {bar_path_norm}")
-    # Heatmap plot
-    heatmap_path = tmpdir / "test_heatmap.png"
-    heatmap_plot(categories, models, data, "Test Metric", heatmap_path)
-    assert heatmap_path.exists(), "Heatmap plot not created!"
-    print(f"Heatmap plot test passed: {heatmap_path}")
-    # Normalized heatmap plot
-    heatmap_path_norm = tmpdir / "test_heatmap_normalized.png"
-    heatmap_plot(categories, models, data, "Test Metric", heatmap_path_norm, normalize=True)
-    assert heatmap_path_norm.exists(), "Normalized heatmap plot not created!"
-    print(f"Normalized heatmap plot test passed: {heatmap_path_norm}")
-    # Heatmap plot with mean±std display strings
-    display_strings = [
-        ["0.80±0.02", "0.60±0.01", "0.70±0.03"],
-        ["0.50±0.05", "0.90±0.02", "0.40±0.01"],
-    ]
-    heatmap_path_std = tmpdir / "test_heatmap_with_std.png"
-    heatmap_plot(categories, models, data, "Test Metric", heatmap_path_std, display_strings=display_strings)
-    assert heatmap_path_std.exists(), "Heatmap with std not created!"
-    print(f"Heatmap with std test passed: {heatmap_path_std}")
-    print("All plot function tests passed!\n")
+    
+    # Check if input file is provided and run main to generate plots
+    import sys
+    if "--input" in sys.argv:
+        main()
+    else:
+        # --- TESTS FOR PLOTTING FUNCTIONS ---
+        print("\nRunning plot function tests...")
+        from pathlib import Path
+        tmpdir = Path("plots/test_plots")
+        tmpdir.mkdir(parents=True, exist_ok=True)
+        # Dummy data
+        categories = ["A", "B", "C"]
+        models = ["Model1", "Model2"]
+        data = [
+            [0.8, 0.6, 0.7],
+            [0.5, 0.9, 0.4],
+        ]
+        # Radar plot
+        radar_path = tmpdir / "test_radar.png"
+        plot_radar(categories=categories, models=models, data=data, title="Test Radar", outfile=radar_path)
+        assert radar_path.exists(), "Radar plot not created!"
+        print(f"Radar plot test passed: {radar_path}")
+        # Normalized radar plot
+        radar_path_norm = tmpdir / "test_radar_normalized.png"
+        plot_radar(categories=categories, models=models, data=data, title="Test Radar (Normalized)", outfile=radar_path_norm, normalize=True)
+        assert radar_path_norm.exists(), "Normalized radar plot not created!"
+        print(f"Normalized radar plot test passed: {radar_path_norm}")
+        # Bar plot
+        bar_path = tmpdir / "test_bar.png"
+        bar_plot(categories, models, data, "Test Metric", bar_path)
+        assert bar_path.exists(), "Bar plot not created!"
+        print(f"Bar plot test passed: {bar_path}")
+        # Normalized bar plot
+        arr = np.asarray(data)
+        rng = np.where(np.ptp(arr, axis=0) == 0, 1, np.ptp(arr, axis=0))
+        arr_norm = (arr - arr.min(0)) / rng
+        bar_path_norm = tmpdir / "test_bar_normalized.png"
+        bar_plot(categories, models, arr_norm.tolist(), "Test Metric (Normalized)", bar_path_norm)
+        assert bar_path_norm.exists(), "Normalized bar plot not created!"
+        print(f"Normalized bar plot test passed: {bar_path_norm}")
+        # Heatmap plot
+        heatmap_path = tmpdir / "test_heatmap.png"
+        heatmap_plot(categories, models, data, "Test Metric", heatmap_path)
+        assert heatmap_path.exists(), "Heatmap plot not created!"
+        print(f"Heatmap plot test passed: {heatmap_path}")
+        # Normalized heatmap plot
+        heatmap_path_norm = tmpdir / "test_heatmap_normalized.png"
+        heatmap_plot(categories, models, data, "Test Metric", heatmap_path_norm, normalize=True)
+        assert heatmap_path_norm.exists(), "Normalized heatmap plot not created!"
+        print(f"Normalized heatmap plot test passed: {heatmap_path_norm}")
+        # Heatmap plot with mean±std display strings
+        display_strings = [
+            ["0.80±0.02", "0.60±0.01", "0.70±0.03"],
+            ["0.50±0.05", "0.90±0.02", "0.40±0.01"],
+        ]
+        heatmap_path_std = tmpdir / "test_heatmap_with_std.png"
+        heatmap_plot(categories, models, data, "Test Metric", heatmap_path_std, display_strings=display_strings)
+        assert heatmap_path_std.exists(), "Heatmap with std not created!"
+        print(f"Heatmap with std test passed: {heatmap_path_std}")
+        print("All plot function tests passed!\n")

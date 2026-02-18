@@ -22,8 +22,10 @@ class ProbeArguments:
             pre_ln: bool = True,
             sim_type: str = 'dot',
             token_attention: bool = False,
+            use_bias: bool = True,
             add_token_ids: bool = False,
             ### Transformer Probe
+            transformer_hidden_size: int = 512,  # For transformer probe
             classifier_size: int = 4096,
             transformer_dropout: float = 0.1,
             classifier_dropout: float = 0.2,
@@ -44,6 +46,7 @@ class ProbeArguments:
         self.tokenwise = tokenwise
         self.input_size = input_size
         self.hidden_size = hidden_size
+        self.transformer_hidden_size = transformer_hidden_size
         self.dropout = dropout
         self.num_labels = num_labels
         self.n_layers = n_layers
@@ -52,6 +55,7 @@ class ProbeArguments:
         self.add_token_ids = add_token_ids
         self.task_type = task_type
         self.pre_ln = pre_ln
+        self.use_bias = use_bias
         self.classifier_size = classifier_size
         self.transformer_dropout = transformer_dropout
         self.classifier_dropout = classifier_dropout
@@ -69,10 +73,16 @@ def get_probe(args: ProbeArguments):
         config = LinearProbeConfig(**args.__dict__)
         return LinearProbe(config)
     elif args.probe_type == 'transformer' and not args.tokenwise:
-        config = TransformerProbeConfig(**args.__dict__)
+        # Use transformer_hidden_size for the transformer probe
+        transformer_args = args.__dict__.copy()
+        transformer_args['hidden_size'] = args.transformer_hidden_size
+        config = TransformerProbeConfig(**transformer_args)
         return TransformerForSequenceClassification(config)
     elif args.probe_type == 'transformer' and args.tokenwise:
-        config = TransformerProbeConfig(**args.__dict__)
+        # Use transformer_hidden_size for the transformer probe's internal dimension
+        transformer_args = args.__dict__.copy()
+        transformer_args['hidden_size'] = args.transformer_hidden_size
+        config = TransformerProbeConfig(**transformer_args)
         return TransformerForTokenClassification(config)
     elif args.probe_type == 'retrievalnet' and not args.tokenwise:
         config = RetrievalNetConfig(**args.__dict__)

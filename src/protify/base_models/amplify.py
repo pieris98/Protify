@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import safetensors
@@ -12,13 +13,13 @@ from transformers import (
     AutoModelForSequenceClassification,
     AutoModelForMaskedLM
 )
+from torch.nn.functional import scaled_dot_product_attention
 from transformers.modeling_outputs import MaskedLMOutput
 from .base_tokenizer import BaseSequenceTokenizer
 from .amplify_utils import (
     SwiGLU,
     RMSNorm,
     apply_rotary_emb,
-    memory_efficient_attention,
     precompute_freqs_cis,
 )
 from huggingface_hub import hf_hub_download
@@ -52,6 +53,7 @@ class AMPLIFYConfig(PretrainedConfig):
         att_bias: bool = False,
         pad_token_id: int = 0,
         max_length: int = 2048,
+        use_xformers: bool = False,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -73,7 +75,8 @@ class AMPLIFYConfig(PretrainedConfig):
         self.att_bias = att_bias
         self.pad_token_id = pad_token_id
         self.max_length = max_length
-
+        # Set use_xformers to True if specified in main
+        self.use_xformers = use_xformers or (os.environ.get("_USE_XFORMERS") == "1")
 
 class EncoderBlock(nn.Module):
     """Transformer encoder block."""
@@ -157,13 +160,33 @@ class EncoderBlock(nn.Module):
         xv = xv.view(batch_size, seq_len, self.config.num_attention_heads, self.d_head)
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis)
 
-        attn = memory_efficient_attention(
-            query=xq,
-            key=xk,
-            value=xv,
-            attn_bias=pad_mask,
-            p=self.config.dropout_prob if self.training else 0,
-        )
+        if self.config.use_xformers:
+            try:
+                from xformers.ops import memory_efficient_attention
+                attn = memory_efficient_attention(
+                    query=xq,
+                    key=xk,
+                    value=xv,
+                    attn_bias=pad_mask,
+                    p=self.config.dropout_prob if self.training else 0,
+                )
+            except ImportError:
+                print("xformers not available, falling back to SDPA implementation")
+                attn = scaled_dot_product_attention(
+                    query=xq.transpose(1, 2),
+                    key=xk.transpose(1, 2),
+                    value=xv.transpose(1, 2),
+                    attn_mask=pad_mask,
+                    dropout_p=self.config.dropout_prob if self.training else 0,
+                ).transpose(1, 2)        
+        else:
+            attn = scaled_dot_product_attention(
+                query=xq.transpose(1, 2),
+                key=xk.transpose(1, 2),
+                value=xv.transpose(1, 2),
+                attn_mask=pad_mask,
+                dropout_p=self.config.dropout_prob if self.training else 0,
+            ).transpose(1, 2)
 
         _attn = None
         if output_attentions:
@@ -294,9 +317,14 @@ class AmplifyForEmbedding(nn.Module):
         output_hidden_states: Optional[bool] = True,
         **kwargs,
     ) -> torch.Tensor:
+        # Convert attention_mask to additive format
+        if attention_mask is not None:
+            attention_mask = torch.where(attention_mask.bool(), 
+                                        float(0.0), 
+                                        float('-inf'))
         out = self.plm(
             src=input_ids,
-            pad_mask=attention_mask.float(),
+            pad_mask=attention_mask,
             output_attentions=output_attentions if output_attentions is not None else False,
             output_hidden_states=output_hidden_states,
         )
@@ -331,10 +359,15 @@ class AmplifyForMaskedLM(nn.Module):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = False,
     ) -> MaskedLMOutput:
-        
+        # Convert attention_mask to additive format
+        if attention_mask is not None:
+            attention_mask = torch.where(attention_mask.bool(), 
+                                        float(0.0), 
+                                        float('-inf'))
+
         return self.plm(
             src=input_ids,
-            pad_mask=attention_mask.float(),
+            pad_mask=attention_mask,
             output_attentions=output_attentions if output_attentions is not None else False,
             output_hidden_states=output_hidden_states,
         )

@@ -442,113 +442,120 @@ class GUI(MainProcess):
         # Transformer Probe Settings
         ttk.Label(self.probe_tab, text="=== Transformer Probe Settings ===").grid(row=6, column=0, columnspan=2, pady=10)
 
+        # Transformer Hidden Dimension
+        ttk.Label(self.probe_tab, text="Transformer Hidden Dimension:").grid(row=7, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["transformer_hidden_size"] = tk.IntVar(value=512)
+        spin_transformer_hidden_size = ttk.Spinbox(self.probe_tab, from_=64, to=4096, textvariable=self.settings_vars["transformer_hidden_size"])
+        spin_transformer_hidden_size.grid(row=7, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 7, 2, "Internal hidden dimension for transformer probe (512 recommended).")
+
         # FF Dimension
-        ttk.Label(self.probe_tab, text="Classifier Dimension:").grid(row=7, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Classifier Dimension:").grid(row=8, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["classifier_size"] = tk.IntVar(value=4096)
         spin_classifier_size = ttk.Spinbox(self.probe_tab, from_=1, to=10000, textvariable=self.settings_vars["classifier_size"])
-        spin_classifier_size.grid(row=7, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 7, 2, "Dimension of the classifier/feedforward layer in transformer probe.")
+        spin_classifier_size.grid(row=8, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 8, 2, "Dimension of the classifier/feedforward layer in transformer probe.")
 
         # Classifier Dropout
-        ttk.Label(self.probe_tab, text="Classifier Dropout:").grid(row=8, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Classifier Dropout:").grid(row=9, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["classifier_dropout"] = tk.DoubleVar(value=0.2)
         spin_class_dropout = ttk.Spinbox(self.probe_tab, from_=0.0, to=1.0, increment=0.1, textvariable=self.settings_vars["classifier_dropout"])
-        spin_class_dropout.grid(row=8, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 8, 2, "Dropout probability in the classifier layer (0.0-1.0).")
+        spin_class_dropout.grid(row=9, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 9, 2, "Dropout probability in the classifier layer (0.0-1.0).")
 
         # Number of Heads
-        ttk.Label(self.probe_tab, text="Number of Heads:").grid(row=9, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Number of Heads:").grid(row=10, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["n_heads"] = tk.IntVar(value=4)
         spin_n_heads = ttk.Spinbox(self.probe_tab, from_=1, to=32, textvariable=self.settings_vars["n_heads"])
-        spin_n_heads.grid(row=9, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 9, 2, "Number of attention heads in transformer probe.")
+        spin_n_heads.grid(row=10, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 10, 2, "Number of attention heads in transformer probe.")
 
         # Rotary
-        ttk.Label(self.probe_tab, text="Rotary:").grid(row=10, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Rotary:").grid(row=11, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["rotary"] = tk.BooleanVar(value=True)
         check_rotary = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["rotary"])
-        check_rotary.grid(row=10, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 10, 2, "Whether to use rotary position embeddings in transformer.")
+        check_rotary.grid(row=11, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 11, 2, "Whether to use rotary position embeddings in transformer.")
 
         # Pooling Types
-        ttk.Label(self.probe_tab, text="Pooling Types (comma-separated):").grid(row=11, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Pooling Types (comma-separated):").grid(row=12, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["probe_pooling_types"] = tk.StringVar(value="mean, cls")
         entry_pooling = ttk.Entry(self.probe_tab, textvariable=self.settings_vars["probe_pooling_types"], width=20)
-        entry_pooling.grid(row=11, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 11, 2, "Types of pooling to use in the probe model, separate with commas.")
+        entry_pooling.grid(row=12, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 12, 2, "Types of pooling to use in the probe model, separate with commas.")
         
         # Transformer Dropout
-        ttk.Label(self.probe_tab, text="Transformer Dropout:").grid(row=12, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Transformer Dropout:").grid(row=13, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["transformer_dropout"] = tk.DoubleVar(value=0.1)
         spin_transformer_dropout = ttk.Spinbox(self.probe_tab, from_=0.0, to=1.0, increment=0.1, textvariable=self.settings_vars["transformer_dropout"])
-        spin_transformer_dropout.grid(row=12, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 12, 2, "Dropout probability in the transformer layers (0.0-1.0).")
+        spin_transformer_dropout.grid(row=13, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 13, 2, "Dropout probability in the transformer layers (0.0-1.0).")
         
         # Token Attention
-        ttk.Label(self.probe_tab, text="Token Attention:").grid(row=13, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Token Attention:").grid(row=14, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["token_attention"] = tk.BooleanVar(value=False)
         check_token_attention = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["token_attention"])
-        check_token_attention.grid(row=13, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 13, 2, "If true, use TokenFormer instead of Transformer blocks.")
-        
+        check_token_attention.grid(row=14, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 14, 2, "If true, use TokenFormer instead of Transformer blocks.")
+
         # RetrievalNet Settings Section
-        ttk.Label(self.probe_tab, text="=== RetrievalNet Settings ===").grid(row=14, column=0, columnspan=2, pady=10)
+        ttk.Label(self.probe_tab, text="=== RetrievalNet Settings ===").grid(row=15, column=0, columnspan=2, pady=10)
         
         # Sim Type
-        ttk.Label(self.probe_tab, text="Similarity Type:").grid(row=15, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Similarity Type:").grid(row=16, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["sim_type"] = tk.StringVar(value="dot")
         combo_sim_type = ttk.Combobox(
             self.probe_tab,
             textvariable=self.settings_vars["sim_type"],
             values=["dot", "euclidean", "cosine"]
         )
-        combo_sim_type.grid(row=15, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 15, 2, "Cross-attention mechanism for token-parameter-attention (dot, euclidean, or cosine).")
-        
+        combo_sim_type.grid(row=16, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 16, 2, "Cross-attention mechanism for token-parameter-attention (dot, euclidean, or cosine).")
+
         # Save Model
-        ttk.Label(self.probe_tab, text="Save Model:").grid(row=16, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Save Model:").grid(row=17, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["save_model"] = tk.BooleanVar(value=False)
         check_save_model = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["save_model"])
-        check_save_model.grid(row=16, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 16, 2, "Whether to save the trained probe model to disk.")
-        
+        check_save_model.grid(row=17, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 17, 2, "Whether to save the trained probe model to disk.")
+
         # Production Model
-        ttk.Label(self.probe_tab, text="Production Model:").grid(row=17, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Production Model:").grid(row=18, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["production_model"] = tk.BooleanVar(value=False)
         check_prod_model = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["production_model"])
-        check_prod_model.grid(row=17, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 17, 2, "Whether to prepare the model for production deployment.")
+        check_prod_model.grid(row=18, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 18, 2, "Whether to prepare the model for production deployment.")
 
         # LoRA Settings Section
-        ttk.Label(self.probe_tab, text="=== LoRA Settings ===").grid(row=18, column=0, columnspan=2, pady=10)
+        ttk.Label(self.probe_tab, text="=== LoRA Settings ===").grid(row=19, column=0, columnspan=2, pady=10)
         
         # Lora checkbox
-        ttk.Label(self.probe_tab, text="Use LoRA:").grid(row=19, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Use LoRA:").grid(row=20, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora"] = tk.BooleanVar(value=False)
         check_lora = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["lora"])
-        check_lora.grid(row=19, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 19, 2, "Whether to use Low-Rank Adaptation (LoRA) for fine-tuning.")
+        check_lora.grid(row=20, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 20, 2, "Whether to use Low-Rank Adaptation (LoRA) for fine-tuning.")
 
         # LoRA r
-        ttk.Label(self.probe_tab, text="LoRA r:").grid(row=20, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="LoRA r:").grid(row=21, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora_r"] = tk.IntVar(value=8)
         spin_lora_r = ttk.Spinbox(self.probe_tab, from_=1, to=128, textvariable=self.settings_vars["lora_r"])
-        spin_lora_r.grid(row=20, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 20, 2, "Rank parameter r for LoRA (lower = more efficient, higher = more expressive).")
+        spin_lora_r.grid(row=21, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 21, 2, "Rank parameter r for LoRA (lower = more efficient, higher = more expressive).")
 
         # LoRA alpha
-        ttk.Label(self.probe_tab, text="LoRA alpha:").grid(row=21, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="LoRA alpha:").grid(row=22, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora_alpha"] = tk.DoubleVar(value=32.0)
         spin_lora_alpha = ttk.Spinbox(self.probe_tab, from_=1.0, to=128.0, increment=1.0, textvariable=self.settings_vars["lora_alpha"])
-        spin_lora_alpha.grid(row=21, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 21, 2, "Alpha parameter for LoRA, controls update scale.")
+        spin_lora_alpha.grid(row=22, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 22, 2, "Alpha parameter for LoRA, controls update scale.")
 
         # LoRA dropout
-        ttk.Label(self.probe_tab, text="LoRA dropout:").grid(row=22, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="LoRA dropout:").grid(row=23, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora_dropout"] = tk.DoubleVar(value=0.01)
         spin_lora_dropout = ttk.Spinbox(self.probe_tab, from_=0.0, to=0.5, increment=0.01, textvariable=self.settings_vars["lora_dropout"])
-        spin_lora_dropout.grid(row=22, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 22, 2, "Dropout probability for LoRA layers (0.0-0.5).")
+        spin_lora_dropout.grid(row=23, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 23, 2, "Dropout probability for LoRA layers (0.0-0.5).")
         
         # Add a button to create the probe
         run_button = ttk.Button(self.probe_tab, text="Save Probe Arguments", command=self._create_probe_args)
@@ -891,6 +898,7 @@ class GUI(MainProcess):
         self.full_args.hidden_size = self.settings_vars["hidden_size"].get()
         self.full_args.dropout = self.settings_vars["dropout"].get()
         
+        self.full_args.transformer_hidden_size = self.settings_vars["transformer_hidden_size"].get()
         self.full_args.classifier_size = self.settings_vars["classifier_size"].get()
         self.full_args.classifier_dropout = self.settings_vars["classifier_dropout"].get()
         self.full_args.n_heads = self.settings_vars["n_heads"].get()

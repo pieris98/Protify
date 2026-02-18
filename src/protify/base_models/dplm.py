@@ -99,14 +99,12 @@ class ModifiedEsmSelfAttention(EsmSelfAttention):
         if self.position_embedding_type == "relative_key" or self.position_embedding_type == "relative_key_query":
             raise NotImplementedError
 
-        # Mask heads if we want to
-        if head_mask is not None:
-            raise NotImplementedError
-        
         query_layer = query_layer.contiguous()
         key_layer = key_layer.contiguous()
         value_layer = value_layer.contiguous()
         context_layer = F.scaled_dot_product_attention(query_layer, key_layer, value_layer, attn_mask=attention_mask, scale=1.0)
+        if head_mask is not None:
+            context_layer = context_layer * head_mask
         
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)

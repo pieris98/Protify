@@ -50,7 +50,12 @@ class ModifiedEsmSelfAttention(EsmSelfAttention):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         past_key_value: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
         output_attentions: Optional[bool] = False,
+        past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None, # refactor in transformers v5
+        **kwargs,
     ) -> Tuple[torch.Tensor]:
+        if past_key_values is not None:
+            past_key_value = past_key_values
+
         mixed_query_layer = self.query(hidden_states)
 
         # If this is instantiated as a cross-attention module, the keys
@@ -102,12 +107,7 @@ class ModifiedEsmSelfAttention(EsmSelfAttention):
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(new_context_layer_shape)
 
-        # outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
-        outputs = (context_layer,)
-
-        if self.is_decoder:
-            outputs = outputs + (past_key_value,)
-        return outputs
+        return context_layer, None
     
 
 class ModifiedEsmAttention(EsmAttention):

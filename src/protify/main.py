@@ -33,6 +33,7 @@ def parse_arguments():
                         )
     parser.add_argument("--data_names", nargs="+", default=[], help="List of HF dataset names.") # TODO rename to data_names
     parser.add_argument("--data_dirs", nargs="+", default=[], help="List of local data directories.")
+    parser.add_argument("--protein_to_codon", action="store_true", default=False, help="Convert amino-acid sequences to DNA codon sequences using common human codons.")
 
     # ----------------- BaseModelArguments ----------------- #
     parser.add_argument("--model_names", nargs="+", default=["ESM2-8"], help="List of model names to use. To use a custom model, use the format 'custom---<path_to_model>'.")
@@ -174,6 +175,7 @@ def parse_arguments():
         yaml_args.sweep_metric_reg = args.sweep_metric_reg
         yaml_args.sweep_goal = args.sweep_goal
         yaml_args.yaml_path = args.yaml_path
+        yaml_args.protein_to_codon = args.protein_to_codon
         # Ensure ProteinGym defaults exist when using YAML configs
         if not hasattr(yaml_args, 'proteingym'):
             yaml_args.proteingym = False
@@ -281,6 +283,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         self._trim = self.full_args.trim
         self._delimiter = self.full_args.delimiter
         self._col_names = self.full_args.col_names
+        self._protein_to_codon = self.full_args.protein_to_codon
         self._multi_column = getattr(self.full_args, 'multi_column', None)
 
     @log_method_calls

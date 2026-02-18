@@ -18,12 +18,18 @@ except ImportError:
     from ..seed_utils import get_global_seed
     from ..embedder import get_embedding_filename
 from .supported_datasets import supported_datasets, standard_data_benchmark, vector_benchmark
+from .utils import (
+    AMINO_ACIDS,
+    CODONS,
+    DNA,
+    RNA,
+    NONCANONICAL_AMINO_ACIDS,
+    AMINO_ACID_TO_HUMAN_CODON,
+    NONCANONICAL_ALANINE_CODON,
+    CODON_TO_AA
+)
 
 
-AMINO_ACIDS = set('LAGVSERTIPDKQNFYMHWCXBUOZ*')
-CODONS = set('aA@bB#$%rRnNdDcCeEqQ^G&ghHiIj+MmlJLkK(fFpPoO=szZwSXTtxWyYuvUV]})')
-DNA = set('ATCG')
-RNA = set('AUCG')
 
 
 @dataclass
@@ -46,6 +52,7 @@ class DataArguments:
             trim: bool = False,
             data_dirs: Optional[List[str]] = [],
             multi_column: Optional[List[str]] = None,
+            protein_to_codon: bool = False,
             **kwargs
         ):
         self.data_names = data_names
@@ -56,6 +63,7 @@ class DataArguments:
         self.trim = trim
         self.protein_gym = False
         self.multi_column = multi_column
+        self.protein_to_codon = protein_to_codon
 
         if len(data_names) > 0:
             if data_names[0] == 'standard_benchmark':
@@ -93,8 +101,11 @@ class DataMixin:
         self._trim = False
         self._delimiter = ','
         self._col_names = ['seqs', 'labels']
+        self._protein_to_codon = False
         self.data_args = data_args
         self._multi_column = None if data_args is None else getattr(data_args, 'multi_column', None)
+        if data_args is not None:
+            self._protein_to_codon = data_args.protein_to_codon
 
     def _not_regression(self, labels): # not a great assumption but works most of the time
         if isinstance(labels, list):
@@ -194,6 +205,37 @@ class DataMixin:
         ex['SeqA'] = trunc_a
         ex['SeqB'] = trunc_b
         return ex
+
+    def _dataset_contains_protein_residue(self, dataset, seq_columns, sample_size=200):
+        limit = min(len(dataset), sample_size)
+        for idx in range(limit):
+            row = dataset[idx]
+            for col in seq_columns:
+                seq = row[col]
+                for residue in seq:
+                    residue = residue.upper()
+                    if residue in AMINO_ACIDS and residue not in DNA:
+                        return True
+        return False
+
+    def _should_translate_to_codon(self, train_set, valid_set, test_set, seq_columns):
+        return any([
+            self._dataset_contains_protein_residue(train_set, seq_columns),
+            self._dataset_contains_protein_residue(valid_set, seq_columns),
+            self._dataset_contains_protein_residue(test_set, seq_columns),
+        ])
+
+    def _protein_sequence_to_codon_dna(self, seq):
+        codon_tokens = []
+        for residue in seq:
+            residue = residue.upper()
+            if residue in AMINO_ACID_TO_HUMAN_CODON:
+                codon_tokens.append(AMINO_ACID_TO_HUMAN_CODON[residue])
+            elif residue in NONCANONICAL_AMINO_ACIDS:
+                codon_tokens.append(NONCANONICAL_ALANINE_CODON)
+            else:
+                raise AssertionError(f'Unexpected amino acid token "{residue}" while converting to codons.')
+        return ''.join(codon_tokens)
 
     def _find_first_present_column(self, available_columns, candidates_ordered):
         """Return the first column from candidates_ordered that exists in available_columns (case-insensitive)."""
@@ -391,7 +433,38 @@ class DataMixin:
                     test: {(before_test - len(test_set)) / before_test * 100:.2f}%"
                 )
 
-            # 5) Record all_seqs
+            # 5) Optionally translate amino-acid sequences to DNA codons
+            if self._protein_to_codon:
+                if ppi:
+                    seq_columns = ['SeqA', 'SeqB']
+                elif self.data_args.multi_column:
+                    seq_columns = self.data_args.multi_column
+                else:
+                    seq_columns = ['seqs']
+
+                if self._should_translate_to_codon(train_set, valid_set, test_set, seq_columns):
+                    if ppi:
+                        train_set = train_set.map(lambda x: {'SeqA': self._protein_sequence_to_codon_dna(x['SeqA']),
+                                                             'SeqB': self._protein_sequence_to_codon_dna(x['SeqB'])})
+                        valid_set = valid_set.map(lambda x: {'SeqA': self._protein_sequence_to_codon_dna(x['SeqA']),
+                                                             'SeqB': self._protein_sequence_to_codon_dna(x['SeqB'])})
+                        test_set = test_set.map(lambda x: {'SeqA': self._protein_sequence_to_codon_dna(x['SeqA']),
+                                                           'SeqB': self._protein_sequence_to_codon_dna(x['SeqB'])})
+                    elif self.data_args.multi_column:
+                        cols = self.data_args.multi_column
+                        for col in cols:
+                            train_set = train_set.map(lambda x, _col=col: {_col: self._protein_sequence_to_codon_dna(x[_col])})
+                            valid_set = valid_set.map(lambda x, _col=col: {_col: self._protein_sequence_to_codon_dna(x[_col])})
+                            test_set = test_set.map(lambda x, _col=col: {_col: self._protein_sequence_to_codon_dna(x[_col])})
+                    else:
+                        train_set = train_set.map(lambda x: {'seqs': self._protein_sequence_to_codon_dna(x['seqs'])})
+                        valid_set = valid_set.map(lambda x: {'seqs': self._protein_sequence_to_codon_dna(x['seqs'])})
+                        test_set = test_set.map(lambda x: {'seqs': self._protein_sequence_to_codon_dna(x['seqs'])})
+                    print_message("Translated amino-acid sequences to DNA codons (post-trim/truncate).")
+                else:
+                    print_message("Skipped protein_to_codon translation because sampled sequences appear DNA-like already.")
+
+            # 6) Record all_seqs
             if ppi:
                 all_seqs.update(list(train_set['SeqA']) + list(train_set['SeqB']))
                 all_seqs.update(list(valid_set['SeqA']) + list(valid_set['SeqB']))

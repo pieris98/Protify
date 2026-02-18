@@ -163,6 +163,30 @@ class ModifiedEsmModel(EsmModel):
 
         # Initialize weights and apply final processing
         self.post_init()
+
+    # transformers v5 compatibility: restore head mask helpers used by this custom forward.
+    def _convert_head_mask_to_5d(self, head_mask: torch.Tensor, num_hidden_layers: int) -> torch.Tensor:
+        if head_mask.dim() == 1:
+            head_mask = head_mask.unsqueeze(0).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+            head_mask = head_mask.expand(num_hidden_layers, -1, -1, -1, -1)
+        elif head_mask.dim() == 2:
+            head_mask = head_mask.unsqueeze(1).unsqueeze(-1).unsqueeze(-1)
+        assert head_mask.dim() == 5, f"head_mask.dim != 5, got {head_mask.dim()}"
+        head_mask = head_mask.to(dtype=self.dtype)
+        return head_mask
+
+    def get_head_mask(
+        self,
+        head_mask: Optional[torch.Tensor],
+        num_hidden_layers: int,
+        is_attention_chunked: bool = False,
+    ) -> Union[torch.Tensor, List[None]]:
+        if head_mask is None:
+            return [None] * num_hidden_layers
+        head_mask = self._convert_head_mask_to_5d(head_mask, num_hidden_layers)
+        if is_attention_chunked:
+            head_mask = head_mask.unsqueeze(-1)
+        return head_mask
         
     def forward(
         self,

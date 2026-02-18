@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from typing import Optional, Union, List, Dict, Tuple
 
-from .FastPLMs.e1.modeling_e1 import (
+from .FastPLMs.e1_fastplms.modeling_e1 import (
     E1Model,
     E1ForSequenceClassification,
     E1ForTokenClassification,

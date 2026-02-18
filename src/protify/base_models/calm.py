@@ -167,7 +167,7 @@ class CaLmPreTrainedModel(PreTrainedModel):
 
     config_class = CaLmConfig
     all_tied_weights_keys = {}
-    base_model_prefix = "calm"
+    base_model_prefix = "model"
     supports_gradient_checkpointing = True
     _no_split_modules = ["CaLmLayer", "CaLmEmbeddings"]
 
@@ -906,6 +906,34 @@ def _normalize_calm_preset(preset: str) -> str:
     raise ValueError(f"Model {preset} not supported")
 
 
+def _load_calm_backbone(model_path: str, add_pooling_layer: bool = False) -> CaLmModel:
+    model, loading_info = CaLmModel.from_pretrained(
+        model_path,
+        add_pooling_layer=add_pooling_layer,
+        output_loading_info=True,
+    )
+    missing_keys = loading_info["missing_keys"]
+    unexpected_keys = loading_info["unexpected_keys"]
+    mismatched_keys = loading_info["mismatched_keys"]
+    error_msgs = loading_info["error_msgs"]
+    disallowed_unexpected_keys = [key for key in unexpected_keys if not key.startswith("lm_head.")]
+
+    assert len(missing_keys) == 0, (
+        f"CaLM load had missing keys: {missing_keys}"
+    )
+    assert len(mismatched_keys) == 0, (
+        f"CaLM load had mismatched keys: {mismatched_keys}"
+    )
+    assert len(disallowed_unexpected_keys) == 0, (
+        "CaLM load had unexpected keys outside lm_head.*: "
+        f"{disallowed_unexpected_keys}"
+    )
+    assert len(error_msgs) == 0, (
+        f"CaLM load had loader errors: {error_msgs}"
+    )
+    return model
+
+
 class CaLMTokenizerWrapper(BaseSequenceTokenizer):
     def __init__(self, tokenizer: RnaTokenizer):
         super().__init__(tokenizer)
@@ -923,7 +951,7 @@ class CaLMTokenizerWrapper(BaseSequenceTokenizer):
 class CaLmForEmbedding(nn.Module):
     def __init__(self, model_path: str):
         super().__init__()
-        self.calm = CaLmModel.from_pretrained(model_path)
+        self.calm = _load_calm_backbone(model_path, add_pooling_layer=False)
 
     def forward(
             self,
@@ -959,7 +987,7 @@ def get_calm_for_training(preset: str, tokenwise: bool = False, num_labels: int 
     normalized_preset = _normalize_calm_preset(preset)
     model_path = presets[normalized_preset]
     if hybrid:
-        model = CaLmModel.from_pretrained(model_path).eval()
+        model = _load_calm_backbone(model_path, add_pooling_layer=False).eval()
     else:
         raise ValueError(f"Model {preset} does not support training")
     tokenizer = get_calm_tokenizer(normalized_preset)

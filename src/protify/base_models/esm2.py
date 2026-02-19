@@ -4,13 +4,13 @@ We use the FastESM2 implementation of ESM2.
 import torch
 import torch.nn as nn
 from typing import Optional, Union, List, Dict
-from transformers import EsmTokenizer
 
-from .FastPLMs.esm2.modeling_fastesm import (
-    FastEsmModel,
-    FastEsmForSequenceClassification,
-    FastEsmForTokenClassification,
-    FastEsmForMaskedLM,
+from transformers import (
+    AutoModel,
+    AutoModelForSequenceClassification,
+    AutoModelForTokenClassification,
+    AutoModelForMaskedLM,
+    EsmTokenizer,
 )
 from .base_tokenizer import BaseSequenceTokenizer
 
@@ -44,7 +44,7 @@ class ESM2TokenizerWrapper(BaseSequenceTokenizer):
 class FastEsmForEmbedding(nn.Module):
     def __init__(self, model_path: str):
         super().__init__()
-        self.esm = FastEsmModel.from_pretrained(model_path)
+        self.esm = AutoModel.from_pretrained(model_path, trust_remote_code=True)
 
     def forward(
             self,
@@ -67,7 +67,7 @@ def get_esm2_tokenizer(preset: str):
 
 def build_esm2_model(preset: str, masked_lm: bool = False, **kwargs):
     if masked_lm:
-        model = FastEsmForMaskedLM.from_pretrained(presets[preset]).eval()
+        model = AutoModelForMaskedLM.from_pretrained(presets[preset], trust_remote_code=True).eval()
     else:
         model = FastEsmForEmbedding(presets[preset]).eval()
     tokenizer = get_esm2_tokenizer(preset)
@@ -77,12 +77,12 @@ def build_esm2_model(preset: str, masked_lm: bool = False, **kwargs):
 def get_esm2_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):
     model_path = presets[preset]
     if hybrid:
-        model = FastEsmModel.from_pretrained(model_path).eval()
+        model = AutoModel.from_pretrained(model_path, trust_remote_code=True).eval()
     else:
         if tokenwise:
-            model = FastEsmForTokenClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = AutoModelForTokenClassification.from_pretrained(model_path, num_labels=num_labels, trust_remote_code=True).eval()
         else:
-            model = FastEsmForSequenceClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, trust_remote_code=True).eval()
     tokenizer = get_esm2_tokenizer(preset)
     return model, tokenizer
 

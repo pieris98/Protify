@@ -5,14 +5,14 @@ import torch
 import torch.nn as nn
 from typing import Optional, Union, List, Dict
 
-from .FastPLMs.esm_plusplus.modeling_esm_plusplus import (
-    ESMplusplusModel,
-    ESMplusplusForSequenceClassification,
-    ESMplusplusForTokenClassification,
-    ESMplusplusForMaskedLM,
-    EsmSequenceTokenizer
+from transformers import (
+    AutoModel,
+    AutoModelForSequenceClassification,
+    AutoModelForTokenClassification,
+    AutoModelForMaskedLM,
 )
 from .base_tokenizer import BaseSequenceTokenizer
+from .esmc_utils import EsmSequenceTokenizer
 
 
 presets = {
@@ -38,7 +38,7 @@ class ESMTokenizerWrapper(BaseSequenceTokenizer):
 class ESMplusplusForEmbedding(nn.Module):
     def __init__(self, model_path: str):
         super().__init__()
-        self.esm = ESMplusplusModel.from_pretrained(model_path)
+        self.esm = AutoModel.from_pretrained(model_path, trust_remote_code=True)
 
     def forward(
             self,
@@ -62,7 +62,7 @@ def get_esmc_tokenizer(preset: str):
 
 def build_esmc_model(preset: str, masked_lm: bool = False, **kwargs):
     if masked_lm:
-        model = ESMplusplusForMaskedLM.from_pretrained(presets[preset]).eval()
+        model = AutoModelForMaskedLM.from_pretrained(presets[preset], trust_remote_code=True).eval()
     else:
         model = ESMplusplusForEmbedding(presets[preset]).eval()
     tokenizer = get_esmc_tokenizer(preset)
@@ -72,12 +72,12 @@ def build_esmc_model(preset: str, masked_lm: bool = False, **kwargs):
 def get_esmc_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):
     model_path = presets[preset]
     if hybrid:
-        model = ESMplusplusModel.from_pretrained(model_path).eval()
+        model = AutoModel.from_pretrained(model_path, trust_remote_code=True).eval()
     else:
         if tokenwise:
-            model = ESMplusplusForTokenClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = AutoModelForTokenClassification.from_pretrained(model_path, num_labels=num_labels, trust_remote_code=True).eval()
         else:
-            model = ESMplusplusForSequenceClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, trust_remote_code=True).eval()
     tokenizer = get_esmc_tokenizer(preset)
     return model, tokenizer
 

@@ -20,6 +20,20 @@ from .lazy_predict import (
     ALL_MODEL_DICT
 )
 from .scikit_hypers import HYPERPARAMETER_DISTRIBUTIONS
+from sklearn.metrics import (
+    accuracy_score,
+    f1_score,
+    precision_score,
+    recall_score,
+    matthews_corrcoef,
+    roc_auc_score,
+    precision_recall_curve,
+    auc,
+    mean_squared_error,
+    r2_score,
+    mean_absolute_error,
+)
+from scipy.stats import spearmanr, pearsonr
 
 
 class ScikitArguments:
@@ -34,18 +48,31 @@ class ScikitArguments:
         random_state: Optional[int] = None,
         # Specific model arguments (optional)
         model_name: Optional[str] = None,
+        scikit_model_name: Optional[str] = None,  # CLI arg name
+        scikit_model_args: Optional[str] = None,  # CLI arg - JSON string
         model_args: Optional[Dict[str, Any]] = None,
         production_model: bool = False,
         **kwargs,
     ):
+        import json
         # Tuning arguments
         self.n_iter = n_iter
         self.cv = cv
         self.random_state = random_state or get_global_seed()
         
-        # Specific model arguments
-        self.model_name = model_name
-        self.model_args = model_args if model_args is not None else {}
+        # Specific model arguments - scikit_model_name takes precedence (CLI arg)
+        self.model_name = scikit_model_name or model_name
+        
+        # Parse scikit_model_args JSON string if provided (CLI), otherwise use model_args dict
+        if scikit_model_args is not None:
+            try:
+                self.model_args = json.loads(scikit_model_args)
+                print_message(f"Using pre-specified hyperparameters (skipping tuning): {self.model_args}")
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Failed to parse --scikit_model_args JSON: {e}")
+        else:
+            self.model_args = model_args if model_args is not None else {}
+        
         self.production_model = production_model
 
 
@@ -93,8 +120,12 @@ class ScikitProbe:
         """
         param_distributions = HYPERPARAMETER_DISTRIBUTIONS.get(model_name, {})
         if not param_distributions:
+            print_message(f"No hyperparameter distributions defined for {model_name}, using defaults")
             return model_class(), {}
 
+        print_message(f"Running RandomizedSearchCV with {self.args.n_iter} iterations, {self.args.cv}-fold CV...")
+        print_message(f"Hyperparameter search space: {list(param_distributions.keys())}")
+        
         random_search = RandomizedSearchCV(
             model_class(),
             param_distributions=param_distributions,
@@ -102,10 +133,12 @@ class ScikitProbe:
             scoring=custom_scorer,
             cv=self.args.cv,
             random_state=self.args.random_state,
-            n_jobs=self.n_jobs
+            n_jobs=self.n_jobs,
+            verbose=2  # Show progress for each fit
         )
         
         random_search.fit(X_train, y_train)
+        print_message(f"Best CV score: {random_search.best_score_:.4f}")
         return random_search.best_estimator_, random_search.best_params_
 
     def find_best_regressor(
@@ -140,7 +173,8 @@ class ScikitProbe:
         
         # Get best model name and class
         best_model_name = initial_scores.index[0]
-        best_model_class = regressor.models[best_model_name].named_steps['regressor'].__class__
+        # Models are now stored directly (not as Pipeline) after optimization
+        best_model_class = regressor.models[best_model_name].__class__
         print_message(f"Best model name: {best_model_name}")
         print_message(f"Best model class: {best_model_class}")
         print_message(f"Initial scores: \n{initial_scores}")
@@ -158,7 +192,7 @@ class ScikitProbe:
         
         # Get final scores with tuned model
         best_model.fit(X_train, y_train)
-        final_scores = scorer(best_model, X_test, y_test)
+        final_scores = self._calculate_metrics(best_model, X_test, y_test, best_model_name)
         print_message(f"Final scores: {final_scores}")
         print_message(f"Best params: \n{best_params}")
 
@@ -202,7 +236,8 @@ class ScikitProbe:
 
         # Get best model name and class
         best_model_name = initial_scores.index[0]
-        best_model_class = classifier.models[best_model_name].named_steps['classifier'].__class__
+        # Models are now stored directly (not as Pipeline) after optimization
+        best_model_class = classifier.models[best_model_name].__class__
         print_message(f"Best model name: {best_model_name}")
         print_message(f"Best model class: {best_model_class}")
         print_message(f"Initial scores: \n{initial_scores}")
@@ -220,7 +255,7 @@ class ScikitProbe:
         
         # Get final scores with tuned model
         best_model.fit(X_train, y_train)
-        final_scores = scorer(best_model, X_test, y_test)
+        final_scores = self._calculate_metrics(best_model, X_test, y_test, best_model_name)
         print_message(f"Final scores: {final_scores}")
         print_message(f"Best params: \n{best_params}")
 
@@ -231,6 +266,58 @@ class ScikitProbe:
             final_scores=final_scores,
             best_model=best_model
         )
+
+    def _calculate_metrics(
+        self,
+        model: Any,
+        X: np.ndarray,
+        y: np.ndarray,
+        model_name: str,
+    ) -> Dict[str, float]:
+        """
+        Calculate comprehensive metrics for a given model.
+        """
+        y_pred = model.predict(X)
+        metrics = {}
+
+        if model_name in CLASSIFIER_DICT:
+            # Classification metrics
+            metrics['accuracy'] = float(accuracy_score(y, y_pred))
+            metrics['mcc'] = float(matthews_corrcoef(y, y_pred))
+            metrics['f1'] = float(f1_score(y, y_pred, average='macro', zero_division=0))
+            metrics['precision'] = float(precision_score(y, y_pred, average='macro', zero_division=0))
+            metrics['recall'] = float(recall_score(y, y_pred, average='macro', zero_division=0))
+            
+            # Try to get probabilities for AUC
+            if hasattr(model, "predict_proba"):
+                try:
+                    y_proba = model.predict_proba(X)
+                    # Handle binary vs multiclass AUC
+                    if y_proba.shape[1] == 2:
+                        # For binary, use probability of positive class
+                        metrics['roc_auc'] = float(roc_auc_score(y, y_proba[:, 1]))
+                        # PR AUC for binary
+                        _prec, _rec, _ = precision_recall_curve(y, y_proba[:, 1])
+                        metrics['pr_auc'] = float(auc(_rec, _prec))
+                    else:
+                        metrics['roc_auc'] = float(roc_auc_score(y, y_proba, multi_class='ovr'))
+                except Exception:
+                    pass
+        
+        elif model_name in REGRESSOR_DICT:
+            # Regression metrics
+            mse = float(mean_squared_error(y, y_pred))
+            metrics['mse'] = mse
+            metrics['rmse'] = float(np.sqrt(mse))
+            metrics['r_squared'] = float(r2_score(y, y_pred))
+            metrics['mae'] = float(mean_absolute_error(y, y_pred))
+            try:
+                metrics['spearman_rho'] = float(spearmanr(y, y_pred).correlation)
+                metrics['pearson_rho'] = float(pearsonr(y, y_pred)[0])
+            except Exception:
+                pass
+        
+        return metrics
 
     def run_specific_model(
         self,
@@ -269,14 +356,6 @@ class ScikitProbe:
             model_name = model_results.best_model_name
             model_params = model_results.best_params if model_results.best_params is not None else {}
             
-            # Determine if it's a classifier or regressor
-            if model_name in CLASSIFIER_DICT:
-                scorer = get_classification_scorer()
-            elif model_name in REGRESSOR_DICT:
-                scorer = get_regression_scorer()
-            else:
-                raise ValueError(f"Model {model_name} not supported")
-                
             # Get the model class
             model_class = ALL_MODEL_DICT[model_name]
             
@@ -285,7 +364,8 @@ class ScikitProbe:
             print_message(f"Training model {cls}")
             cls.fit(X_train, y_train)
             print_message(f"Model trained")
-            final_scores = scorer(cls, X_test, y_test)
+            
+            final_scores = self._calculate_metrics(cls, X_test, y_test, model_name)
             print_message(f"Final scores: {final_scores}")
 
             return ModelResults(
@@ -307,16 +387,37 @@ class ScikitProbe:
                 raise ValueError(f"Model {model_name} not supported")
 
             model_class = ALL_MODEL_DICT[model_name]
-            cls = model_class(**self.args.model_args)
-            cls.fit(X_train, y_train)
-            final_scores = scorer(cls, X_test, y_test)
+            
+            # Skip tuning if model_args is already provided
+            if self.args.model_args:
+                print_message(f"Skipping hyperparameter tuning - using provided args: {self.args.model_args}")
+                best_model = model_class(**self.args.model_args)
+                best_params = self.args.model_args
+            else:
+                # Run hyperparameter tuning
+                print_message(f"Tuning hyperparameters for {model_name}")
+                best_model, best_params = self._tune_hyperparameters(
+                    model_class,
+                    model_name,
+                    X_train,
+                    y_train,
+                    scorer
+                )
+                print_message(f"Best parameters: {best_params}")
+            
+            # Train final model with best parameters
+            print_message(f"Training final model with best parameters")
+            best_model.fit(X_train, y_train)
+            
+            final_scores = self._calculate_metrics(best_model, X_test, y_test, model_name)
+            print_message(f"Final scores: {final_scores}")
             
             return ModelResults(
                 initial_scores=None,
                 best_model_name=model_name,
-                best_params=None,
+                best_params=best_params,
                 final_scores=final_scores,
-                best_model=cls
+                best_model=best_model
             )
         else:
             raise ValueError("Either model_name must be specified in args or model_results must be provided")

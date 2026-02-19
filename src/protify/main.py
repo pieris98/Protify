@@ -77,6 +77,7 @@ def parse_arguments():
     parser.add_argument("--scikit_cv", type=int, default=3, help="Number of cross-validation folds for scikit model.")
     parser.add_argument("--scikit_random_state", type=int, default=None, help="Random state for scikit model (if None, uses global seed).")
     parser.add_argument("--scikit_model_name", type=str, default=None, help="Name of the scikit model to use.")
+    parser.add_argument("--scikit_model_args", type=str, default=None, help="JSON string of hyperparameters to use (skips tuning). E.g. '{\"n_estimators\": 500, \"max_depth\": 7}'")
     parser.add_argument("--use_scikit", action="store_true", default=False, help="Use scikit model (default: False).")
     parser.add_argument("--n_jobs", type=int, default=1, help="Number of processes to use in scikit.") # TODO integrate with GUI and main
 
@@ -680,14 +681,25 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             for data_name, dataset in self.datasets.items():
                 ### find best scikit model and parameters via cross validation and lazy predict
                 X_train, y_train, X_valid, y_valid, X_test, y_test, label_type = self.prepare_scikit_dataset(model_name, dataset)
-                if label_type == 'singlelabel':
-                    results = scikit_probe.find_best_classifier(X_train, y_train, X_valid, y_valid)
-                elif label_type == 'regression':
-                    results = scikit_probe.find_best_regressor(X_train, y_train, X_valid, y_valid)
+                
+                # If a specific model is specified, skip LazyPredict and go straight to that model
+                if self.scikit_args.model_name is not None:
+                    print_message(f"Skipping LazyPredict, using specified model: {self.scikit_args.model_name}")
+                    results = scikit_probe.run_specific_model(X_train, y_train, X_valid, y_valid, X_test, y_test, model_results=None)
                 else:
-                    raise ValueError(f'Label type {label_type} not supported')
-                ### train and evaluate best model
-                results = scikit_probe.run_specific_model(X_train, y_train, X_valid, y_valid, X_test, y_test, results)
+                    # Find best model via LazyPredict
+                    if label_type == 'singlelabel':
+                        results = scikit_probe.find_best_classifier(X_train, y_train, X_valid, y_valid)
+                    elif label_type == 'regression':
+                        results = scikit_probe.find_best_regressor(X_train, y_train, X_valid, y_valid)
+                    else:
+                        raise ValueError(f'Label type {label_type} not supported')
+                    # Train and evaluate best model with optimal hyperparameters
+                    results = scikit_probe.run_specific_model(X_train, y_train, X_valid, y_valid, X_test, y_test, results)
+                
+                # Log the results for plotting
+                metrics_dict = {'test_mcc': results.final_scores} if isinstance(results.final_scores, (int, float)) else results.final_scores
+                self.log_metrics(data_name, model_name, metrics_dict, split_name='test')
     
     @log_method_calls
     def generate_plots(self):

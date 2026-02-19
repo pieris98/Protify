@@ -55,7 +55,29 @@ removed_classifiers = [
     "LinearSVC",
     "Perceptron",
     "MLPClassifier",
-    "SGDClassifier"
+    "SGDClassifier",
+    # O(n²) memory models - too slow for large datasets
+    "LabelPropagation",
+    "LabelSpreading", 
+    "SVC",
+    "NuSVC",
+    # Sequential ensemble models - slow for large datasets
+    "AdaBoostClassifier",
+    "BaggingClassifier",
+    # O(n×m) prediction time - slow for large test sets
+    "KNeighborsClassifier",
+    # Unbounded tree depth - very slow on high-dim data
+    "DecisionTreeClassifier",
+    "ExtraTreeClassifier",
+    "ExtraTreesClassifier",
+    # Fails on negative values after StandardScaler
+    "CategoricalNB",
+    # O(d²) or O(d³) - slow on high-dimensional data (4608 features)
+    "LinearDiscriminantAnalysis",
+    "QuadraticDiscriminantAnalysis",
+    # Requires estimator argument
+    "FixedThresholdClassifier",
+    "TunedThresholdClassifierCV",
 ]
 
 removed_regressors = [
@@ -82,7 +104,16 @@ removed_regressors = [
     "LassoLarsCV",
     "ElasticNetCV",
     "LinearSVR",
-    "LassoLarsIC"
+    "LassoLarsIC",
+    # Sequential ensemble models - slow for large datasets
+    "AdaBoostRegressor",
+    "BaggingRegressor",
+    # O(n×m) prediction time - slow for large test sets
+    "KNeighborsRegressor",
+    # Unbounded tree depth - very slow on high-dim data
+    "DecisionTreeRegressor",
+    "ExtraTreeRegressor",
+    "ExtraTreesRegressor",
 ]
 
 # Tuple of (name, class)
@@ -175,6 +206,16 @@ REGRESSORS.append(("LGBMRegressor", lightgbm.LGBMRegressor))
 CLASSIFIERS.append(("XGBClassifier", xgboost.XGBClassifier))
 CLASSIFIERS.append(("LGBMClassifier", lightgbm.LGBMClassifier))
 # CLASSIFIERS.append(('CatBoostClassifier',catboost.CatBoostClassifier))
+
+# Update dicts with XGB and LGBM
+CLASSIFIER_DICT["XGBClassifier"] = xgboost.XGBClassifier
+CLASSIFIER_DICT["LGBMClassifier"] = lightgbm.LGBMClassifier
+REGRESSOR_DICT["XGBRegressor"] = xgboost.XGBRegressor
+REGRESSOR_DICT["LGBMRegressor"] = lightgbm.LGBMRegressor
+ALL_MODEL_DICT["XGBClassifier"] = xgboost.XGBClassifier
+ALL_MODEL_DICT["LGBMClassifier"] = lightgbm.LGBMClassifier
+ALL_MODEL_DICT["XGBRegressor"] = xgboost.XGBRegressor
+ALL_MODEL_DICT["LGBMRegressor"] = lightgbm.LGBMRegressor
 
 numeric_transformer = Pipeline(
     steps=[("imputer", SimpleImputer(strategy="mean")), ("scaler", StandardScaler())]
@@ -309,6 +350,13 @@ class LazyClassifier:
                 ("categorical_high", categorical_transformer_high, categorical_high),
             ]
         )
+        
+        # Precompute preprocessing once for all models (major optimization for large datasets)
+        print_message("Preprocessing data once for all models...")
+        preprocess_start = time.time()
+        X_train_transformed = preprocessor.fit_transform(X_train)
+        X_test_transformed = preprocessor.transform(X_test)
+        print_message(f"Preprocessing completed in {time.time() - preprocess_start:.1f}s")
 
         if self.classifiers == "all":
             self.classifiers = CLASSIFIERS
@@ -328,23 +376,25 @@ class LazyClassifier:
         total_start = time.time()
 
         for name, model in tqdm(self.classifiers, desc="Training classifiers"):
+            print_message(f"Starting {name}...")
             start = time.time()
             try:
+                # Build model kwargs
+                model_kwargs = {}
                 if "random_state" in model().get_params().keys():
-                    pipe = Pipeline(
-                        steps=[
-                            ("preprocessor", preprocessor),
-                            ("classifier", model(random_state=self.random_state)),
-                        ]
-                    )
-                else:
-                    pipe = Pipeline(
-                        steps=[("preprocessor", preprocessor), ("classifier", model())]
-                    )
-
-                pipe.fit(X_train, y_train)
-                self.models[name] = pipe
-                y_pred = pipe.predict(X_test)
+                    model_kwargs["random_state"] = self.random_state
+                # Enable parallelization for models that support it
+                if "n_jobs" in model().get_params().keys():
+                    model_kwargs["n_jobs"] = -1
+                # Enable verbose for boosting models to show iteration progress
+                if name in ("XGBClassifier", "LGBMClassifier"):
+                    model_kwargs["verbose"] = 1
+                
+                # Train directly on preprocessed data (no Pipeline needed)
+                clf = model(**model_kwargs)
+                clf.fit(X_train_transformed, y_train)
+                self.models[name] = clf
+                y_pred = clf.predict(X_test_transformed)
                 accuracy = accuracy_score(y_test, y_pred, normalize=True)
                 b_accuracy = balanced_accuracy_score(y_test, y_pred)
                 f1 = f1_score(y_test, y_pred, average="weighted")
@@ -362,6 +412,8 @@ class LazyClassifier:
                 ROC_AUC.append(roc_auc)
                 F1.append(f1)
                 TIME.append(fit_time)
+                
+                print_message(f"  {name} completed in {fit_time:.1f}s | Acc: {accuracy:.3f} | F1: {f1:.3f}")
 
                 if self.custom_metric is not None:
                     custom_metric = self.custom_metric(y_test, y_pred)
@@ -548,6 +600,13 @@ class LazyRegressor:
                 ("categorical_high", categorical_transformer_high, categorical_high),
             ]
         )
+        
+        # Precompute preprocessing once for all models (major optimization for large datasets)
+        print_message("Preprocessing data once for all models...")
+        preprocess_start = time.time()
+        X_train_transformed = preprocessor.fit_transform(X_train)
+        X_test_transformed = preprocessor.transform(X_test)
+        print_message(f"Preprocessing completed in {time.time() - preprocess_start:.1f}s")
 
         if self.regressors == "all":
             self.regressors = REGRESSORS
@@ -567,23 +626,25 @@ class LazyRegressor:
         total_start = time.time()
 
         for name, model in tqdm(self.regressors, desc="Training regressors"):
+            print_message(f"Starting {name}...")
             start = time.time()
             try:
+                # Build model kwargs
+                model_kwargs = {}
                 if "random_state" in model().get_params().keys():
-                    pipe = Pipeline(
-                        steps=[
-                            ("preprocessor", preprocessor),
-                            ("regressor", model(random_state=self.random_state)),
-                        ]
-                    )
-                else:
-                    pipe = Pipeline(
-                        steps=[("preprocessor", preprocessor), ("regressor", model())]
-                    )
-
-                pipe.fit(X_train, y_train)
-                self.models[name] = pipe
-                y_pred = pipe.predict(X_test)
+                    model_kwargs["random_state"] = self.random_state
+                # Enable parallelization for models that support it
+                if "n_jobs" in model().get_params().keys():
+                    model_kwargs["n_jobs"] = -1
+                # Enable verbose for boosting models to show iteration progress
+                if name in ("XGBRegressor", "LGBMRegressor"):
+                    model_kwargs["verbose"] = 1
+                
+                # Train directly on preprocessed data (no Pipeline needed)
+                reg = model(**model_kwargs)
+                reg.fit(X_train_transformed, y_train)
+                self.models[name] = reg
+                y_pred = reg.predict(X_test_transformed)
 
                 r_squared = r2_score(y_test, y_pred)
                 adj_rsquared = adjusted_rsquared(
@@ -597,6 +658,8 @@ class LazyRegressor:
                 ADJR2.append(adj_rsquared)
                 RMSE.append(rmse)
                 TIME.append(fit_time)
+                
+                print_message(f"  {name} completed in {fit_time:.1f}s | R²: {r_squared:.3f} | RMSE: {rmse:.3f}")
 
                 if self.custom_metric:
                     custom_metric = self.custom_metric(y_test, y_pred)

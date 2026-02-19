@@ -4,14 +4,25 @@ from sklearn.model_selection import RandomizedSearchCV
 from typing import Dict, Any, Tuple, Optional
 
 try:
-    from metrics import get_regression_scorer, get_classification_scorer, classification_scorer, regression_scorer
+    from metrics import (
+        get_regression_scorer, get_classification_scorer,
+        classification_scorer, regression_scorer,
+        compute_single_label_classification_metrics,
+        compute_regression_metrics,
+    )
     from utils import print_message
     from seed_utils import get_global_seed
 except ImportError:
-    from ..metrics import get_regression_scorer, get_classification_scorer, classification_scorer, regression_scorer
+    from ..metrics import (
+        get_regression_scorer, get_classification_scorer,
+        classification_scorer, regression_scorer,
+        compute_single_label_classification_metrics,
+        compute_regression_metrics,
+    )
     from ..utils import print_message
     from ..seed_utils import get_global_seed
 
+from transformers import EvalPrediction
 from .lazy_predict import (
     LazyRegressor,
     LazyClassifier,
@@ -20,20 +31,6 @@ from .lazy_predict import (
     ALL_MODEL_DICT
 )
 from .scikit_hypers import HYPERPARAMETER_DISTRIBUTIONS
-from sklearn.metrics import (
-    accuracy_score,
-    f1_score,
-    precision_score,
-    recall_score,
-    matthews_corrcoef,
-    roc_auc_score,
-    precision_recall_curve,
-    auc,
-    mean_squared_error,
-    r2_score,
-    mean_absolute_error,
-)
-from scipy.stats import spearmanr, pearsonr
 
 
 class ScikitArguments:
@@ -275,49 +272,26 @@ class ScikitProbe:
         model_name: str,
     ) -> Dict[str, float]:
         """
-        Calculate comprehensive metrics for a given model.
+        Delegate to the shared metric functions in metrics.py via EvalPrediction,
+        keeping a single source of truth for metric calculation across the codebase.
         """
-        y_pred = model.predict(X)
-        metrics = {}
-
         if model_name in CLASSIFIER_DICT:
-            # Classification metrics
-            metrics['accuracy'] = float(accuracy_score(y, y_pred))
-            metrics['mcc'] = float(matthews_corrcoef(y, y_pred))
-            metrics['f1'] = float(f1_score(y, y_pred, average='macro', zero_division=0))
-            metrics['precision'] = float(precision_score(y, y_pred, average='macro', zero_division=0))
-            metrics['recall'] = float(recall_score(y, y_pred, average='macro', zero_division=0))
-            
-            # Try to get probabilities for AUC
-            if hasattr(model, "predict_proba"):
-                try:
-                    y_proba = model.predict_proba(X)
-                    # Handle binary vs multiclass AUC
-                    if y_proba.shape[1] == 2:
-                        # For binary, use probability of positive class
-                        metrics['roc_auc'] = float(roc_auc_score(y, y_proba[:, 1]))
-                        # PR AUC for binary
-                        _prec, _rec, _ = precision_recall_curve(y, y_proba[:, 1])
-                        metrics['pr_auc'] = float(auc(_rec, _prec))
-                    else:
-                        metrics['roc_auc'] = float(roc_auc_score(y, y_proba, multi_class='ovr'))
-                except Exception:
-                    pass
-        
+            if hasattr(model, 'predict_proba'):
+                predictions = model.predict_proba(X)
+            else:
+                # Fall back to one-hot hard predictions for models without predict_proba
+                y_pred = model.predict(X)
+                n_classes = len(np.unique(y))
+                predictions = np.eye(n_classes)[y_pred.astype(int)]
+            p = EvalPrediction(predictions=predictions, label_ids=y)
+            return compute_single_label_classification_metrics(p)
+
         elif model_name in REGRESSOR_DICT:
-            # Regression metrics
-            mse = float(mean_squared_error(y, y_pred))
-            metrics['mse'] = mse
-            metrics['rmse'] = float(np.sqrt(mse))
-            metrics['r_squared'] = float(r2_score(y, y_pred))
-            metrics['mae'] = float(mean_absolute_error(y, y_pred))
-            try:
-                metrics['spearman_rho'] = float(spearmanr(y, y_pred).correlation)
-                metrics['pearson_rho'] = float(pearsonr(y, y_pred)[0])
-            except Exception:
-                pass
-        
-        return metrics
+            y_pred = model.predict(X)
+            p = EvalPrediction(predictions=y_pred, label_ids=y)
+            return compute_regression_metrics(p)
+
+        return {}
 
     def run_specific_model(
         self,

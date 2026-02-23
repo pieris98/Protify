@@ -49,10 +49,10 @@ class ESMplusplusForEmbedding(nn.Module):
             **kwargs,
     ) -> torch.Tensor:
         if output_attentions:
-            out = self.esm(input_ids, attention_mask=attention_mask, output_attentions=output_attentions)
+            out = self.esm(input_ids=input_ids, attention_mask=attention_mask, output_attentions=output_attentions)
             return out.last_hidden_state, out.attentions
         else:
-            return self.esm(input_ids, attention_mask=attention_mask).last_hidden_state
+            return self.esm(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
 
 
 def get_esmc_tokenizer(preset: str):

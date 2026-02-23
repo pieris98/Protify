@@ -22,3 +22,4 @@ matplotlib>=3.9.0
 wandb
 sentencepiece
 hf_transfer
+filelock>=3.24.0

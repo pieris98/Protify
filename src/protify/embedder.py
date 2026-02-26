@@ -65,6 +65,7 @@ class EmbeddingArguments:
             embedding_pooling_types: List[str] = ['mean'],
             save_embeddings: bool = False,
             embed_dtype: torch.dtype = torch.float32,
+            model_dtype: torch.dtype = None,
             sql: bool = False,
             embedding_save_dir: str = 'embeddings',
             **kwargs
@@ -77,6 +78,7 @@ class EmbeddingArguments:
         self.pooling_types = embedding_pooling_types
         self.save_embeddings = save_embeddings
         self.embed_dtype = embed_dtype
+        self.model_dtype = model_dtype
         self.sql = sql
         self.embedding_save_dir = embedding_save_dir
 
@@ -93,6 +95,7 @@ class Embedder:
         self.download_dir = args.download_dir
         self.save_embeddings = args.save_embeddings
         self.embed_dtype = args.embed_dtype
+        self.model_dtype = args.model_dtype
         self.sql = args.sql
         self.embedding_save_dir = args.embedding_save_dir
 
@@ -307,7 +310,7 @@ class Embedder:
         
         if len(to_embed) > 0:
             print_message(f"Embedding {len(to_embed)} sequences with {clean_model_name}")
-            model, tokenizer = get_base_model(model_name) # get base model takes raw model name
+            model, tokenizer = get_base_model(model_name, dtype=self.model_dtype) # get base model takes raw model name
 
             return self._embed_sequences(to_embed, save_path, model, tokenizer, embeddings_dict)
         else:

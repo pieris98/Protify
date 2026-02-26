@@ -29,9 +29,9 @@ class ProtCLMTokenizerWrapper(BaseSequenceTokenizer):
         return self.tokenizer(sequences, **kwargs)
 
 class ProtCLMForEmbedding(nn.Module):
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.plm = AutoModel.from_pretrained(model_path, trust_remote_code=True)
+        self.plm = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True)
 
     def forward(
         self,
@@ -58,9 +58,11 @@ def get_protCLM_tokenizer(preset: str) -> BaseSequenceTokenizer:
     )
 
 
-def build_protCLM(preset: str) -> Tuple[AutoModel, BaseSequenceTokenizer]:
+def build_protCLM(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs) -> Tuple[AutoModel, BaseSequenceTokenizer]:
+    if masked_lm:
+        raise ValueError(f"Model {preset} does not support masked language modeling")
     model_path = presets[preset]
-    model = ProtCLMForEmbedding(model_path, trust_remote_code=True).eval()
+    model = ProtCLMForEmbedding(model_path, dtype=dtype).eval()
     tokenizer = get_protCLM_tokenizer(preset)
     return model, tokenizer
 
@@ -69,19 +71,20 @@ def get_protCLM_for_training(
     preset: str,
     tokenwise: bool = False,
     num_labels: int = None,
-    hybrid: bool = False
+    hybrid: bool = False,
+    dtype: torch.dtype = None,
     ):
     model_path = presets[preset]
     if hybrid:
-        model = AutoModel.from_pretrained(model_path, trust_remote_code=True).eval()
+        model = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:
         if tokenwise:
             model = AutoModelForTokenClassification.from_pretrained(
-                model_path, num_labels=num_labels, trust_remote_code=True
+                model_path, num_labels=num_labels, dtype=dtype, trust_remote_code=True
             ).eval()
         else:
             model = AutoModelForSequenceClassification.from_pretrained(
-                model_path, num_labels=num_labels, trust_remote_code=True
+                model_path, num_labels=num_labels, dtype=dtype, trust_remote_code=True
             ).eval()
     tokenizer = get_protCLM_tokenizer(preset)
     return model, tokenizer

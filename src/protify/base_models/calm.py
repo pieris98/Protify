@@ -906,9 +906,10 @@ def _normalize_calm_preset(preset: str) -> str:
     raise ValueError(f"Model {preset} not supported")
 
 
-def _load_calm_backbone(model_path: str, add_pooling_layer: bool = False) -> CaLmModel:
+def _load_calm_backbone(model_path: str, add_pooling_layer: bool = False, dtype: torch.dtype = None) -> CaLmModel:
     model, loading_info = CaLmModel.from_pretrained(
         model_path,
+        dtype=dtype,
         add_pooling_layer=add_pooling_layer,
         output_loading_info=True,
     )
@@ -949,9 +950,9 @@ class CaLMTokenizerWrapper(BaseSequenceTokenizer):
 
 
 class CaLmForEmbedding(nn.Module):
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.calm = _load_calm_backbone(model_path, add_pooling_layer=False)
+        self.calm = _load_calm_backbone(model_path, add_pooling_layer=False, dtype=dtype)
 
     def forward(
             self,
@@ -973,21 +974,21 @@ def get_calm_tokenizer(preset: str):
     return CaLMTokenizerWrapper(RnaTokenizer.from_pretrained(presets[normalized_preset]))
 
 
-def build_calm_model(preset: str, masked_lm: bool = False, **kwargs):
+def build_calm_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
     normalized_preset = _normalize_calm_preset(preset)
     if masked_lm:
         raise ValueError(f"Model {preset} does not support masked language modeling")
     else:
-        model = CaLmForEmbedding(presets[normalized_preset]).eval()
+        model = CaLmForEmbedding(presets[normalized_preset], dtype=dtype).eval()
     tokenizer = get_calm_tokenizer(normalized_preset)
     return model, tokenizer
 
 
-def get_calm_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):
+def get_calm_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
     normalized_preset = _normalize_calm_preset(preset)
     model_path = presets[normalized_preset]
     if hybrid:
-        model = _load_calm_backbone(model_path, add_pooling_layer=False).eval()
+        model = _load_calm_backbone(model_path, add_pooling_layer=False, dtype=dtype).eval()
     else:
         raise ValueError(f"Model {preset} does not support training")
     tokenizer = get_calm_tokenizer(normalized_preset)

@@ -35,9 +35,9 @@ class BERTTokenizerWrapper(BaseSequenceTokenizer):
 
 
 class ProtBertForEmbedding(nn.Module):
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.plm = BertModel.from_pretrained(model_path, attn_implementation="sdpa")
+        self.plm = BertModel.from_pretrained(model_path, dtype=dtype, attn_implementation="sdpa")
 
     def forward(
             self,
@@ -58,25 +58,25 @@ def get_protbert_tokenizer(preset: str):
     return BERTTokenizerWrapper(BertTokenizer.from_pretrained('Rostlab/prot_bert'))
 
 
-def build_protbert_model(preset: str, masked_lm: bool = False, **kwargs):
+def build_protbert_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
     model_path = presets[preset]
     if masked_lm:
-        model = BertForMaskedLM.from_pretrained(model_path, attn_implementation="sdpa").eval()
+        model = BertForMaskedLM.from_pretrained(model_path, dtype=dtype, attn_implementation="sdpa").eval()
     else:
-        model = ProtBertForEmbedding(model_path).eval()
+        model = ProtBertForEmbedding(model_path, dtype=dtype).eval()
     tokenizer = get_protbert_tokenizer(preset)
     return model, tokenizer
 
 
-def get_protbert_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):
+def get_protbert_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
     model_path = presets[preset]
     if hybrid:
-        model = BertModel.from_pretrained(model_path).eval()
+        model = BertModel.from_pretrained(model_path, dtype=dtype).eval()
     else:
         if tokenwise:
-            model = BertForTokenClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = BertForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
         else:
-            model = BertForSequenceClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = BertForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
     tokenizer = get_protbert_tokenizer(preset)
     return model, tokenizer
 

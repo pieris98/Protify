@@ -29,9 +29,9 @@ class ANKHTokenizerWrapper(BaseSequenceTokenizer):
 
 
 class AnkhForEmbedding(nn.Module):
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.plm = T5EncoderModel.from_pretrained(model_path)
+        self.plm = T5EncoderModel.from_pretrained(model_path, dtype=dtype)
 
     def forward(
             self,
@@ -49,9 +49,9 @@ class AnkhForEmbedding(nn.Module):
 
 
 class AnkhForProteinGym(nn.Module):
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.plm = T5ForConditionalGeneration.from_pretrained(model_path)
+        self.plm = T5ForConditionalGeneration.from_pretrained(model_path, dtype=dtype)
 
     @torch.no_grad()
     def position_log_probs(
@@ -117,25 +117,25 @@ def get_ankh_tokenizer(preset: str):
     return ANKHTokenizerWrapper(AutoTokenizer.from_pretrained('Synthyra/ANKH_base'))
 
 
-def build_ankh_model(preset: str, masked_lm: bool = False, **kwargs):
+def build_ankh_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
     model_path = presets[preset]
     if masked_lm:
-        model = T5ForConditionalGeneration(model_path).eval()
+        model = T5ForConditionalGeneration.from_pretrained(model_path, dtype=dtype).eval()
     else:
-        model = AnkhForEmbedding(model_path).eval()
+        model = AnkhForEmbedding(model_path, dtype=dtype).eval()
     tokenizer = get_ankh_tokenizer(preset)
     return model, tokenizer
 
 
-def get_ankh_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):
+def get_ankh_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
     model_path = presets[preset]
     if hybrid:
-        model = T5EncoderModel.from_pretrained(model_path).eval()
+        model = T5EncoderModel.from_pretrained(model_path, dtype=dtype).eval()
     else:
         if tokenwise:
-            model = T5ForTokenClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = T5ForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
         else:
-            model = T5ForSequenceClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = T5ForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
     tokenizer = get_ankh_tokenizer(preset)
     return model, tokenizer
 

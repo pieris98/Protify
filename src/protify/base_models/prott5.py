@@ -34,9 +34,9 @@ class T5TokenizerWrapper(BaseSequenceTokenizer):
 
 
 class Prott5ForEmbedding(nn.Module):
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.plm = T5EncoderModel.from_pretrained(model_path)
+        self.plm = T5EncoderModel.from_pretrained(model_path, dtype=dtype)
 
     def forward(
             self,
@@ -57,22 +57,22 @@ def get_prott5_tokenizer(preset: str):
     return T5TokenizerWrapper(T5Tokenizer.from_pretrained(presets[preset]))
 
 
-def build_prott5_model(preset: str, masked_lm: bool = False, **kwargs):
+def build_prott5_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
     model_path = presets[preset]
-    model = Prott5ForEmbedding(model_path).eval()
+    model = Prott5ForEmbedding(model_path, dtype=dtype).eval()
     tokenizer = get_prott5_tokenizer(preset)
     return model, tokenizer
 
 
-def get_prott5_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):
+def get_prott5_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
     model_path = presets[preset]
     if hybrid:
-        model = T5EncoderModel.from_pretrained(model_path).eval()
+        model = T5EncoderModel.from_pretrained(model_path, dtype=dtype).eval()
     else:
         if tokenwise:
-            model = T5ForTokenClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = T5ForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
         else:
-            model = T5ForSequenceClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = T5ForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
     tokenizer = get_prott5_tokenizer(preset)
     return model, tokenizer
 

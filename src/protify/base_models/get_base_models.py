@@ -5,109 +5,110 @@ from .supported_models import currently_supported_models, standard_models, exper
 
 @dataclass
 class BaseModelArguments:
-    def __init__(self, model_names: list[str] = None, **kwargs):
+    def __init__(self, model_names: list[str] = None, model_dtype=None, **kwargs):
         if model_names[0] == 'standard':
             self.model_names = standard_models
         elif 'exp' in model_names[0].lower():
             self.model_names = experimental_models
         else:
             self.model_names = model_names
+        self.model_dtype = model_dtype
 
 
-def get_base_model(model_name: str, masked_lm: bool = False):
+def get_base_model(model_name: str, masked_lm: bool = False, dtype=None):
     if 'random' in model_name.lower():
         from .random import build_random_model
-        return build_random_model(model_name, masked_lm=masked_lm)
+        return build_random_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'esm2' in model_name.lower() and model_name.lower().count('esm2') == 1:
         from .esm2 import build_esm2_model
-        return build_esm2_model(model_name, masked_lm=masked_lm)
+        return build_esm2_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'dsm' in model_name.lower():
         from .esm2 import build_esm2_model
-        return build_esm2_model(model_name, masked_lm=masked_lm)
+        return build_esm2_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'esmc' in model_name.lower():
         from .esmc import build_esmc_model
-        return build_esmc_model(model_name, masked_lm=masked_lm)
+        return build_esmc_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'protbert' in model_name.lower():
         from .protbert import build_protbert_model
-        return build_protbert_model(model_name, masked_lm=masked_lm)
+        return build_protbert_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'prott5' in model_name.lower():
         from .prott5 import build_prott5_model
-        return build_prott5_model(model_name, masked_lm=masked_lm)
+        return build_prott5_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'ankh' in model_name.lower():
         from .ankh import build_ankh_model
-        return build_ankh_model(model_name, masked_lm=masked_lm)
+        return build_ankh_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'glm' in model_name.lower():
         from .glm import build_glm2_model
-        return build_glm2_model(model_name, masked_lm=masked_lm)
+        return build_glm2_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'dplm2' in model_name.lower():
         from .dplm2 import build_dplm2_model
-        return build_dplm2_model(model_name, masked_lm=masked_lm)
+        return build_dplm2_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'dplm' in model_name.lower():
         from .dplm import build_dplm_model
-        return build_dplm_model(model_name, masked_lm=masked_lm)
+        return build_dplm_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'protclm' in model_name.lower():
         from .protCLM import build_protCLM
-        return build_protCLM(model_name, masked_lm=masked_lm)
+        return build_protCLM(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'onehot' in model_name.lower():
         from .one_hot import build_one_hot_model
-        return build_one_hot_model(model_name, masked_lm=masked_lm)
+        return build_one_hot_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'amplify' in model_name.lower():
         from .amplify import build_amplify_model
-        return build_amplify_model(model_name, masked_lm=masked_lm)
+        return build_amplify_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'e1' in model_name.lower():
         from .e1 import build_e1_model
-        return build_e1_model(model_name, masked_lm=masked_lm)
+        return build_e1_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'vec2vec' in model_name.lower():
         from .vec2vec import build_vec2vec_model
-        return build_vec2vec_model(model_name, masked_lm=masked_lm)
+        return build_vec2vec_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'calm' in model_name.lower():
         from .calm import build_calm_model
-        return build_calm_model(model_name, masked_lm=masked_lm)
+        return build_calm_model(model_name, masked_lm=masked_lm, dtype=dtype)
     elif 'custom' in model_name.lower():
         model_path = model_name.split('---')[-1]
         from .custom_model import build_custom_model
-        return build_custom_model(model_path, masked_lm=masked_lm)
+        return build_custom_model(model_path, masked_lm=masked_lm, dtype=dtype)
     else:
         raise ValueError(f"Model {model_name} not supported")
 
 
-def get_base_model_for_training(model_name: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):
+def get_base_model_for_training(model_name: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype=None):
     if 'esm2' in model_name.lower() or 'dsm' in model_name.lower():
         from .esm2 import get_esm2_for_training
-        return get_esm2_for_training(model_name, tokenwise, num_labels, hybrid)
+        return get_esm2_for_training(model_name, tokenwise, num_labels, hybrid, dtype=dtype)
     elif 'esmc' in model_name.lower():
         from .esmc import get_esmc_for_training
-        return get_esmc_for_training(model_name, tokenwise, num_labels, hybrid)
+        return get_esmc_for_training(model_name, tokenwise, num_labels, hybrid, dtype=dtype)
     elif 'protbert' in model_name.lower():
         from .protbert import get_protbert_for_training
-        return get_protbert_for_training(model_name, tokenwise, num_labels, hybrid)
+        return get_protbert_for_training(model_name, tokenwise, num_labels, hybrid, dtype=dtype)
     elif 'prott5' in model_name.lower():
         from .prott5 import get_prott5_for_training
-        return get_prott5_for_training(model_name, tokenwise, num_labels, hybrid)
+        return get_prott5_for_training(model_name, tokenwise, num_labels, hybrid, dtype=dtype)
     elif 'ankh' in model_name.lower():
         from .ankh import get_ankh_for_training
-        return get_ankh_for_training(model_name, tokenwise, num_labels, hybrid)
+        return get_ankh_for_training(model_name, tokenwise, num_labels, hybrid, dtype=dtype)
     elif 'glm' in model_name.lower():
         from .glm import get_glm2_for_training
-        return get_glm2_for_training(model_name, tokenwise, num_labels, hybrid)
+        return get_glm2_for_training(model_name, tokenwise, num_labels, hybrid, dtype=dtype)
     elif 'dplm2' in model_name.lower():
         from .dplm2 import get_dplm2_for_training
-        return get_dplm2_for_training(model_name, tokenwise, num_labels, hybrid)
+        return get_dplm2_for_training(model_name, tokenwise, num_labels, hybrid, dtype=dtype)
     elif 'dplm' in model_name.lower():
         from .dplm import get_dplm_for_training
-        return get_dplm_for_training(model_name, tokenwise, num_labels, hybrid)
+        return get_dplm_for_training(model_name, tokenwise, num_labels, hybrid, dtype=dtype)
     elif 'e1' in model_name.lower():
         from .e1 import get_e1_for_training
-        return get_e1_for_training(model_name, tokenwise, num_labels, hybrid)
+        return get_e1_for_training(model_name, tokenwise, num_labels, hybrid, dtype=dtype)
     elif 'protclm' in model_name.lower():
         from .protCLM import get_protCLM_for_training
-        return get_protCLM_for_training(model_name, tokenwise, num_labels, hybrid)
+        return get_protCLM_for_training(model_name, tokenwise, num_labels, hybrid, dtype=dtype)
     elif 'amplify' in model_name.lower():
         from .amplify import get_amplify_for_training
-        return get_amplify_for_training(model_name, tokenwise, num_labels, hybrid)
+        return get_amplify_for_training(model_name, tokenwise, num_labels, hybrid, dtype=dtype)
     elif 'calm' in model_name.lower():
         from .calm import get_calm_for_training
-        return get_calm_for_training(model_name, tokenwise, num_labels, hybrid)
+        return get_calm_for_training(model_name, tokenwise, num_labels, hybrid, dtype=dtype)
     else:
         raise ValueError(f"Model {model_name} not supported")
 

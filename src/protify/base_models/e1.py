@@ -34,9 +34,9 @@ class E1TokenizerWrapper(BaseSequenceTokenizer):
 
 
 class E1ForEmbedding(nn.Module):
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.e1 = AutoModel.from_pretrained(model_path, dtype=torch.bfloat16, trust_remote_code=True)
+        self.e1 = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True)
 
     def forward(
             self,
@@ -56,25 +56,25 @@ def get_e1_tokenizer(preset: str):
     return E1TokenizerWrapper(tokenizer)
 
 
-def build_e1_model(preset: str, masked_lm: bool = False, **kwargs):
+def build_e1_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
     model_path = presets[preset]
     if masked_lm:
-        model = AutoModelForMaskedLM.from_pretrained(model_path, dtype=torch.bfloat16, trust_remote_code=True).eval()
+        model = AutoModelForMaskedLM.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:
-        model = E1ForEmbedding(model_path).eval()
+        model = E1ForEmbedding(model_path, dtype=dtype).eval()
     tokenizer = get_e1_tokenizer(preset)
     return model, tokenizer
 
 
-def get_e1_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):
+def get_e1_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
     model_path = presets[preset]
     if hybrid:
-        model = AutoModel.from_pretrained(model_path, dtype=torch.bfloat16, trust_remote_code=True).eval()
+        model = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:
         if tokenwise:
-            model = AutoModelForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=torch.bfloat16, trust_remote_code=True).eval()
+            model = AutoModelForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype, trust_remote_code=True).eval()
         else:
-            model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=torch.bfloat16, trust_remote_code=True).eval()
+            model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype, trust_remote_code=True).eval()
     tokenizer = get_e1_tokenizer(preset)
     return model, tokenizer
 

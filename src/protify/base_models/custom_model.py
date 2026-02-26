@@ -10,9 +10,9 @@ Custom models are currently supposed to load completely from AutoModel.from_pret
 
 
 class CustomModelForEmbedding(nn.Module):
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.model = AutoModel.from_pretrained(model_path, trust_remote_code=True)
+        self.model = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True)
         if hasattr(self.model, 'tokenizer'):
             self.tokenizer = self.model.tokenizer
 
@@ -31,11 +31,11 @@ class CustomModelForEmbedding(nn.Module):
             return self.model(input_ids, attention_mask=attention_mask).last_hidden_state
 
 
-def build_custom_model(model_path: str, masked_lm: bool = False, **kwargs):
+def build_custom_model(model_path: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
     if masked_lm:
-        model = AutoModelForMaskedLM.from_pretrained(model_path, trust_remote_code=True).eval()
+        model = AutoModelForMaskedLM.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:
-        model = CustomModelForEmbedding(model_path).eval()
+        model = CustomModelForEmbedding(model_path, dtype=dtype).eval()
     try:
         tokenizer = model.tokenizer
     except:

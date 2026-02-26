@@ -38,9 +38,9 @@ class GLMTokenizerWrapper(BaseSequenceTokenizer):
 
 
 class gLM2ForEmbedding(nn.Module):
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.glm2 = AutoModel.from_pretrained(model_path, dtype=torch.bfloat16, trust_remote_code=True)
+        self.glm2 = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True)
     
     def forward(
         self,
@@ -63,9 +63,9 @@ class gLM2ForEmbedding(nn.Module):
         return out.last_hidden_state
 
 class gLM2GAIAForEmbedding(nn.Module):
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.glm2_embed = AutoModel.from_pretrained(model_path, dtype=torch.bfloat16, trust_remote_code=True)
+        self.glm2_embed = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True)
         self.glm2 = self.glm2_embed.glm2
 
     def forward(
@@ -92,31 +92,31 @@ def get_glm2_tokenizer(preset: str):
     return GLMTokenizerWrapper(AutoTokenizer.from_pretrained(presets[preset], trust_remote_code=True))
 
 
-def build_glm2_model(preset: str, masked_lm: bool = False, **kwargs):
+def build_glm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
     model_path = presets[preset]
     if masked_lm:
-        model = AutoModelForMaskedLM.from_pretrained(model_path, trust_remote_code=True).eval()
+        model = AutoModelForMaskedLM.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:
         if preset == "GLM2-GAIA":
-            model = gLM2GAIAForEmbedding(model_path).eval()
+            model = gLM2GAIAForEmbedding(model_path, dtype=dtype).eval()
         else:
-            model = gLM2ForEmbedding(model_path).eval()
+            model = gLM2ForEmbedding(model_path, dtype=dtype).eval()
     tokenizer = get_glm2_tokenizer(preset)
     return model, tokenizer
 
 
-def get_glm2_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):
+def get_glm2_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
     model_path = presets[preset]
     if hybrid:
-        model = AutoModel.from_pretrained(model_path, dtype=torch.bfloat16, trust_remote_code=True).eval()
+        model = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:
         if tokenwise:
             model = AutoModelForTokenClassification.from_pretrained(
-                model_path, num_labels=num_labels, dtype=torch.bfloat16, trust_remote_code=True
+                model_path, num_labels=num_labels, dtype=dtype, trust_remote_code=True
             ).eval()
         else:
             model = AutoModelForSequenceClassification.from_pretrained(
-                model_path, num_labels=num_labels, dtype=torch.bfloat16, trust_remote_code=True
+                model_path, num_labels=num_labels, dtype=dtype, trust_remote_code=True
             ).eval()
     tokenizer = get_glm2_tokenizer(preset)
     return model, tokenizer

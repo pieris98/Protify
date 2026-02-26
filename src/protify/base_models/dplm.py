@@ -369,9 +369,9 @@ class DPLMTokenizerWrapper(BaseSequenceTokenizer):
 
 
 class DPLMForEmbedding(nn.Module):
-    def __init__(self, model_path: str, return_logits: bool = False):
+    def __init__(self, model_path: str, return_logits: bool = False, dtype: torch.dtype = None):
         super().__init__()
-        self.dplm = EsmForDPLM.from_pretrained(model_path)
+        self.dplm = EsmForDPLM.from_pretrained(model_path, dtype=dtype)
         self.return_logits = return_logits
 
     def forward(
@@ -397,21 +397,21 @@ def get_dplm_tokenizer(preset: str):
     return DPLMTokenizerWrapper(EsmTokenizer.from_pretrained('facebook/esm2_t6_8M_UR50D'))
 
 
-def build_dplm_model(preset: str, masked_lm: bool = False, **kwargs):
-    model = DPLMForEmbedding(presets[preset], return_logits=masked_lm).eval()
+def build_dplm_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
+    model = DPLMForEmbedding(presets[preset], return_logits=masked_lm, dtype=dtype).eval()
     tokenizer = get_dplm_tokenizer(preset)
     return model, tokenizer
 
 
-def get_dplm_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False):
+def get_dplm_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
     model_path = presets[preset]
     if hybrid:
-        model = EsmForDPLM.from_pretrained(model_path).eval()
+        model = EsmForDPLM.from_pretrained(model_path, dtype=dtype).eval()
     else:
         if tokenwise:
-            model = EsmForTokenClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = EsmForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
         else:
-            model = EsmForSequenceClassification.from_pretrained(model_path, num_labels=num_labels).eval()
+            model = EsmForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
     tokenizer = get_dplm_tokenizer(preset)
     return model, tokenizer
 

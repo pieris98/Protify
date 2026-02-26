@@ -746,9 +746,9 @@ class DPLM2TokenizerWrapper(BaseSequenceTokenizer):
 
 
 class DPLM2ForEmbedding(nn.Module):
-    def __init__(self, model_path: str):
+    def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.dplm2 = EsmForDPLM2.from_pretrained(model_path)
+        self.dplm2 = EsmForDPLM2.from_pretrained(model_path, dtype=dtype)
 
     def forward(
         self,
@@ -775,12 +775,12 @@ def get_dplm2_tokenizer(preset: str):
     )
 
 
-def build_dplm2_model(preset: str, masked_lm: bool = False, **kwargs):
+def build_dplm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
     model_path = presets[preset]
     if masked_lm:
-        model = EsmForDPLM2.from_pretrained(model_path).eval()
+        model = EsmForDPLM2.from_pretrained(model_path, dtype=dtype).eval()
     else:
-        model = DPLM2ForEmbedding(model_path).eval()
+        model = DPLM2ForEmbedding(model_path, dtype=dtype).eval()
     tokenizer = get_dplm2_tokenizer(preset)
     return model, tokenizer
 
@@ -790,18 +790,19 @@ def get_dplm2_for_training(
     tokenwise: bool = False,
     num_labels: int = None,
     hybrid: bool = False,
+    dtype: torch.dtype = None,
 ):
     model_path = presets[preset]
     if hybrid:
-        model = EsmForDPLM2.from_pretrained(model_path).eval()
+        model = EsmForDPLM2.from_pretrained(model_path, dtype=dtype).eval()
     else:
         if tokenwise:
             model = EsmForTokenClassification.from_pretrained(
-                model_path, num_labels=num_labels
+                model_path, num_labels=num_labels, dtype=dtype
             ).eval()
         else:
             model = EsmForSequenceClassification.from_pretrained(
-                model_path, num_labels=num_labels
+                model_path, num_labels=num_labels, dtype=dtype
             ).eval()
     tokenizer = get_dplm2_tokenizer(preset)
     return model, tokenizer

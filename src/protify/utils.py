@@ -47,7 +47,7 @@ def expand_dms_ids_all(dms_ids, mode: str = None):
 def maybe_compile(model: torch.nn.Module):
     if os.name == 'posix':
         try:
-            torch.compile(model)
+            torch.compile(model, dynamic=True)
             print_message("Model compiled")
         except:
             print_message("Not linux system, will not compile model")

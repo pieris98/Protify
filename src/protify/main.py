@@ -43,6 +43,7 @@ def parse_arguments():
 
     # ----------------- BaseModelArguments ----------------- #
     parser.add_argument("--model_names", nargs="+", default=["ESM2-8"], help="List of model names to use. To use a custom model, use the format 'custom---<path_to_model>'.")
+    parser.add_argument("--model_dtype", type=str, choices=["fp32", "fp16", "bf16", "float32", "float16", "bfloat16"], default="bf16", help="Data type for loading base models.")
     parser.add_argument("--use_xformers", action="store_true", default=False, help="Use xformers memory efficient attention for AMPLIFY models (default: False).")
 
     # ----------------- ProbeArguments ----------------- #
@@ -88,7 +89,7 @@ def parse_arguments():
     parser.add_argument("--matrix_embed", action="store_true", default=False, help="Use matrix embedding (default: False).")
     parser.add_argument("--embedding_pooling_types", nargs="+", default=["mean", "var"], help="Pooling types for embeddings.")
     parser.add_argument("--save_embeddings", action="store_true", default=False, help="Save computed embeddings (default: False).")
-    parser.add_argument("--embed_dtype", default="float32", help="Data type for embeddings.")
+    parser.add_argument("--embed_dtype", type=str, choices=["fp32", "fp16", "bf16", "float32", "float16", "bfloat16"], default=None, help="Data type for embeddings. If omitted, uses --model_dtype.")
     parser.add_argument("--sql", action="store_true", default=False, help="Whether to use SQL storage (default: False).")
     parser.add_argument("--read_scaler", type=int, default=100, help="Read scaler for SQL storage.")
     
@@ -204,6 +205,10 @@ def parse_arguments():
         # Ensure num_runs default exists
         if not hasattr(yaml_args, 'num_runs'):
             yaml_args.num_runs = 1
+        if "model_dtype" not in yaml_args.__dict__ or yaml_args.model_dtype is None:
+            yaml_args.model_dtype = args.model_dtype
+        if "embed_dtype" not in yaml_args.__dict__:
+            yaml_args.embed_dtype = args.embed_dtype
         return yaml_args
     else:
         return args
@@ -279,6 +284,9 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             self.start_log_main()
 
         self.dtype_map = {
+            "fp32": torch.float32,
+            "fp16": torch.float16,
+            "bf16": torch.bfloat16,
             "float32": torch.float32,
             "float16": torch.float16,
             "bfloat16": torch.bfloat16,
@@ -289,7 +297,18 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
 
     @log_method_calls
     def apply_current_settings(self):
-        self.full_args.embed_dtype = self.dtype_map[self.full_args.embed_dtype]
+        if "model_dtype" not in self.full_args.__dict__:
+            self.full_args.model_dtype = "bf16"
+        if "embed_dtype" not in self.full_args.__dict__:
+            self.full_args.embed_dtype = None
+        if isinstance(self.full_args.model_dtype, str):
+            self.full_args.model_dtype = self.dtype_map[self.full_args.model_dtype]
+        if self.full_args.embed_dtype is None:
+            self.full_args.embed_dtype = self.full_args.model_dtype
+        elif isinstance(self.full_args.embed_dtype, str):
+            self.full_args.embed_dtype = self.dtype_map[self.full_args.embed_dtype]
+        else:
+            self.full_args.embed_dtype = self.full_args.embed_dtype
         self.data_args = DataArguments(**self.full_args.__dict__)
         self.embedding_args = EmbeddingArguments(**self.full_args.__dict__)
         self.model_args = BaseModelArguments(**self.full_args.__dict__)
@@ -325,7 +344,13 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
     def _create_model_factory(self, model_name, tokenwise, num_labels, hybrid):
         """Function for creating fresh models in multi-run mode."""
         def factory():
-            model, _ = get_base_model_for_training(model_name, tokenwise=tokenwise, num_labels=num_labels, hybrid=hybrid)
+            model, _ = get_base_model_for_training(
+                model_name,
+                tokenwise=tokenwise,
+                num_labels=num_labels,
+                hybrid=hybrid,
+                dtype=self.model_args.model_dtype,
+            )
             if self.probe_args.lora:
                 model = wrap_lora(model, self.probe_args.lora_r, self.probe_args.lora_alpha, self.probe_args.lora_dropout)
             return model
@@ -434,7 +459,13 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         num_runs = getattr(self.trainer_args, 'num_runs', 1)
         
         model_factory = self._create_model_factory(model_name, tokenwise, num_labels, hybrid=False) if num_runs > 1 else None
-        model, tokenizer = get_base_model_for_training(model_name, tokenwise=tokenwise, num_labels=num_labels, hybrid=False)
+        model, tokenizer = get_base_model_for_training(
+            model_name,
+            tokenwise=tokenwise,
+            num_labels=num_labels,
+            hybrid=False,
+            dtype=self.model_args.model_dtype,
+        )
         if self.probe_args.lora:
             model = wrap_lora(model, self.probe_args.lora_r, self.probe_args.lora_alpha, self.probe_args.lora_dropout)
         summary(model)
@@ -495,7 +526,13 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         
         model_factory = self._create_model_factory(model_name, tokenwise, num_labels, hybrid=True) if num_runs > 1 else None
         probe_factory = self._create_probe_factory() if num_runs > 1 else None
-        model, tokenizer = get_base_model_for_training(model_name, tokenwise=tokenwise, num_labels=num_labels, hybrid=True)
+        model, tokenizer = get_base_model_for_training(
+            model_name,
+            tokenwise=tokenwise,
+            num_labels=num_labels,
+            hybrid=True,
+            dtype=self.model_args.model_dtype,
+        )
         if self.probe_args.lora:
             model = wrap_lora(model, self.probe_args.lora_r, self.probe_args.lora_alpha, self.probe_args.lora_dropout)
         probe = get_probe(self.probe_args)

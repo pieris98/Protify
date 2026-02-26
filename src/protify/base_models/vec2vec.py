@@ -487,7 +487,7 @@ def get_vec2vec_tokenizer(preset: str):
     return Vec2VecTokenizerWrapper(tokenizer)
 
 
-def build_vec2vec_model(preset: str, masked_lm: bool = False, **kwargs):
+def build_vec2vec_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
     if masked_lm:
         raise ValueError("Masked LM is not supported for Vec2VecForEmbedding")
     else:
@@ -503,7 +503,7 @@ def build_vec2vec_model(preset: str, masked_lm: bool = False, **kwargs):
             model_name_a = encoder_names[1]
             model_name_b = encoder_names[0]
 
-        base_model = AutoModel.from_pretrained(all_presets_with_paths[model_name_a], trust_remote_code=True)
+        base_model = AutoModel.from_pretrained(all_presets_with_paths[model_name_a], dtype=dtype, trust_remote_code=True)
         base_tokenizer = base_model.tokenizer
         vec2vec_model = Vec2VecModel(config).from_pretrained(model_path)
         model = Vec2VecForEmbedding(config, base_model, vec2vec_model, model_name_a, model_name_b)

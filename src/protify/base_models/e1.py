@@ -40,7 +40,6 @@ class E1ForEmbedding(nn.Module):
             model_path,
             dtype=dtype,
             trust_remote_code=True,
-            revision='c5845c6a08c2dcba965207974fd3cbed23bc1184'
         )
 
     def forward(

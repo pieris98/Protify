@@ -10,6 +10,7 @@ from transformers import (
     AutoModelForSequenceClassification,
     AutoModelForTokenClassification,
     AutoModelForMaskedLM,
+    AutoConfig,
 )
 from .base_tokenizer import BaseSequenceTokenizer
 from .e1_utils import E1BatchPreparer
@@ -36,8 +37,10 @@ class E1TokenizerWrapper(BaseSequenceTokenizer):
 class E1ForEmbedding(nn.Module):
     def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
+        config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
         self.e1 = AutoModel.from_pretrained(
             model_path,
+            config=config,
             dtype=dtype,
             trust_remote_code=True,
         )

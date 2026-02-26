@@ -3,6 +3,7 @@ import os
 import numpy as np
 from copy import deepcopy
 from typing import Optional, Dict, List, Tuple, Any
+from huggingface_hub import HfApi
 from transformers import Trainer, TrainingArguments, EarlyStoppingCallback
 from dataclasses import dataclass
 try:
@@ -155,6 +156,81 @@ class TrainerMixin:
     def __init__(self, trainer_args: Optional[TrainerArguments] = None):
         self.trainer_args = trainer_args
 
+    def _format_metric_value(self, value: Any) -> str:
+        if isinstance(value, float):
+            return f"{value:.6f}"
+        return str(value)
+
+    def _format_metrics_markdown(self, metrics: Dict[str, Any]) -> str:
+        if metrics is None or len(metrics) == 0:
+            return "- No metrics recorded."
+        lines = []
+        for key in sorted(metrics.keys()):
+            lines.append(f"- `{key}`: {self._format_metric_value(metrics[key])}")
+        return "\n".join(lines)
+
+    def _build_model_card(
+            self,
+            repo_id: str,
+            data_name: str,
+            model_name: str,
+            log_id: str,
+            train_dataset,
+            valid_dataset,
+            test_dataset,
+            valid_metrics: Dict[str, Any],
+            test_metrics: Dict[str, Any],
+        ) -> str:
+        train_size = len(train_dataset)
+        valid_size = "N/A" if valid_dataset is None else str(len(valid_dataset))
+        test_size = len(test_dataset)
+        task_type = self.trainer_args.task_type
+        num_runs = self.trainer_args.num_runs
+        validation_metrics_text = self._format_metrics_markdown(valid_metrics)
+        test_metrics_text = self._format_metrics_markdown(test_metrics)
+        return f"""---
+library_name: transformers
+tags: []
+---
+
+# {repo_id}
+
+Fine-tuned with Protify.
+
+## About Protify
+
+Protify is an open source platform designed to simplify and democratize workflows for chemical language models. With Protify, deep learning models can be trained to predict chemical properties without requiring extensive coding knowledge or computational resources.
+
+### Why Protify?
+
+- Benchmark multiple models efficiently.
+- Flexible for all skill levels.
+- Accessible computing with support for precomputed embeddings.
+- Cost-effective workflows for training and evaluation.
+
+## Training Run
+
+- `dataset`: {data_name}
+- `model`: {model_name}
+- `run_id`: {log_id}
+- `task_type`: {task_type}
+- `num_runs`: {num_runs}
+
+## Dataset Statistics
+
+- `train_size`: {train_size}
+- `valid_size`: {valid_size}
+- `test_size`: {test_size}
+
+## Validation Metrics
+
+{validation_metrics_text}
+
+## Test Metrics
+
+{test_metrics_text}
+"""
+
     def _train(
             self,
             model,
@@ -246,6 +322,32 @@ class TrainerMixin:
                     else:
                         print_message(f'Warning: No HuggingFace token found, using default authentication')
                         trainer.model.push_to_hub(repo_id, private=True)
+
+                    try:
+                        model_card = self._build_model_card(
+                            repo_id=repo_id,
+                            data_name=data_name,
+                            model_name=model_name,
+                            log_id=log_id,
+                            train_dataset=train_dataset,
+                            valid_dataset=valid_dataset,
+                            test_dataset=test_dataset,
+                            valid_metrics=valid_metrics,
+                            test_metrics=test_metrics,
+                        )
+                        if hf_token:
+                            api = HfApi(token=hf_token)
+                        else:
+                            api = HfApi()
+                        api.upload_file(
+                            path_or_fileobj=model_card.encode("utf-8"),
+                            path_in_repo="README.md",
+                            repo_id=repo_id,
+                            repo_type="model",
+                        )
+                        print_message(f'Successfully uploaded model card to HuggingFace Hub: {repo_id}')
+                    except Exception as card_error:
+                        print_message(f'Warning: model card upload failed for {repo_id}: {card_error}')
                     
                     print_message(f'Successfully pushed model to HuggingFace Hub: {repo_id}')
             except Exception as e:

@@ -58,7 +58,6 @@ class FastEsmForEmbedding(nn.Module):
             out = self.esm(input_ids=input_ids, attention_mask=attention_mask, output_attentions=output_attentions)
             return out.last_hidden_state, out.attentions
         else:
-            print(input_ids.shape, attention_mask.shape)
             return self.esm(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
 
 

@@ -98,3 +98,38 @@ def get_probe(args: ProbeArguments):
         return LyraForTokenClassification(config)
     else:
         raise ValueError(f"Invalid combination of probe type and tokenwise: {args.probe_type} {args.tokenwise}")
+
+
+def rebuild_probe_from_saved_config(
+        probe_type: str,
+        tokenwise: bool,
+        probe_config: dict,
+    ):
+    config_dict = dict(probe_config)
+    if "num_labels" not in config_dict and "id2label" in config_dict:
+        config_dict["num_labels"] = len(config_dict["id2label"])
+    if "pooling_types" in config_dict and "probe_pooling_types" not in config_dict:
+        config_dict["probe_pooling_types"] = config_dict["pooling_types"]
+
+    if probe_type == "linear" and not tokenwise:
+        config = LinearProbeConfig(**config_dict)
+        return LinearProbe(config)
+    if probe_type == "transformer" and not tokenwise:
+        config = TransformerProbeConfig(**config_dict)
+        return TransformerForSequenceClassification(config)
+    if probe_type == "transformer" and tokenwise:
+        config = TransformerProbeConfig(**config_dict)
+        return TransformerForTokenClassification(config)
+    if probe_type == "retrievalnet" and not tokenwise:
+        config = RetrievalNetConfig(**config_dict)
+        return RetrievalNetForSequenceClassification(config)
+    if probe_type == "retrievalnet" and tokenwise:
+        config = RetrievalNetConfig(**config_dict)
+        return RetrievalNetForTokenClassification(config)
+    if probe_type == "lyra" and not tokenwise:
+        config = LyraConfig(**config_dict)
+        return LyraForSequenceClassification(config)
+    if probe_type == "lyra" and tokenwise:
+        config = LyraConfig(**config_dict)
+        return LyraForTokenClassification(config)
+    raise ValueError(f"Unsupported saved probe configuration: {probe_type} tokenwise={tokenwise}")

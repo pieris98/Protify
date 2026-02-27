@@ -2,12 +2,13 @@ import torch
 import os
 import numpy as np
 from copy import deepcopy
-from typing import Optional, Dict, List, Tuple, Any
+from typing import Optional, Dict, List, Any
 from huggingface_hub import HfApi
 from transformers import Trainer, TrainingArguments, EarlyStoppingCallback
 from dataclasses import dataclass
 try:
     from probes.hybrid_probe import HybridProbe, HybridProbeConfig
+    from probes.export_packaged_model import export_packaged_model_to_hub
     from data.dataset_classes import (
         EmbedsLabelsDatasetFromDisk,
         PairEmbedsLabelsDatasetFromDisk,
@@ -20,6 +21,7 @@ try:
     )
 except ImportError:
     from .hybrid_probe import HybridProbe, HybridProbeConfig
+    from .export_packaged_model import export_packaged_model_to_hub
     from ..data.dataset_classes import (
         EmbedsLabelsDatasetFromDisk,
         PairEmbedsLabelsDatasetFromDisk,
@@ -238,9 +240,12 @@ Protify is an open source platform designed to simplify and democratize workflow
             valid_dataset,
             test_dataset,
             data_collator,
+            tokenizer,
             log_id,
             model_name,
             data_name,
+            source_model_name: Optional[str] = None,
+            ppi: bool = False,
             probe: Optional[bool] = True,
             skip_plot: bool = False,
         ):
@@ -297,47 +302,58 @@ Protify is an open source platform designed to simplify and democratize workflow
             else:
                 classification_ci_plot(y_true, y_pred, save_path, title)
 
+        if source_model_name is None:
+            source_model_name = model_name
+
         if self.trainer_args.save:
             try:
-                # Ensure hf_username is set and valid
-                hf_username = getattr(self.full_args, 'hf_username', None)
-                if not hf_username:
-                    print_message(f'Warning: hf_username is not set. Cannot save model to HuggingFace Hub.')
-                    print_message(f'Available full_args attributes: {list(self.full_args.__dict__.keys())}')
+                hf_username = self.full_args.hf_username
+                if hf_username is None or hf_username == "":
+                    print_message("Warning: hf_username is not set. Cannot save model to HuggingFace Hub.")
                 else:
-                    # Format: username/repo-name (not using os.path.join as it uses OS-specific separators)
                     repo_id = f"{hf_username}/{data_name}_{model_name}_{log_id}"
-                    print_message(f'Attempting to push model to HuggingFace Hub: {repo_id}')
-                    print_message(f'save_model flag: {self.trainer_args.save}, hf_username: {hf_username}')
-                    
-                    # Get token from full_args if available, otherwise use environment
-                    hf_token = getattr(self.full_args, 'hf_token', None)
-                    if not hf_token:
+                    hf_token = self.full_args.hf_token
+                    if hf_token is None:
                         hf_token = os.environ.get("HF_TOKEN")
-                    
-                    if hf_token:
-                        print_message(f'Using HuggingFace token from config/environment for push_to_hub')
-                        # Explicitly pass token to ensure correct authentication
-                        trainer.model.push_to_hub(repo_id, private=True, token=hf_token)
-                    else:
-                        print_message(f'Warning: No HuggingFace token found, using default authentication')
-                        trainer.model.push_to_hub(repo_id, private=True)
 
-                    try:
-                        model_card = self._build_model_card(
-                            repo_id=repo_id,
-                            data_name=data_name,
-                            model_name=model_name,
-                            log_id=log_id,
-                            train_dataset=train_dataset,
-                            valid_dataset=valid_dataset,
-                            test_dataset=test_dataset,
-                            valid_metrics=valid_metrics,
-                            test_metrics=test_metrics,
-                        )
-                        if hf_token:
+                    model_card = self._build_model_card(
+                        repo_id=repo_id,
+                        data_name=data_name,
+                        model_name=model_name,
+                        log_id=log_id,
+                        train_dataset=train_dataset,
+                        valid_dataset=valid_dataset,
+                        test_dataset=test_dataset,
+                        valid_metrics=valid_metrics,
+                        test_metrics=test_metrics,
+                    )
+
+                    packaged_export_succeeded = False
+                    if probe or isinstance(trainer.model, HybridProbe):
+                        try:
+                            packaged_export_succeeded, export_message = export_packaged_model_to_hub(
+                                trained_model=trainer.model,
+                                source_model_name=source_model_name,
+                                probe_args=self.probe_args,
+                                embedding_args=self.embedding_args,
+                                tokenizer=tokenizer,
+                                repo_id=repo_id,
+                                model_card=model_card,
+                                ppi=ppi,
+                                private=True,
+                                hf_token=hf_token,
+                            )
+                            print_message(export_message)
+                        except Exception as packaged_error:
+                            print_message(f"Warning: packaged export failed for {repo_id}: {packaged_error}")
+
+                    if not packaged_export_succeeded:
+                        print_message(f"Falling back to direct model push_to_hub for {repo_id}")
+                        if hf_token is not None:
+                            trainer.model.push_to_hub(repo_id, private=True, token=hf_token)
                             api = HfApi(token=hf_token)
                         else:
+                            trainer.model.push_to_hub(repo_id, private=True)
                             api = HfApi()
                         api.upload_file(
                             path_or_fileobj=model_card.encode("utf-8"),
@@ -345,18 +361,13 @@ Protify is an open source platform designed to simplify and democratize workflow
                             repo_id=repo_id,
                             repo_type="model",
                         )
-                        print_message(f'Successfully uploaded model card to HuggingFace Hub: {repo_id}')
-                    except Exception as card_error:
-                        print_message(f'Warning: model card upload failed for {repo_id}: {card_error}')
-                    
-                    print_message(f'Successfully pushed model to HuggingFace Hub: {repo_id}')
+                    print_message(f"Successfully saved model to HuggingFace Hub: {repo_id}")
             except Exception as e:
                 import traceback
                 error_trace = traceback.format_exc()
-                print_message(f'Error saving model to HuggingFace Hub: {e}')
-                print_message(f'Error traceback: {error_trace}')
-                print_message(f'hf_username: {getattr(self.full_args, "hf_username", "NOT SET")}')
-                print_message(f'save_model flag: {self.trainer_args.save}')
+                print_message(f"Error saving model to HuggingFace Hub: {e}")
+                print_message(f"Error traceback: {error_trace}")
+                print_message(f"save_model flag: {self.trainer_args.save}")
 
         model = trainer.model.cpu()
         trainer.accelerator.free_memory()
@@ -407,6 +418,7 @@ Protify is an open source platform designed to simplify and democratize workflow
             ppi=False,
             log_id=None,
             skip_plot=False,
+            source_model_name: Optional[str] = None,
         ):
         batch_size = self.trainer_args.probe_batch_size
         read_scaler = self.trainer_args.read_scaler
@@ -498,9 +510,12 @@ Protify is an open source platform designed to simplify and democratize workflow
                 valid_dataset=valid_ds,
                 test_dataset=test_ds,
                 data_collator=data_collator,
+                tokenizer=tokenizer,
                 log_id=log_id,
                 model_name=model_name,
                 data_name=data_name,
+                source_model_name=source_model_name,
+                ppi=ppi,
                 probe=True,
                 skip_plot=skip_plot,
             )
@@ -528,9 +543,12 @@ Protify is an open source platform designed to simplify and democratize workflow
                 valid_dataset=valid_ds,
                 test_dataset=test_ds,
                 data_collator=data_collator,
+                tokenizer=tokenizer,
                 log_id=f"{log_id}_run{run_idx}",
                 model_name=model_name,
                 data_name=data_name,
+                source_model_name=source_model_name,
+                ppi=ppi,
                 probe=True,
                 skip_plot=True,  # Skip plots during individual runs
             )
@@ -582,6 +600,7 @@ Protify is an open source platform designed to simplify and democratize workflow
             log_id=None,
             skip_plot=False,
             model_factory=None,
+            source_model_name: Optional[str] = None,
         ):
         task_type = self.probe_args.task_type
         tokenwise = self.probe_args.tokenwise
@@ -609,9 +628,12 @@ Protify is an open source platform designed to simplify and democratize workflow
                 valid_dataset=valid_ds,
                 test_dataset=test_ds,
                 data_collator=data_collator,
+                tokenizer=tokenizer,
                 log_id=log_id,
                 model_name=model_name,
                 data_name=data_name,
+                source_model_name=source_model_name,
+                ppi=ppi,
                 probe=False,
                 skip_plot=skip_plot,
             )
@@ -640,9 +662,12 @@ Protify is an open source platform designed to simplify and democratize workflow
                 valid_dataset=valid_ds,
                 test_dataset=test_ds,
                 data_collator=data_collator,
+                tokenizer=tokenizer,
                 log_id=f"{log_id}_run{run_idx}",
                 model_name=model_name,
                 data_name=data_name,
+                source_model_name=source_model_name,
+                ppi=ppi,
                 probe=False,
                 skip_plot=True,  # Skip plots during individual runs
             )
@@ -697,6 +722,7 @@ Protify is an open source platform designed to simplify and democratize workflow
             skip_plot=False,
             model_factory=None,
             probe_factory=None,
+            source_model_name: Optional[str] = None,
         ):
             num_runs = getattr(self.trainer_args, 'num_runs', 1)
             base_seed = self.trainer_args.seed
@@ -716,6 +742,7 @@ Protify is an open source platform designed to simplify and democratize workflow
                     ppi=ppi,
                     log_id=log_id,
                     skip_plot=skip_plot,
+                    source_model_name=source_model_name,
                 )
             
             # Multi-run mode for hybrid probe
@@ -753,6 +780,7 @@ Protify is an open source platform designed to simplify and democratize workflow
                     ppi=ppi,
                     log_id=f"{log_id}_run{run_idx}",
                     skip_plot=True,  # Skip plots during individual runs
+                    source_model_name=source_model_name,
                 )
                 
                 # Only collect final metrics (not intermediate probe metrics)
@@ -806,6 +834,7 @@ Protify is an open source platform designed to simplify and democratize workflow
             ppi=False,
             log_id=None,
             skip_plot=False,
+            source_model_name: Optional[str] = None,
         ):
             """Single run of hybrid probe training (probe first, then model+probe)."""
             # Store original num_runs and temporarily set to 1 for the probe phase
@@ -824,6 +853,7 @@ Protify is an open source platform designed to simplify and democratize workflow
                 ppi=ppi,
                 log_id=log_id,
                 skip_plot=True,  # Always skip plot for probe phase in hybrid
+                source_model_name=source_model_name,
             )
             
             # Restore num_runs
@@ -854,6 +884,7 @@ Protify is an open source platform designed to simplify and democratize workflow
                 ppi=ppi,
                 log_id=log_id,
                 skip_plot=skip_plot,
+                source_model_name=source_model_name,
             )
             
             # Restore num_runs

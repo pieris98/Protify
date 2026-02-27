@@ -14,6 +14,7 @@ from .transformer_probe import (
     TransformerForTokenClassification,
     TransformerProbeConfig,
 )  # noqa: F401
+from .packaged_probe_model import PackagedProbeConfig, PackagedProbeModel  # noqa: F401
 
 __all__ = [
     "LinearProbe",
@@ -21,6 +22,8 @@ __all__ = [
     "TransformerForSequenceClassification",
     "TransformerForTokenClassification",
     "TransformerProbeConfig",
+    "PackagedProbeConfig",
+    "PackagedProbeModel",
 ]
 
 

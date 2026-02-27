@@ -372,8 +372,11 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             tokenizer,
             emb_dict=None,
             ppi=False,
+            source_model_name=None,
             sweep_mode: bool = False,
         ):
+        if source_model_name is None:
+            source_model_name = model_name
         # Create initial probe (for single run or as template for multi-run)
         probe = get_probe(self.probe_args)
         summary(probe)
@@ -390,6 +393,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             emb_dict=emb_dict,
             ppi=ppi,
             log_id=self.random_id,
+            source_model_name=source_model_name,
         )
         if not sweep_mode:
             self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
@@ -437,6 +441,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             emb_dict=emb_for_training,
             ppi=False,
             log_id=f"{self.random_id}_{fold_info}",
+            source_model_name=model_name,
         )
         
         # Handle both plain and test-prefixed metric keys returned by HF Trainer
@@ -452,8 +457,11 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             valid_set,
             test_set,
             ppi=False,
+            source_model_name=None,
             sweep_mode: bool = False,
         ):
+        if source_model_name is None:
+            source_model_name = model_name
         tokenwise = self.probe_args.tokenwise
         num_labels = self.probe_args.num_labels
         num_runs = getattr(self.trainer_args, 'num_runs', 1)
@@ -479,6 +487,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             test_dataset=test_set,
             ppi=ppi,
             log_id=self.random_id,
+            source_model_name=source_model_name,
             model_factory=model_factory,
         )
         if not sweep_mode:
@@ -496,8 +505,11 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             tokenizer,
             emb_dict=None,
             ppi=False,
+            source_model_name=None,
             sweep_mode: bool = False,
         ):
+        if source_model_name is None:
+            source_model_name = model_name
         # Random models don't have a trainable base model, so fall back to regular probe
         if "random" in model_name.lower():
             print_message(f"Model {model_name} does not support hybrid training. Training a linear probe instead.")
@@ -514,6 +526,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 emb_dict=emb_dict,
                 ppi=ppi,
                 log_id=self.random_id,
+                source_model_name=source_model_name,
             )
             if not sweep_mode:
                 self.log_metrics(data_name, model_name, valid_metrics, split_name='valid')
@@ -550,6 +563,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             emb_dict=emb_dict,
             ppi=ppi,
             log_id=self.random_id,
+            source_model_name=source_model_name,
             model_factory=model_factory,
             probe_factory=probe_factory,
         )
@@ -634,6 +648,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     tokenizer=tokenizer,
                     emb_dict=emb_dict,
                     ppi=ppi,
+                    source_model_name=model_name,
                 )
                 torch.cuda.empty_cache()
                 ### TODO may link from probe here to running inference on input csv or HF datasets
@@ -706,6 +721,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     tokenizer=tokenizer,
                     emb_dict=emb_dict,
                     ppi=ppi,
+                    source_model_name=model_name,
                 )
                 torch.cuda.empty_cache()
                 ### TODO may link from probe here to running inference on input csv or HF datasets

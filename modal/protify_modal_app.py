@@ -1,6 +1,11 @@
 """
 Protify Modal App
 
+DEPRECATED:
+    This browser-based Gradio UI flow is deprecated in favor of the Tk GUI
+    Modal tab (`src/protify/gui.py`) plus backend-only Modal functions in
+    `src/protify/modal_backend.py`.
+
 A Modal-based application for running Protify (Protein Representation Learning) experiments
 with a Gradio web interface. This app allows you to:
 
@@ -9,7 +14,7 @@ with a Gradio web interface. This app allows you to:
 3. Track job progress and view results
 
 Usage:
-    modal deploy modal/protify_modal_app.py
+    modal deploy src/protify/modal_backend.py
     
     Note: Run this command from the project root directory.
     

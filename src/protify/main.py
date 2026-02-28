@@ -1,16 +1,26 @@
 import os
 import argparse
+import sys
 import yaml
 from types import SimpleNamespace
 
+from modal_cli import _run_on_modal_cli, _should_auto_run_modal
+from modal_utils import parse_modal_api_key
+
 
 def parse_arguments():  
+    raw_argv = sys.argv[1:]
     parser = argparse.ArgumentParser(description="Script with arguments mirroring the provided YAML settings.")
     # ----------------- ID ----------------- #
     parser.add_argument("--hf_username", default="Synthyra", help="Hugging Face username.")
     parser.add_argument("--hf_token", default=None, help="Hugging Face token.")
     parser.add_argument("--synthyra_api_key", default=None, help="Synthyra API key.")
     parser.add_argument("--wandb_api_key", default=None, help="Wandb API key.")
+    parser.add_argument("--modal_token_id", default=None, help="Modal token ID used for authentication.")
+    parser.add_argument("--modal_token_secret", default=None, help="Modal token secret used for authentication.")
+    parser.add_argument("--modal_api_key", default=None, help="Backward-compatible Modal key formatted as '<modal_token_id>:<modal_token_secret>'.")
+    parser.add_argument("--rebuild_modal", action="store_true", default=False, help="Force rebuild and deploy of the Modal backend before running.")
+    parser.add_argument("--delete_modal_embeddings", action="store_true", default=False, help="Delete all embedding cache files from the Modal volume before submission.")
 
     # ----------------- Paths ----------------- #
     parser.add_argument("--hf_home", type=str, default=None, help="Customize the HF cache directory.")
@@ -145,6 +155,26 @@ def parse_arguments():
     parser.add_argument("--sweep_metric_reg",type=str,default="eval_loss", help="Regression metric to optimize during sweep (e.g., eval_r_squared, eval_spearman_rho, eval_pearson_rho)")
     parser.add_argument("--sweep_goal", type=str, default='minimize', choices=['maximize', 'minimize'], help="Goal for the sweep metric (maximize/minimize)")
     args = parser.parse_args()
+    args.modal_cli_credentials_provided = (
+        ("--modal_api_key" in raw_argv)
+        or ("--modal_token_id" in raw_argv)
+        or ("--modal_token_secret" in raw_argv)
+        or any(item.startswith("--modal_api_key=") for item in raw_argv)
+        or any(item.startswith("--modal_token_id=") for item in raw_argv)
+        or any(item.startswith("--modal_token_secret=") for item in raw_argv)
+    )
+
+    if args.modal_api_key is not None and (args.modal_token_id is None or args.modal_token_secret is None):
+        parsed_modal_token_id, parsed_modal_token_secret = parse_modal_api_key(args.modal_api_key)
+        if args.modal_token_id is None:
+            args.modal_token_id = parsed_modal_token_id
+        if args.modal_token_secret is None:
+            args.modal_token_secret = parsed_modal_token_secret
+
+    if args.modal_token_id is not None:
+        os.environ["MODAL_TOKEN_ID"] = args.modal_token_id
+    if args.modal_token_secret is not None:
+        os.environ["MODAL_TOKEN_SECRET"] = args.modal_token_secret
 
     if args.hf_token is not None:
         from huggingface_hub import login
@@ -162,37 +192,87 @@ def parse_arguments():
         try:
             import wandb
             wandb.login(key=args.wandb_api_key)
-            print_message('Logged into Weights & Biases')
+            print('Logged into Weights & Biases')
         except Exception as e:
-            print_message(f'W&B login failed: {e}')
+            print(f'W&B login failed: {e}')
     if args.synthyra_api_key is not None:
-        print_message('Synthyra API not integrated yet')
+        print('Synthyra API not integrated yet')
 
     if args.yaml_path is not None:
         with open(args.yaml_path, 'r') as file: 
             settings = yaml.safe_load(file)
         yaml_args = SimpleNamespace(**settings)
-        yaml_args.hf_token = args.hf_token
-        yaml_args.hf_home = args.hf_home
-        yaml_args.synthyra_api_key = args.synthyra_api_key
-        yaml_args.wandb_api_key = args.wandb_api_key
-        yaml_args.use_wandb_hyperopt = args.use_wandb_hyperopt
-        yaml_args.wandb_project = args.wandb_project
-        yaml_args.wandb_entity = args.wandb_entity
-        yaml_args.sweep_config_path = args.sweep_config_path
-        yaml_args.sweep_count = args.sweep_count
-        yaml_args.sweep_method = args.sweep_method
-        yaml_args.sweep_metric_cls = args.sweep_metric_cls
-        yaml_args.sweep_metric_reg = args.sweep_metric_reg
-        yaml_args.sweep_goal = args.sweep_goal
+
+        def _merge_store_true(cli_value: bool, key: str) -> bool:
+            if cli_value:
+                return True
+            if key in yaml_args.__dict__:
+                return bool(yaml_args.__dict__[key])
+            return False
+
+        if args.hf_token is not None:
+            yaml_args.hf_token = args.hf_token
+        elif "hf_token" not in yaml_args.__dict__:
+            yaml_args.hf_token = None
+
+        if args.hf_home is not None:
+            yaml_args.hf_home = args.hf_home
+        elif "hf_home" not in yaml_args.__dict__:
+            yaml_args.hf_home = None
+
+        if args.synthyra_api_key is not None:
+            yaml_args.synthyra_api_key = args.synthyra_api_key
+        elif "synthyra_api_key" not in yaml_args.__dict__:
+            yaml_args.synthyra_api_key = None
+
+        if args.wandb_api_key is not None:
+            yaml_args.wandb_api_key = args.wandb_api_key
+        elif "wandb_api_key" not in yaml_args.__dict__:
+            yaml_args.wandb_api_key = None
+
+        if args.modal_token_id is not None:
+            yaml_args.modal_token_id = args.modal_token_id
+        elif "modal_token_id" not in yaml_args.__dict__:
+            yaml_args.modal_token_id = None
+
+        if args.modal_token_secret is not None:
+            yaml_args.modal_token_secret = args.modal_token_secret
+        elif "modal_token_secret" not in yaml_args.__dict__:
+            yaml_args.modal_token_secret = None
+
+        if args.modal_api_key is not None:
+            yaml_args.modal_api_key = args.modal_api_key
+        elif "modal_api_key" not in yaml_args.__dict__:
+            yaml_args.modal_api_key = None
+        yaml_args.rebuild_modal = _merge_store_true(args.rebuild_modal, "rebuild_modal")
+        yaml_args.delete_modal_embeddings = _merge_store_true(args.delete_modal_embeddings, "delete_modal_embeddings")
+
+        yaml_args.use_wandb_hyperopt = _merge_store_true(args.use_wandb_hyperopt, "use_wandb_hyperopt")
+
+        if (args.wandb_project != "Protify") or ("wandb_project" not in yaml_args.__dict__):
+            yaml_args.wandb_project = args.wandb_project
+        if (args.wandb_entity is not None) or ("wandb_entity" not in yaml_args.__dict__):
+            yaml_args.wandb_entity = args.wandb_entity
+        if (args.sweep_config_path != "yamls/sweep.yaml") or ("sweep_config_path" not in yaml_args.__dict__):
+            yaml_args.sweep_config_path = args.sweep_config_path
+        if (args.sweep_count != 10) or ("sweep_count" not in yaml_args.__dict__):
+            yaml_args.sweep_count = args.sweep_count
+        if (args.sweep_method != "bayes") or ("sweep_method" not in yaml_args.__dict__):
+            yaml_args.sweep_method = args.sweep_method
+        if (args.sweep_metric_cls != "eval_loss") or ("sweep_metric_cls" not in yaml_args.__dict__):
+            yaml_args.sweep_metric_cls = args.sweep_metric_cls
+        if (args.sweep_metric_reg != "eval_loss") or ("sweep_metric_reg" not in yaml_args.__dict__):
+            yaml_args.sweep_metric_reg = args.sweep_metric_reg
+        if (args.sweep_goal != "minimize") or ("sweep_goal" not in yaml_args.__dict__):
+            yaml_args.sweep_goal = args.sweep_goal
         yaml_args.yaml_path = args.yaml_path
-        yaml_args.aa_to_dna = args.aa_to_dna
-        yaml_args.aa_to_rna = args.aa_to_rna
-        yaml_args.dna_to_aa = args.dna_to_aa
-        yaml_args.rna_to_aa = args.rna_to_aa
-        yaml_args.codon_to_aa = args.codon_to_aa
-        yaml_args.aa_to_codon = args.aa_to_codon
-        yaml_args.random_pair_flipping = args.random_pair_flipping
+        yaml_args.aa_to_dna = _merge_store_true(args.aa_to_dna, "aa_to_dna")
+        yaml_args.aa_to_rna = _merge_store_true(args.aa_to_rna, "aa_to_rna")
+        yaml_args.dna_to_aa = _merge_store_true(args.dna_to_aa, "dna_to_aa")
+        yaml_args.rna_to_aa = _merge_store_true(args.rna_to_aa, "rna_to_aa")
+        yaml_args.codon_to_aa = _merge_store_true(args.codon_to_aa, "codon_to_aa")
+        yaml_args.aa_to_codon = _merge_store_true(args.aa_to_codon, "aa_to_codon")
+        yaml_args.random_pair_flipping = _merge_store_true(args.random_pair_flipping, "random_pair_flipping")
         # Ensure ProteinGym defaults exist when using YAML configs
         if not hasattr(yaml_args, 'proteingym'):
             yaml_args.proteingym = False
@@ -219,9 +299,10 @@ if __name__ == "__main__":
     args = parse_arguments()
 
     # Require that either datasets are specified or a ProteinGym experiment is chosen
-    has_datasets = bool(getattr(args, 'data_names', []) or getattr(args, 'data_dirs', []))
-    has_proteingym = bool(getattr(args, 'proteingym', False))
-    if not has_datasets and not has_proteingym:
+    has_datasets = bool(args.data_names or args.data_dirs)
+    has_proteingym = bool(args.proteingym)
+    has_modal_maintenance = bool(args.modal_cli_credentials_provided and (args.rebuild_modal or args.delete_modal_embeddings))
+    if not has_datasets and not has_proteingym and not has_modal_maintenance:
         raise AssertionError("No datasets specified. Provide --data_names or --data_dirs, or run a ProteinGym experiment.")
 
     if args.use_xformers:
@@ -295,6 +376,40 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             #"int8": torch.int8,
         }
 
+    def _build_scikit_args(self):
+        if "scikit_n_iter" in self.full_args.__dict__:
+            n_iter = self.full_args.scikit_n_iter
+        else:
+            n_iter = 10
+
+        if "scikit_cv" in self.full_args.__dict__:
+            cv = self.full_args.scikit_cv
+        else:
+            cv = 3
+
+        if "scikit_random_state" in self.full_args.__dict__:
+            random_state = self.full_args.scikit_random_state
+        else:
+            random_state = None
+
+        if "scikit_model_name" in self.full_args.__dict__:
+            model_name = self.full_args.scikit_model_name
+        else:
+            model_name = None
+
+        if "production_model" in self.full_args.__dict__:
+            production_model = self.full_args.production_model
+        else:
+            production_model = False
+
+        return ScikitArguments(
+            n_iter=n_iter,
+            cv=cv,
+            random_state=random_state,
+            model_name=model_name,
+            production_model=production_model,
+        )
+
     @log_method_calls
     def apply_current_settings(self):
         if "model_dtype" not in self.full_args.__dict__:
@@ -315,7 +430,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         self.probe_args = ProbeArguments(**self.full_args.__dict__)
         self.trainer_args = TrainerArguments(**self.full_args.__dict__)
         self.logger_args = SimpleNamespace(**self.full_args.__dict__)
-        self.scikit_args = ScikitArguments(**self.full_args.__dict__)
+        self.scikit_args = self._build_scikit_args()
         self._sql = self.full_args.sql
         self._full = self.full_args.matrix_embed
         self._max_length = self.full_args.max_length
@@ -728,7 +843,12 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
 
     @log_method_calls
     def run_scikit_scheme(self):    
+        self.scikit_args = self._build_scikit_args()
         scikit_probe = ScikitProbe(self.scikit_args)
+        if "n_jobs" in self.full_args.__dict__:
+            scikit_probe.n_jobs = self.full_args.n_jobs
+        else:
+            scikit_probe.n_jobs = 1
         for model_name in self.model_args.model_names:
             for data_name, dataset in self.datasets.items():
                 ### find best scikit model and parameters via cross validation and lazy predict
@@ -802,6 +922,9 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
 def main(args: SimpleNamespace):
     chosen_seed = set_global_seed(args.seed)
     args.seed = chosen_seed
+
+    if _should_auto_run_modal(args):
+        return _run_on_modal_cli(args)
 
     if args.replay_path is not None:
         from logger import LogReplayer
@@ -927,6 +1050,7 @@ def main(args: SimpleNamespace):
         main.write_results()
         main.generate_plots()
         main.end_log()
+    return 0
 
 if __name__ == "__main__":
-    main(args)
+    sys.exit(main(args))

@@ -1,11 +1,13 @@
-import os
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+import entrypoint_setup
 
-import torch
+import os
 import tkinter as tk
 import argparse
+import base64
+import json
 import queue
+import subprocess
+import sys
 import traceback
 import webbrowser
 from types import SimpleNamespace
@@ -19,11 +21,11 @@ from probes.get_probe import ProbeArguments
 from probes.trainers import TrainerArguments
 from main import MainProcess
 from data.data_mixin import DataArguments
-from probes.scikit_classes import ScikitArguments
-from utils import print_message, print_done, print_title
+from modal_utils import parse_modal_api_key
+from utils import print_message, print_done, print_title, expand_dms_ids_all
 from visualization.plot_result import create_plots
 from benchmarks.proteingym.compare_scoring_methods import compare_scoring_methods
-from benchmarks.proteingym.dms_ids import expand_dms_ids_all
+from hyperopt_utils import HyperoptModule
 
 
 class BackgroundTask:
@@ -75,6 +77,8 @@ class GUI(MainProcess):
         self.model_tab = ttk.Frame(self.notebook)
         self.probe_tab = ttk.Frame(self.notebook)
         self.trainer_tab = ttk.Frame(self.notebook)
+        self.wandb_tab = ttk.Frame(self.notebook)
+        self.modal_tab = ttk.Frame(self.notebook)
         self.scikit_tab = ttk.Frame(self.notebook)
         self.replay_tab = ttk.Frame(self.notebook)
         self.viz_tab = ttk.Frame(self.notebook)
@@ -87,6 +91,8 @@ class GUI(MainProcess):
         self.notebook.add(self.embed_tab, text="Embedding")
         self.notebook.add(self.probe_tab, text="Probe")
         self.notebook.add(self.trainer_tab, text="Trainer")
+        self.notebook.add(self.wandb_tab, text="W&B Sweep")
+        self.notebook.add(self.modal_tab, text="Modal")
         self.notebook.add(self.proteingym_tab, text="ProteinGym")
         self.notebook.add(self.scikit_tab, text="Scikit")
         self.notebook.add(self.replay_tab, text="Replay")
@@ -96,6 +102,7 @@ class GUI(MainProcess):
         self.task_queue = queue.Queue()
         self.thread_pool = ThreadPoolExecutor(max_workers=1)
         self.current_task = None
+        self.modal_polling_active = False
         
         # Start the queue checker
         self.check_task_queue()
@@ -107,6 +114,8 @@ class GUI(MainProcess):
         self.build_embed_tab()
         self.build_probe_tab()
         self.build_trainer_tab()
+        self.build_wandb_tab()
+        self.build_modal_tab()
         self.build_proteingym_tab()
         self.build_scikit_tab()
         self.build_replay_tab()
@@ -168,6 +177,27 @@ class GUI(MainProcess):
         entry_synthyra_api_key = ttk.Entry(id_frame, textvariable=self.settings_vars["synthyra_api_key"], width=30)
         entry_synthyra_api_key.grid(row=3, column=1, padx=10, pady=5)
         self.add_help_button(id_frame, 3, 2, "Your Synthyra API key for accessing premium features.")
+
+        # Backward-compatible Modal API key
+        ttk.Label(id_frame, text="Modal API Key (legacy):").grid(row=4, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_api_key"] = tk.StringVar(value="")
+        entry_modal_api_key = ttk.Entry(id_frame, textvariable=self.settings_vars["modal_api_key"], width=30, show="*")
+        entry_modal_api_key.grid(row=4, column=1, padx=10, pady=5)
+        self.add_help_button(id_frame, 4, 2, "Legacy format '<modal_token_id>:<modal_token_secret>'.")
+
+        # Modal token ID
+        ttk.Label(id_frame, text="Modal Token ID:").grid(row=5, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_token_id"] = tk.StringVar(value="")
+        entry_modal_token_id = ttk.Entry(id_frame, textvariable=self.settings_vars["modal_token_id"], width=30)
+        entry_modal_token_id.grid(row=5, column=1, padx=10, pady=5)
+        self.add_help_button(id_frame, 5, 2, "Modal token ID used for CLI/SDK authentication.")
+
+        # Modal token secret
+        ttk.Label(id_frame, text="Modal Token Secret:").grid(row=6, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_token_secret"] = tk.StringVar(value="")
+        entry_modal_token_secret = ttk.Entry(id_frame, textvariable=self.settings_vars["modal_token_secret"], width=30, show="*")
+        entry_modal_token_secret.grid(row=6, column=1, padx=10, pady=5)
+        self.add_help_button(id_frame, 6, 2, "Modal token secret used for CLI/SDK authentication.")
 
         # Create a frame for paths
         paths_frame = ttk.LabelFrame(self.info_tab, text="Paths")
@@ -268,67 +298,107 @@ class GUI(MainProcess):
     def build_model_tab(self):
         ttk.Label(self.model_tab, text="Model Names:").grid(row=0, column=0, padx=10, pady=5, sticky="nw")
 
-        self.model_listbox = tk.Listbox(self.model_tab, selectmode="extended", height=30)
+        self.model_listbox = tk.Listbox(self.model_tab, selectmode="extended", height=24)
         for model_name in standard_models:
             self.model_listbox.insert(tk.END, model_name)
         self.model_listbox.grid(row=0, column=1, padx=10, pady=5, sticky="nw")
         self.add_help_button(self.model_tab, 0, 2, "Select the language models to use for embedding. Multiple models can be selected.")
 
+        ttk.Label(self.model_tab, text="Model DType:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["model_dtype"] = tk.StringVar(value="bf16")
+        combo_model_dtype = ttk.Combobox(
+            self.model_tab,
+            textvariable=self.settings_vars["model_dtype"],
+            values=["fp32", "fp16", "bf16", "float32", "float16", "bfloat16"],
+            state="readonly",
+        )
+        combo_model_dtype.grid(row=1, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.model_tab, 1, 2, "Data type used when loading base models.")
+
+        ttk.Label(self.model_tab, text="Use xformers:").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["use_xformers"] = tk.BooleanVar(value=False)
+        check_use_xformers = ttk.Checkbutton(self.model_tab, variable=self.settings_vars["use_xformers"])
+        check_use_xformers.grid(row=2, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.model_tab, 2, 2, "Enable memory-efficient xformers attention where supported.")
+
         run_button = ttk.Button(self.model_tab, text="Select Models", command=self._select_models)
         run_button.grid(row=99, column=0, columnspan=2, pady=(10, 10))
 
     def build_data_tab(self):
-        # Max length (Spinbox)
         ttk.Label(self.data_tab, text="Max Sequence Length:").grid(row=0, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["max_length"] = tk.IntVar(value=1024)
-        spin_max_length = ttk.Spinbox(
-            self.data_tab,
-            from_=1,
-            to=32768,
-            textvariable=self.settings_vars["max_length"]
-        )
+        self.settings_vars["max_length"] = tk.IntVar(value=2048)
+        spin_max_length = ttk.Spinbox(self.data_tab, from_=1, to=32768, textvariable=self.settings_vars["max_length"])
         spin_max_length.grid(row=0, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.data_tab, 0, 2, "Maximum length of sequences (in tokens) to process.")
 
-        # Trim (Checkbox)
         ttk.Label(self.data_tab, text="Trim Sequences:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["trim"] = tk.BooleanVar(value=False)
-        check_trim = ttk.Checkbutton(
-            self.data_tab,
-            variable=self.settings_vars["trim"]
-        )
+        check_trim = ttk.Checkbutton(self.data_tab, variable=self.settings_vars["trim"])
         check_trim.grid(row=1, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.data_tab, 1, 2, "Whether to trim sequences to the specified max length.")
 
-        # Delimiter for data files
         ttk.Label(self.data_tab, text="Delimiter:").grid(row=2, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["delimiter"] = tk.StringVar(value=",")
         entry_delimiter = ttk.Entry(self.data_tab, textvariable=self.settings_vars["delimiter"], width=5)
         entry_delimiter.grid(row=2, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.data_tab, 2, 2, "Character used to separate columns in CSV data files.")
 
-        # Column names for data files (comma-separated)
         ttk.Label(self.data_tab, text="Column Names (comma-separated):").grid(row=3, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["col_names"] = tk.StringVar(value="seqs,labels")
         entry_col_names = ttk.Entry(self.data_tab, textvariable=self.settings_vars["col_names"], width=20)
         entry_col_names.grid(row=3, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.data_tab, 3, 2, "Names of columns in data files, separate with commas.")
 
-        # Multi-column sequences
         ttk.Label(self.data_tab, text="Multi-Column Sequences (space-separated):").grid(row=4, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["multi_column"] = tk.StringVar(value="")
         entry_multi_column = ttk.Entry(self.data_tab, textvariable=self.settings_vars["multi_column"], width=20)
         entry_multi_column.grid(row=4, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.data_tab, 4, 2, "If set, list of sequence column names to combine per sample (space-separated). Leave empty if not using multi-column sequences.")
 
-        # Label + Listbox for dataset names
-        ttk.Label(self.data_tab, text="Dataset Names:").grid(row=5, column=0, padx=10, pady=5, sticky="nw")
-        self.data_listbox = tk.Listbox(self.data_tab, selectmode="extended", height=24, width=25)
+        ttk.Label(self.data_tab, text="Local Data Directories (comma-separated):").grid(row=5, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["data_dirs"] = tk.StringVar(value="")
+        entry_data_dirs = ttk.Entry(self.data_tab, textvariable=self.settings_vars["data_dirs"], width=30)
+        entry_data_dirs.grid(row=5, column=1, padx=10, pady=5, sticky="w")
+        browse_data_dir_button = ttk.Button(self.data_tab, text="Browse", command=self._browse_data_dir)
+        browse_data_dir_button.grid(row=5, column=2, padx=5, pady=5)
+        self.add_help_button(self.data_tab, 5, 3, "Optional local dataset directories. Multiple paths can be comma-separated.")
+
+        ttk.Label(self.data_tab, text="AA -> DNA:").grid(row=6, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["aa_to_dna"] = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.data_tab, variable=self.settings_vars["aa_to_dna"]).grid(row=6, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.data_tab, text="AA -> RNA:").grid(row=7, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["aa_to_rna"] = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.data_tab, variable=self.settings_vars["aa_to_rna"]).grid(row=7, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.data_tab, text="DNA -> AA:").grid(row=8, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["dna_to_aa"] = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.data_tab, variable=self.settings_vars["dna_to_aa"]).grid(row=8, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.data_tab, text="RNA -> AA:").grid(row=9, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["rna_to_aa"] = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.data_tab, variable=self.settings_vars["rna_to_aa"]).grid(row=9, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.data_tab, text="Codon -> AA:").grid(row=10, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["codon_to_aa"] = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.data_tab, variable=self.settings_vars["codon_to_aa"]).grid(row=10, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.data_tab, text="AA -> Codon:").grid(row=11, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["aa_to_codon"] = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.data_tab, variable=self.settings_vars["aa_to_codon"]).grid(row=11, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.data_tab, text="Random Pair Flipping:").grid(row=12, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["random_pair_flipping"] = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self.data_tab, variable=self.settings_vars["random_pair_flipping"]).grid(row=12, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.data_tab, 12, 2, "Randomly flip paired inputs during training for pair datasets.")
+
+        ttk.Label(self.data_tab, text="Dataset Names:").grid(row=13, column=0, padx=10, pady=5, sticky="nw")
+        self.data_listbox = tk.Listbox(self.data_tab, selectmode="extended", height=20, width=25)
         for dataset_name in supported_datasets:
             if dataset_name not in internal_datasets:
                 self.data_listbox.insert(tk.END, dataset_name)
-        self.data_listbox.grid(row=5, column=1, padx=10, pady=5, sticky="nw")
-        self.add_help_button(self.data_tab, 5, 2, "Select datasets to use. Multiple datasets can be selected.")
+        self.data_listbox.grid(row=13, column=1, padx=10, pady=5, sticky="nw")
+        self.add_help_button(self.data_tab, 13, 2, "Select datasets to use. Multiple datasets can be selected.")
 
         run_button = ttk.Button(self.data_tab, text="Get Data", command=self._get_data)
         run_button.grid(row=99, column=0, columnspan=2, pady=(10, 10))
@@ -364,7 +434,7 @@ class GUI(MainProcess):
 
         # pooling_types
         ttk.Label(self.embed_tab, text="Pooling Types (comma-separated):").grid(row=5, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["embedding_pooling_types"] = tk.StringVar(value="mean")
+        self.settings_vars["embedding_pooling_types"] = tk.StringVar(value="mean, var")
         entry_pooling = ttk.Entry(self.embed_tab, textvariable=self.settings_vars["embedding_pooling_types"], width=20)
         entry_pooling.grid(row=5, column=1, padx=10, pady=5)
         self.add_help_button(self.embed_tab, 5, 2, "Types of pooling to apply to embeddings, separate with commas.")
@@ -479,7 +549,7 @@ class GUI(MainProcess):
 
         # Pooling Types
         ttk.Label(self.probe_tab, text="Pooling Types (comma-separated):").grid(row=12, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["probe_pooling_types"] = tk.StringVar(value="mean, cls")
+        self.settings_vars["probe_pooling_types"] = tk.StringVar(value="mean, var")
         entry_pooling = ttk.Entry(self.probe_tab, textvariable=self.settings_vars["probe_pooling_types"], width=20)
         entry_pooling.grid(row=12, column=1, padx=10, pady=5)
         self.add_help_button(self.probe_tab, 12, 2, "Types of pooling to use in the probe model, separate with commas.")
@@ -498,64 +568,78 @@ class GUI(MainProcess):
         check_token_attention.grid(row=14, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.probe_tab, 14, 2, "If true, use TokenFormer instead of Transformer blocks.")
 
+        # Use Bias
+        ttk.Label(self.probe_tab, text="Use Bias:").grid(row=15, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["use_bias"] = tk.BooleanVar(value=False)
+        check_use_bias = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["use_bias"])
+        check_use_bias.grid(row=15, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 15, 2, "Use bias terms in probe linear layers.")
+
+        # Add Token IDs
+        ttk.Label(self.probe_tab, text="Add Token IDs:").grid(row=16, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["add_token_ids"] = tk.BooleanVar(value=False)
+        check_add_token_ids = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["add_token_ids"])
+        check_add_token_ids.grid(row=16, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 16, 2, "Add learned token type IDs for pair tasks.")
+
         # RetrievalNet Settings Section
-        ttk.Label(self.probe_tab, text="=== RetrievalNet Settings ===").grid(row=15, column=0, columnspan=2, pady=10)
+        ttk.Label(self.probe_tab, text="=== RetrievalNet Settings ===").grid(row=17, column=0, columnspan=2, pady=10)
         
         # Sim Type
-        ttk.Label(self.probe_tab, text="Similarity Type:").grid(row=16, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Similarity Type:").grid(row=18, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["sim_type"] = tk.StringVar(value="dot")
         combo_sim_type = ttk.Combobox(
             self.probe_tab,
             textvariable=self.settings_vars["sim_type"],
             values=["dot", "euclidean", "cosine"]
         )
-        combo_sim_type.grid(row=16, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 16, 2, "Cross-attention mechanism for token-parameter-attention (dot, euclidean, or cosine).")
+        combo_sim_type.grid(row=18, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 18, 2, "Cross-attention mechanism for token-parameter-attention (dot, euclidean, or cosine).")
 
         # Save Model
-        ttk.Label(self.probe_tab, text="Save Model:").grid(row=17, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Save Model:").grid(row=19, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["save_model"] = tk.BooleanVar(value=False)
         check_save_model = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["save_model"])
-        check_save_model.grid(row=17, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 17, 2, "Whether to save the trained probe model to disk.")
+        check_save_model.grid(row=19, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 19, 2, "Whether to save the trained probe model to disk.")
 
         # Production Model
-        ttk.Label(self.probe_tab, text="Production Model:").grid(row=18, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Production Model:").grid(row=20, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["production_model"] = tk.BooleanVar(value=False)
         check_prod_model = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["production_model"])
-        check_prod_model.grid(row=18, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 18, 2, "Whether to prepare the model for production deployment.")
+        check_prod_model.grid(row=20, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 20, 2, "Whether to prepare the model for production deployment.")
 
         # LoRA Settings Section
-        ttk.Label(self.probe_tab, text="=== LoRA Settings ===").grid(row=19, column=0, columnspan=2, pady=10)
+        ttk.Label(self.probe_tab, text="=== LoRA Settings ===").grid(row=21, column=0, columnspan=2, pady=10)
         
         # Lora checkbox
-        ttk.Label(self.probe_tab, text="Use LoRA:").grid(row=20, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Use LoRA:").grid(row=22, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora"] = tk.BooleanVar(value=False)
         check_lora = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["lora"])
-        check_lora.grid(row=20, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 20, 2, "Whether to use Low-Rank Adaptation (LoRA) for fine-tuning.")
+        check_lora.grid(row=22, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 22, 2, "Whether to use Low-Rank Adaptation (LoRA) for fine-tuning.")
 
         # LoRA r
-        ttk.Label(self.probe_tab, text="LoRA r:").grid(row=21, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="LoRA r:").grid(row=23, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora_r"] = tk.IntVar(value=8)
         spin_lora_r = ttk.Spinbox(self.probe_tab, from_=1, to=128, textvariable=self.settings_vars["lora_r"])
-        spin_lora_r.grid(row=21, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 21, 2, "Rank parameter r for LoRA (lower = more efficient, higher = more expressive).")
+        spin_lora_r.grid(row=23, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 23, 2, "Rank parameter r for LoRA (lower = more efficient, higher = more expressive).")
 
         # LoRA alpha
-        ttk.Label(self.probe_tab, text="LoRA alpha:").grid(row=22, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="LoRA alpha:").grid(row=24, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora_alpha"] = tk.DoubleVar(value=32.0)
         spin_lora_alpha = ttk.Spinbox(self.probe_tab, from_=1.0, to=128.0, increment=1.0, textvariable=self.settings_vars["lora_alpha"])
-        spin_lora_alpha.grid(row=22, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 22, 2, "Alpha parameter for LoRA, controls update scale.")
+        spin_lora_alpha.grid(row=24, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 24, 2, "Alpha parameter for LoRA, controls update scale.")
 
         # LoRA dropout
-        ttk.Label(self.probe_tab, text="LoRA dropout:").grid(row=23, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="LoRA dropout:").grid(row=25, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora_dropout"] = tk.DoubleVar(value=0.01)
         spin_lora_dropout = ttk.Spinbox(self.probe_tab, from_=0.0, to=0.5, increment=0.01, textvariable=self.settings_vars["lora_dropout"])
-        spin_lora_dropout.grid(row=23, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 23, 2, "Dropout probability for LoRA layers (0.0-0.5).")
+        spin_lora_dropout.grid(row=25, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 25, 2, "Dropout probability for LoRA layers (0.0-0.5).")
         
         # Add a button to create the probe
         run_button = ttk.Button(self.probe_tab, text="Save Probe Arguments", command=self._create_probe_args)
@@ -653,8 +737,164 @@ class GUI(MainProcess):
         check_deterministic.grid(row=12, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.trainer_tab, 12, 2, "Enable deterministic behavior for reproducibility (will slow down training).")
 
+        # Number of Runs
+        ttk.Label(self.trainer_tab, text="Number of Runs:").grid(row=13, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["num_runs"] = tk.IntVar(value=1)
+        spin_num_runs = ttk.Spinbox(self.trainer_tab, from_=1, to=100, textvariable=self.settings_vars["num_runs"])
+        spin_num_runs.grid(row=13, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.trainer_tab, 13, 2, "Train multiple runs with different seeds and aggregate metrics.")
+
         run_button = ttk.Button(self.trainer_tab, text="Run trainer", command=self._run_trainer)
         run_button.grid(row=99, column=0, columnspan=2, pady=(10, 10))
+
+    def build_wandb_tab(self):
+        ttk.Label(self.wandb_tab, text="Use W&B Hyperopt:").grid(row=0, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["use_wandb_hyperopt"] = tk.BooleanVar(value=False)
+        check_use_wandb_hyperopt = ttk.Checkbutton(self.wandb_tab, variable=self.settings_vars["use_wandb_hyperopt"])
+        check_use_wandb_hyperopt.grid(row=0, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.wandb_tab, 0, 2, "Enable Weights & Biases hyperparameter sweeps.")
+
+        ttk.Label(self.wandb_tab, text="W&B Project:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["wandb_project"] = tk.StringVar(value="Protify")
+        entry_wandb_project = ttk.Entry(self.wandb_tab, textvariable=self.settings_vars["wandb_project"], width=30)
+        entry_wandb_project.grid(row=1, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.wandb_tab, text="W&B Entity (optional):").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["wandb_entity"] = tk.StringVar(value="")
+        entry_wandb_entity = ttk.Entry(self.wandb_tab, textvariable=self.settings_vars["wandb_entity"], width=30)
+        entry_wandb_entity.grid(row=2, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.wandb_tab, text="Sweep Config Path:").grid(row=3, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["sweep_config_path"] = tk.StringVar(value="yamls/sweep.yaml")
+        entry_sweep_config_path = ttk.Entry(self.wandb_tab, textvariable=self.settings_vars["sweep_config_path"], width=30)
+        entry_sweep_config_path.grid(row=3, column=1, padx=10, pady=5, sticky="w")
+        browse_sweep_path_button = ttk.Button(self.wandb_tab, text="Browse", command=self._browse_sweep_config)
+        browse_sweep_path_button.grid(row=3, column=2, padx=5, pady=5)
+
+        ttk.Label(self.wandb_tab, text="Sweep Count:").grid(row=4, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["sweep_count"] = tk.IntVar(value=10)
+        spin_sweep_count = ttk.Spinbox(self.wandb_tab, from_=1, to=10000, textvariable=self.settings_vars["sweep_count"])
+        spin_sweep_count.grid(row=4, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.wandb_tab, text="Sweep Method:").grid(row=5, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["sweep_method"] = tk.StringVar(value="bayes")
+        combo_sweep_method = ttk.Combobox(
+            self.wandb_tab,
+            textvariable=self.settings_vars["sweep_method"],
+            values=["bayes", "grid", "random"],
+            state="readonly",
+        )
+        combo_sweep_method.grid(row=5, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.wandb_tab, text="Sweep Metric (Classification):").grid(row=6, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["sweep_metric_cls"] = tk.StringVar(value="eval_loss")
+        entry_sweep_metric_cls = ttk.Entry(self.wandb_tab, textvariable=self.settings_vars["sweep_metric_cls"], width=30)
+        entry_sweep_metric_cls.grid(row=6, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.wandb_tab, text="Sweep Metric (Regression):").grid(row=7, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["sweep_metric_reg"] = tk.StringVar(value="eval_loss")
+        entry_sweep_metric_reg = ttk.Entry(self.wandb_tab, textvariable=self.settings_vars["sweep_metric_reg"], width=30)
+        entry_sweep_metric_reg.grid(row=7, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.wandb_tab, text="Sweep Goal:").grid(row=8, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["sweep_goal"] = tk.StringVar(value="minimize")
+        combo_sweep_goal = ttk.Combobox(
+            self.wandb_tab,
+            textvariable=self.settings_vars["sweep_goal"],
+            values=["maximize", "minimize"],
+            state="readonly",
+        )
+        combo_sweep_goal.grid(row=8, column=1, padx=10, pady=5, sticky="w")
+
+        run_button = ttk.Button(self.wandb_tab, text="Save W&B Settings", command=self._save_wandb_settings)
+        run_button.grid(row=99, column=0, columnspan=2, pady=(10, 10))
+
+    def build_modal_tab(self):
+        ttk.Label(self.modal_tab, text="Modal App Name:").grid(row=0, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_app_name"] = tk.StringVar(value="protify-backend")
+        entry_modal_app_name = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_app_name"], width=30)
+        entry_modal_app_name.grid(row=0, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.modal_tab, text="Modal Environment (optional):").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_environment"] = tk.StringVar(value="")
+        entry_modal_environment = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_environment"], width=30)
+        entry_modal_environment.grid(row=1, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.modal_tab, text="Modal Deploy Tag (optional):").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_tag"] = tk.StringVar(value="")
+        entry_modal_tag = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_tag"], width=30)
+        entry_modal_tag.grid(row=2, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.modal_tab, text="Backend Module Path:").grid(row=3, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_backend_path"] = tk.StringVar(value="src/protify/modal_backend.py")
+        entry_modal_backend_path = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_backend_path"], width=30)
+        entry_modal_backend_path.grid(row=3, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.modal_tab, text="GPU Type:").grid(row=4, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_gpu_type"] = tk.StringVar(value="A10")
+        combo_modal_gpu_type = ttk.Combobox(
+            self.modal_tab,
+            textvariable=self.settings_vars["modal_gpu_type"],
+            values=["H200", "H100", "A100-80GB", "A100", "L40S", "A10", "L4", "T4"],
+            state="readonly",
+        )
+        combo_modal_gpu_type.grid(row=4, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.modal_tab, text="Runtime Timeout (seconds):").grid(row=5, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_timeout_seconds"] = tk.IntVar(value=86400)
+        spin_modal_timeout = ttk.Spinbox(self.modal_tab, from_=60, to=604800, textvariable=self.settings_vars["modal_timeout_seconds"])
+        spin_modal_timeout.grid(row=5, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.modal_tab, text="Poll Interval (seconds):").grid(row=6, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_poll_interval_seconds"] = tk.IntVar(value=5)
+        spin_modal_poll_interval = ttk.Spinbox(self.modal_tab, from_=1, to=600, textvariable=self.settings_vars["modal_poll_interval_seconds"])
+        spin_modal_poll_interval.grid(row=6, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.modal_tab, text="Log Tail Length (chars):").grid(row=7, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_log_tail_chars"] = tk.IntVar(value=5000)
+        spin_modal_log_tail_chars = ttk.Spinbox(self.modal_tab, from_=500, to=100000, textvariable=self.settings_vars["modal_log_tail_chars"])
+        spin_modal_log_tail_chars.grid(row=7, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.modal_tab, text="Current Job ID:").grid(row=8, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_job_id"] = tk.StringVar(value="")
+        entry_modal_job_id = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_job_id"], width=30)
+        entry_modal_job_id.grid(row=8, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.modal_tab, text="Current Call ID:").grid(row=9, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_call_id"] = tk.StringVar(value="")
+        entry_modal_call_id = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_call_id"], width=30)
+        entry_modal_call_id.grid(row=9, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.modal_tab, text="Artifact Output Directory:").grid(row=10, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_artifacts_dir"] = tk.StringVar(value="modal_artifacts")
+        entry_modal_artifacts_dir = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_artifacts_dir"], width=30)
+        entry_modal_artifacts_dir.grid(row=10, column=1, padx=10, pady=5, sticky="w")
+
+        ttk.Label(self.modal_tab, text="Auto Poll Health:").grid(row=11, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["modal_auto_poll"] = tk.BooleanVar(value=True)
+        check_modal_auto_poll = ttk.Checkbutton(self.modal_tab, variable=self.settings_vars["modal_auto_poll"])
+        check_modal_auto_poll.grid(row=11, column=1, padx=10, pady=5, sticky="w")
+
+        deploy_button = ttk.Button(self.modal_tab, text="Deploy Modal Backend", command=self._modal_deploy_backend)
+        deploy_button.grid(row=12, column=0, padx=10, pady=10, sticky="w")
+
+        submit_button = ttk.Button(self.modal_tab, text="Submit Remote Run", command=self._modal_submit_run)
+        submit_button.grid(row=12, column=1, padx=10, pady=10, sticky="w")
+
+        poll_button = ttk.Button(self.modal_tab, text="Poll Status", command=self._modal_poll_status)
+        poll_button.grid(row=13, column=0, padx=10, pady=5, sticky="w")
+
+        cancel_button = ttk.Button(self.modal_tab, text="Cancel Run", command=self._modal_cancel_run)
+        cancel_button.grid(row=13, column=1, padx=10, pady=5, sticky="w")
+
+        start_auto_poll_button = ttk.Button(self.modal_tab, text="Start Auto Poll", command=self._modal_start_auto_poll)
+        start_auto_poll_button.grid(row=14, column=0, padx=10, pady=5, sticky="w")
+
+        stop_auto_poll_button = ttk.Button(self.modal_tab, text="Stop Auto Poll", command=self._modal_stop_auto_poll)
+        stop_auto_poll_button.grid(row=14, column=1, padx=10, pady=5, sticky="w")
+
+        fetch_button = ttk.Button(self.modal_tab, text="Fetch Logs/Results/Plots", command=self._modal_fetch_artifacts)
+        fetch_button.grid(row=15, column=0, columnspan=2, padx=10, pady=10, sticky="w")
 
     def build_proteingym_tab(self):
         # ProteinGym Checkbox
@@ -717,6 +957,12 @@ class GUI(MainProcess):
         check_compare = ttk.Checkbutton(self.proteingym_tab, variable=self.settings_vars["compare_scoring_methods"])
         check_compare.grid(row=6, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.proteingym_tab, 6, 2, "Compare different scoring methods across models and DMS assays.")
+
+        ttk.Label(self.proteingym_tab, text="Score Only:").grid(row=7, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["score_only"] = tk.BooleanVar(value=False)
+        check_score_only = ttk.Checkbutton(self.proteingym_tab, variable=self.settings_vars["score_only"])
+        check_score_only.grid(row=7, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.proteingym_tab, 7, 2, "Skip scoring and run benchmark report generation on existing results.")
 
         run_button = ttk.Button(self.proteingym_tab, text="Run ProteinGym", command=self._run_proteingym)
         run_button.grid(row=99, column=0, columnspan=2, pady=(10, 10))
@@ -839,20 +1085,532 @@ class GUI(MainProcess):
         help_button.grid(row=row, column=column, padx=(0,5), pady=5)
         return help_button
 
+    def _selected_model_dtype(self):
+        dtype_name = self.settings_vars["model_dtype"].get()
+        assert dtype_name in self.dtype_map, f"Unsupported model dtype: {dtype_name}"
+        return self.dtype_map[dtype_name]
+
+    def _selected_embed_dtype(self):
+        dtype_name = self.settings_vars["embed_dtype"].get()
+        assert dtype_name in self.dtype_map, f"Unsupported embedding dtype: {dtype_name}"
+        return self.dtype_map[dtype_name]
+
+    def _browse_data_dir(self):
+        data_dir = filedialog.askdirectory(title="Select Data Directory")
+        if not data_dir:
+            return
+        existing = self.settings_vars["data_dirs"].get().strip()
+        if not existing:
+            self.settings_vars["data_dirs"].set(data_dir)
+            return
+        existing_parts = [path.strip() for path in existing.split(",") if path.strip()]
+        if data_dir not in existing_parts:
+            existing_parts.append(data_dir)
+        self.settings_vars["data_dirs"].set(", ".join(existing_parts))
+
+    def _browse_sweep_config(self):
+        filename = filedialog.askopenfilename(
+            title="Select W&B Sweep Config",
+            filetypes=(("YAML files", "*.yaml *.yml"), ("All files", "*.*")),
+        )
+        if filename:
+            self.settings_vars["sweep_config_path"].set(filename)
+
+    def _save_wandb_settings(self):
+        print_message("Saving W&B sweep settings...")
+        self.full_args.use_wandb_hyperopt = self.settings_vars["use_wandb_hyperopt"].get()
+        self.full_args.wandb_project = self.settings_vars["wandb_project"].get().strip() or "Protify"
+        wandb_entity = self.settings_vars["wandb_entity"].get().strip()
+        self.full_args.wandb_entity = wandb_entity if wandb_entity else None
+        self.full_args.sweep_config_path = self.settings_vars["sweep_config_path"].get().strip() or "yamls/sweep.yaml"
+        self.full_args.sweep_count = self.settings_vars["sweep_count"].get()
+        self.full_args.sweep_method = self.settings_vars["sweep_method"].get()
+        self.full_args.sweep_metric_cls = self.settings_vars["sweep_metric_cls"].get().strip() or "eval_loss"
+        self.full_args.sweep_metric_reg = self.settings_vars["sweep_metric_reg"].get().strip() or "eval_loss"
+        self.full_args.sweep_goal = self.settings_vars["sweep_goal"].get()
+
+        args_dict = {k: v for k, v in self.full_args.__dict__.items() if k != 'all_seqs' and 'token' not in k.lower() and 'api' not in k.lower()}
+        self.logger_args = SimpleNamespace(**args_dict)
+        if "log_file" in self.__dict__:
+            self._write_args()
+        print_message("W&B sweep settings saved")
+        print_done()
+
+    def _resolve_repo_root(self):
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+    def _resolve_modal_backend_path(self):
+        configured_path = self.settings_vars["modal_backend_path"].get().strip()
+        if not configured_path:
+            configured_path = "src/protify/modal_backend.py"
+        if os.path.isabs(configured_path):
+            backend_path = configured_path
+        else:
+            home_dir = self.settings_vars["home_dir"].get().strip()
+            candidate_home = os.path.abspath(os.path.join(home_dir, configured_path))
+            candidate_repo = os.path.abspath(os.path.join(self._resolve_repo_root(), configured_path))
+            if os.path.exists(candidate_home):
+                backend_path = candidate_home
+            else:
+                backend_path = candidate_repo
+        assert os.path.exists(backend_path), f"Modal backend path not found: {backend_path}"
+        return backend_path
+
+    def _resolve_modal_credentials(self):
+        modal_api_key = self.settings_vars["modal_api_key"].get().strip()
+        modal_token_id = self.settings_vars["modal_token_id"].get().strip()
+        modal_token_secret = self.settings_vars["modal_token_secret"].get().strip()
+        if modal_api_key and ((not modal_token_id) or (not modal_token_secret)):
+            modal_token_id, modal_token_secret = parse_modal_api_key(modal_api_key)
+            self.settings_vars["modal_token_id"].set(modal_token_id)
+            self.settings_vars["modal_token_secret"].set(modal_token_secret)
+        if modal_token_id == "":
+            modal_token_id = None
+        if modal_token_secret == "":
+            modal_token_secret = None
+        return modal_token_id, modal_token_secret
+
+    def _build_modal_env(self):
+        env = os.environ.copy()
+        # Force UTF-8 I/O for Modal subprocesses on Windows.
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONUTF8"] = "1"
+        modal_token_id, modal_token_secret = self._resolve_modal_credentials()
+        if modal_token_id is not None:
+            env["MODAL_TOKEN_ID"] = modal_token_id
+            os.environ["MODAL_TOKEN_ID"] = modal_token_id
+        if modal_token_secret is not None:
+            env["MODAL_TOKEN_SECRET"] = modal_token_secret
+            os.environ["MODAL_TOKEN_SECRET"] = modal_token_secret
+        modal_environment = self.settings_vars["modal_environment"].get().strip()
+        if modal_environment:
+            env["MODAL_ENVIRONMENT"] = modal_environment
+            os.environ["MODAL_ENVIRONMENT"] = modal_environment
+        return env
+
+    def _get_modal_sdk(self):
+        try:
+            import modal
+        except Exception as error:
+            raise RuntimeError("Modal SDK is not installed. Install it with: py -m pip install modal") from error
+        return modal
+
+    def _get_modal_function(self, function_name):
+        modal = self._get_modal_sdk()
+        app_name = self.settings_vars["modal_app_name"].get().strip()
+        if app_name == "":
+            app_name = "protify-backend"
+        return modal.Function.from_name(app_name, function_name)
+
+    def _collect_modal_run_config(self):
+        selected_model_indices = self.model_listbox.curselection()
+        selected_models = [self.model_listbox.get(i) for i in selected_model_indices]
+        if len(selected_models) == 0:
+            selected_models = standard_models
+
+        selected_dataset_indices = self.data_listbox.curselection()
+        selected_datasets = [self.data_listbox.get(i) for i in selected_dataset_indices]
+        data_dirs_str = self.settings_vars["data_dirs"].get().strip()
+        data_dirs = [path.strip() for path in data_dirs_str.split(",") if path.strip()]
+
+        run_proteingym = self.settings_vars["proteingym"].get()
+        if (len(selected_datasets) == 0) and (len(data_dirs) == 0) and (not run_proteingym):
+            selected_datasets = standard_data_benchmark
+
+        col_names = [name.strip() for name in self.settings_vars["col_names"].get().split(",") if name.strip()]
+        multi_column_raw = self.settings_vars["multi_column"].get().strip()
+        if multi_column_raw:
+            multi_column = multi_column_raw.split()
+        else:
+            multi_column = None
+
+        embedding_pooling = [item.strip() for item in self.settings_vars["embedding_pooling_types"].get().split(",") if item.strip()]
+        probe_pooling = [item.strip() for item in self.settings_vars["probe_pooling_types"].get().split(",") if item.strip()]
+
+        dms_ids_raw = self.settings_vars["dms_ids"].get().strip()
+        if dms_ids_raw.lower() == "all":
+            dms_ids = ["all"]
+        else:
+            dms_ids = [item.strip() for item in dms_ids_raw.split() if item.strip()]
+
+        wandb_entity = self.settings_vars["wandb_entity"].get().strip()
+        if wandb_entity == "":
+            wandb_entity = None
+
+        scikit_model_name = self.settings_vars["scikit_model_name"].get().strip()
+        if scikit_model_name == "":
+            scikit_model_name = None
+
+        hf_home = self.settings_vars["hf_home"].get().strip()
+        if hf_home == "":
+            hf_home = None
+
+        config = {
+            "hf_username": self.settings_vars["huggingface_username"].get().strip() or "Synthyra",
+            "hf_token": self.settings_vars["huggingface_token"].get().strip() or None,
+            "wandb_api_key": self.settings_vars["wandb_api_key"].get().strip() or None,
+            "synthyra_api_key": self.settings_vars["synthyra_api_key"].get().strip() or None,
+            "hf_home": hf_home,
+            "log_dir": self.settings_vars["log_dir"].get().strip() or "logs",
+            "results_dir": self.settings_vars["results_dir"].get().strip() or "results",
+            "model_save_dir": self.settings_vars["model_save_dir"].get().strip() or "weights",
+            "embedding_save_dir": self.settings_vars["embedding_save_dir"].get().strip() or "embeddings",
+            "download_dir": self.settings_vars["download_dir"].get().strip() or "Synthyra/vector_embeddings",
+            "plots_dir": self.settings_vars["plots_dir"].get().strip() or "plots",
+            "replay_path": None,
+            "pretrained_probe_path": None,
+            "data_names": selected_datasets,
+            "data_dirs": data_dirs,
+            "delimiter": self.settings_vars["delimiter"].get(),
+            "col_names": col_names,
+            "max_length": self.settings_vars["max_length"].get(),
+            "trim": self.settings_vars["trim"].get(),
+            "multi_column": multi_column,
+            "aa_to_dna": self.settings_vars["aa_to_dna"].get(),
+            "aa_to_rna": self.settings_vars["aa_to_rna"].get(),
+            "dna_to_aa": self.settings_vars["dna_to_aa"].get(),
+            "rna_to_aa": self.settings_vars["rna_to_aa"].get(),
+            "codon_to_aa": self.settings_vars["codon_to_aa"].get(),
+            "aa_to_codon": self.settings_vars["aa_to_codon"].get(),
+            "random_pair_flipping": self.settings_vars["random_pair_flipping"].get(),
+            "model_names": selected_models,
+            "model_dtype": self.settings_vars["model_dtype"].get(),
+            "use_xformers": self.settings_vars["use_xformers"].get(),
+            "embedding_batch_size": self.settings_vars["batch_size"].get(),
+            "embedding_num_workers": self.settings_vars["num_workers"].get(),
+            "num_workers": self.settings_vars["num_workers"].get(),
+            "download_embeddings": self.settings_vars["download_embeddings"].get(),
+            "matrix_embed": self.settings_vars["matrix_embed"].get(),
+            "embedding_pooling_types": embedding_pooling,
+            "save_embeddings": True,
+            "embed_dtype": self.settings_vars["embed_dtype"].get(),
+            "sql": self.settings_vars["sql"].get(),
+            "probe_type": self.settings_vars["probe_type"].get(),
+            "tokenwise": self.settings_vars["tokenwise"].get(),
+            "hidden_size": self.settings_vars["hidden_size"].get(),
+            "transformer_hidden_size": self.settings_vars["transformer_hidden_size"].get(),
+            "dropout": self.settings_vars["dropout"].get(),
+            "n_layers": self.settings_vars["n_layers"].get(),
+            "pre_ln": self.settings_vars["pre_ln"].get(),
+            "classifier_size": self.settings_vars["classifier_size"].get(),
+            "transformer_dropout": self.settings_vars["transformer_dropout"].get(),
+            "classifier_dropout": self.settings_vars["classifier_dropout"].get(),
+            "n_heads": self.settings_vars["n_heads"].get(),
+            "rotary": self.settings_vars["rotary"].get(),
+            "probe_pooling_types": probe_pooling,
+            "use_bias": self.settings_vars["use_bias"].get(),
+            "save_model": self.settings_vars["save_model"].get(),
+            "production_model": self.settings_vars["production_model"].get(),
+            "lora": self.settings_vars["lora"].get(),
+            "lora_r": self.settings_vars["lora_r"].get(),
+            "lora_alpha": self.settings_vars["lora_alpha"].get(),
+            "lora_dropout": self.settings_vars["lora_dropout"].get(),
+            "sim_type": self.settings_vars["sim_type"].get(),
+            "token_attention": self.settings_vars["token_attention"].get(),
+            "add_token_ids": self.settings_vars["add_token_ids"].get(),
+            "num_epochs": self.settings_vars["num_epochs"].get(),
+            "probe_batch_size": self.settings_vars["probe_batch_size"].get(),
+            "base_batch_size": self.settings_vars["base_batch_size"].get(),
+            "probe_grad_accum": self.settings_vars["probe_grad_accum"].get(),
+            "base_grad_accum": self.settings_vars["base_grad_accum"].get(),
+            "lr": self.settings_vars["lr"].get(),
+            "weight_decay": self.settings_vars["weight_decay"].get(),
+            "patience": self.settings_vars["patience"].get(),
+            "seed": self.settings_vars["seed"].get(),
+            "deterministic": self.settings_vars["deterministic"].get(),
+            "full_finetuning": self.settings_vars["full_finetuning"].get(),
+            "hybrid_probe": self.settings_vars["hybrid_probe"].get(),
+            "num_runs": self.settings_vars["num_runs"].get(),
+            "read_scaler": self.settings_vars["read_scaler"].get(),
+            "dms_ids": dms_ids,
+            "proteingym": run_proteingym,
+            "mode": self.settings_vars["mode"].get(),
+            "scoring_method": self.settings_vars["scoring_method"].get(),
+            "scoring_window": self.settings_vars["scoring_window"].get(),
+            "pg_batch_size": self.settings_vars["pg_batch_size"].get(),
+            "compare_scoring_methods": self.settings_vars["compare_scoring_methods"].get(),
+            "score_only": self.settings_vars["score_only"].get(),
+            "use_wandb_hyperopt": self.settings_vars["use_wandb_hyperopt"].get(),
+            "wandb_project": self.settings_vars["wandb_project"].get().strip() or "Protify",
+            "wandb_entity": wandb_entity,
+            "sweep_config_path": self.settings_vars["sweep_config_path"].get().strip() or "yamls/sweep.yaml",
+            "sweep_count": self.settings_vars["sweep_count"].get(),
+            "sweep_method": self.settings_vars["sweep_method"].get(),
+            "sweep_metric_cls": self.settings_vars["sweep_metric_cls"].get().strip() or "eval_loss",
+            "sweep_metric_reg": self.settings_vars["sweep_metric_reg"].get().strip() or "eval_loss",
+            "sweep_goal": self.settings_vars["sweep_goal"].get(),
+            "use_scikit": self.settings_vars["use_scikit"].get(),
+            "scikit_n_iter": self.settings_vars["scikit_n_iter"].get(),
+            "scikit_cv": self.settings_vars["scikit_cv"].get(),
+            "scikit_random_state": self.settings_vars["scikit_random_state"].get(),
+            "scikit_model_name": scikit_model_name,
+            "n_jobs": self.settings_vars["n_jobs"].get(),
+        }
+        return config
+
+    def _modal_deploy_backend(self):
+        print_message("Deploying Modal backend...")
+
+        def background_deploy():
+            backend_path = self._resolve_modal_backend_path()
+            repo_root = self._resolve_repo_root()
+            env = self._build_modal_env()
+
+            app_name = self.settings_vars["modal_app_name"].get().strip() or "protify-backend"
+            modal_environment = self.settings_vars["modal_environment"].get().strip()
+            modal_tag = self.settings_vars["modal_tag"].get().strip()
+
+            command = [sys.executable, "-m", "modal", "deploy", backend_path, "--name", app_name]
+            if modal_environment:
+                command.extend(["--env", modal_environment])
+            if modal_tag:
+                command.extend(["--tag", modal_tag])
+
+            try:
+                process = subprocess.run(command, cwd=repo_root, env=env, capture_output=True, text=True)
+            except FileNotFoundError:
+                fallback_command = ["modal", "deploy", backend_path, "--name", app_name]
+                if modal_environment:
+                    fallback_command.extend(["--env", modal_environment])
+                if modal_tag:
+                    fallback_command.extend(["--tag", modal_tag])
+                process = subprocess.run(fallback_command, cwd=repo_root, env=env, capture_output=True, text=True)
+
+            if process.returncode != 0:
+                if "No module named modal" in process.stderr:
+                    raise RuntimeError("Modal is not installed in this Python environment. Install it with: py -m pip install modal")
+                raise RuntimeError(f"Modal deploy failed:\n{process.stderr}")
+
+            stdout_tail = process.stdout[-4000:] if process.stdout else "Deployment completed."
+            print_message(stdout_tail)
+            print_done()
+
+        self.run_in_background(background_deploy)
+
+    def _modal_submit_run(self):
+        print_message("Submitting remote Modal run...")
+
+        def background_submit():
+            self._build_modal_env()
+            submit_fn = self._get_modal_function("submit_protify_job")
+            config = self._collect_modal_run_config()
+
+            gpu_type = self.settings_vars["modal_gpu_type"].get()
+            timeout_seconds = self.settings_vars["modal_timeout_seconds"].get()
+            hf_token = self.settings_vars["huggingface_token"].get().strip() or None
+            wandb_api_key = self.settings_vars["wandb_api_key"].get().strip() or None
+            synthyra_api_key = self.settings_vars["synthyra_api_key"].get().strip() or None
+
+            result = submit_fn.remote(
+                config=config,
+                gpu_type=gpu_type,
+                hf_token=hf_token,
+                wandb_api_key=wandb_api_key,
+                synthyra_api_key=synthyra_api_key,
+                timeout_seconds=timeout_seconds,
+            )
+            assert isinstance(result, dict), "submit_protify_job returned a non-dict response."
+            assert "job_id" in result, "submit_protify_job response missing job_id."
+            assert "function_call_id" in result, "submit_protify_job response missing function_call_id."
+
+            job_id = result["job_id"]
+            function_call_id = result["function_call_id"]
+            self.settings_vars["modal_job_id"].set(job_id)
+            self.settings_vars["modal_call_id"].set(function_call_id)
+            self.full_args.modal_job_id = job_id
+            self.full_args.modal_call_id = function_call_id
+
+            print_message(f"Modal job submitted.\nJob ID: {job_id}\nCall ID: {function_call_id}")
+            if self.settings_vars["modal_auto_poll"].get():
+                self.modal_polling_active = True
+                self.master.after(0, self._modal_auto_poll_loop)
+            print_done()
+
+        self.run_in_background(background_submit)
+
+    def _modal_start_auto_poll(self):
+        if self.modal_polling_active:
+            print_message("Auto polling is already active.")
+            return
+        self.modal_polling_active = True
+        print_message("Started Modal auto polling.")
+        self._modal_auto_poll_loop()
+
+    def _modal_stop_auto_poll(self):
+        self.modal_polling_active = False
+        print_message("Stopped Modal auto polling.")
+
+    def _modal_auto_poll_loop(self):
+        if not self.modal_polling_active:
+            return
+        if not self.settings_vars["modal_auto_poll"].get():
+            self.modal_polling_active = False
+            return
+
+        job_id = self.settings_vars["modal_job_id"].get().strip()
+        if not job_id:
+            self.modal_polling_active = False
+            return
+
+        self._modal_poll_status()
+        poll_interval_seconds = self.settings_vars["modal_poll_interval_seconds"].get()
+        self.master.after(max(1, poll_interval_seconds) * 1000, self._modal_auto_poll_loop)
+
+    def _modal_poll_status(self):
+        job_id = self.settings_vars["modal_job_id"].get().strip()
+        if not job_id:
+            print_message("No Modal job ID set. Submit a remote run first.")
+            return
+        print_message(f"Polling Modal status for job {job_id}...")
+
+        def background_poll():
+            self._build_modal_env()
+            status_fn = self._get_modal_function("get_job_status")
+            log_tail_fn = self._get_modal_function("get_job_log_tail")
+
+            status_payload = status_fn.remote(job_id=job_id)
+            max_chars = self.settings_vars["modal_log_tail_chars"].get()
+            log_payload = log_tail_fn.remote(job_id=job_id, max_chars=max_chars)
+
+            assert isinstance(status_payload, dict), "get_job_status returned a non-dict response."
+            if "function_call_id" in status_payload and status_payload["function_call_id"]:
+                self.settings_vars["modal_call_id"].set(status_payload["function_call_id"])
+
+            self.full_args.modal_last_status = status_payload
+            status_value = status_payload["status"] if "status" in status_payload else "UNKNOWN"
+            phase_value = status_payload["phase"] if "phase" in status_payload else "N/A"
+            heartbeat_value = status_payload["last_heartbeat_utc"] if "last_heartbeat_utc" in status_payload else "N/A"
+            heartbeat_age = status_payload["heartbeat_age_seconds"] if "heartbeat_age_seconds" in status_payload else None
+            error_value = status_payload["error"] if "error" in status_payload else None
+            heartbeat_age_text = "N/A" if heartbeat_age is None else f"{heartbeat_age:.1f}s"
+            print_message(
+                f"Modal Status: {status_value}\n"
+                f"Phase: {phase_value}\n"
+                f"Last Heartbeat: {heartbeat_value}\n"
+                f"Heartbeat Age: {heartbeat_age_text}"
+            )
+            if error_value:
+                print_message(f"Failure Reason: {error_value}")
+
+            if isinstance(log_payload, dict) and "log_tail" in log_payload and log_payload["log_tail"]:
+                print_message(f"Latest Logs (tail):\n{log_payload['log_tail']}")
+
+            if status_value in ["SUCCESS", "FAILED", "TERMINATED", "TIMEOUT"]:
+                self.modal_polling_active = False
+            print_done()
+
+        self.run_in_background(background_poll)
+
+    def _modal_cancel_run(self):
+        function_call_id = self.settings_vars["modal_call_id"].get().strip()
+        if not function_call_id:
+            print_message("No Modal call ID set. Poll status or submit a run first.")
+            return
+        job_id = self.settings_vars["modal_job_id"].get().strip()
+        print_message(f"Cancelling Modal run {function_call_id}...")
+        self.modal_polling_active = False
+
+        def background_cancel():
+            self._build_modal_env()
+            cancel_fn = self._get_modal_function("cancel_protify_job")
+            if job_id:
+                result = cancel_fn.remote(function_call_id=function_call_id, job_id=job_id)
+            else:
+                result = cancel_fn.remote(function_call_id=function_call_id, job_id=None)
+            print_message(f"Cancel result: {result}")
+            print_done()
+
+        self.run_in_background(background_cancel)
+
+    def _modal_fetch_artifacts(self):
+        job_id = self.settings_vars["modal_job_id"].get().strip()
+        if not job_id:
+            print_message("No Modal job ID set. Submit a run first.")
+            return
+        print_message(f"Fetching Modal artifacts for job {job_id}...")
+
+        def background_fetch():
+            self._build_modal_env()
+            results_fn = self._get_modal_function("get_results")
+            result_payload = results_fn.remote(job_id=job_id)
+            assert isinstance(result_payload, dict), "get_results returned a non-dict response."
+            assert "success" in result_payload, "get_results response missing success field."
+            assert result_payload["success"], f"Modal get_results failed: {result_payload}"
+
+            output_dir_raw = self.settings_vars["modal_artifacts_dir"].get().strip() or "modal_artifacts"
+            home_dir = self.settings_vars["home_dir"].get().strip() or os.getcwd()
+            if os.path.isabs(output_dir_raw):
+                output_dir = output_dir_raw
+            else:
+                output_dir = os.path.abspath(os.path.join(home_dir, output_dir_raw))
+            job_dir = os.path.join(output_dir, job_id)
+            os.makedirs(job_dir, exist_ok=True)
+
+            text_file_count = 0
+            image_file_count = 0
+
+            files_payload = result_payload["files"] if "files" in result_payload else {}
+            for rel_path in files_payload:
+                local_path = os.path.join(job_dir, rel_path.replace("/", os.sep))
+                local_parent = os.path.dirname(local_path)
+                os.makedirs(local_parent, exist_ok=True)
+                with open(local_path, "w", encoding="utf-8") as file:
+                    file.write(files_payload[rel_path])
+                text_file_count += 1
+
+            images_payload = result_payload["images"] if "images" in result_payload else {}
+            for rel_path in images_payload:
+                image_info = images_payload[rel_path]
+                if "data" not in image_info:
+                    continue
+                local_path = os.path.join(job_dir, rel_path.replace("/", os.sep))
+                local_parent = os.path.dirname(local_path)
+                os.makedirs(local_parent, exist_ok=True)
+                image_bytes = base64.b64decode(image_info["data"])
+                with open(local_path, "wb") as file:
+                    file.write(image_bytes)
+                image_file_count += 1
+
+            metadata_path = os.path.join(job_dir, "modal_fetch_summary.json")
+            with open(metadata_path, "w", encoding="utf-8") as file:
+                json.dump(result_payload, file, indent=2)
+
+            print_message(
+                f"Saved Modal artifacts to {job_dir}\n"
+                f"Text files: {text_file_count}\n"
+                f"Images: {image_file_count}"
+            )
+            print_done()
+
+        self.run_in_background(background_fetch)
+
     def _session_start(self):
         print_message("Starting Protify session...")
         # Update session variables
         hf_token = self.settings_vars["huggingface_token"].get()
         synthyra_api_key = self.settings_vars["synthyra_api_key"].get()
         wandb_api_key = self.settings_vars["wandb_api_key"].get()
+        modal_api_key = self.settings_vars["modal_api_key"].get().strip()
+        modal_token_id = self.settings_vars["modal_token_id"].get().strip()
+        modal_token_secret = self.settings_vars["modal_token_secret"].get().strip()
 
         def background_login():
+            local_modal_token_id = modal_token_id
+            local_modal_token_secret = modal_token_secret
+            if modal_api_key and ((not local_modal_token_id) or (not local_modal_token_secret)):
+                local_modal_token_id, local_modal_token_secret = parse_modal_api_key(modal_api_key)
+
             if hf_token:
                 from huggingface_hub import login
                 login(hf_token)
                 print_message('Logged in to Hugging Face')
             if wandb_api_key:
-                print_message('Wandb not integrated yet')
+                try:
+                    import wandb
+                    wandb.login(key=wandb_api_key)
+                    print_message('Logged in to Weights & Biases')
+                except Exception as error:
+                    print_message(f'W&B login failed: {error}')
             if synthyra_api_key:
                 print_message('Synthyra API not integrated yet')
             
@@ -860,7 +1618,42 @@ class GUI(MainProcess):
             self.full_args.hf_token = hf_token
             self.full_args.synthyra_api_key = synthyra_api_key
             self.full_args.wandb_api_key = wandb_api_key
+            self.full_args.modal_api_key = modal_api_key if modal_api_key else None
+            self.full_args.modal_token_id = local_modal_token_id if local_modal_token_id else None
+            self.full_args.modal_token_secret = local_modal_token_secret if local_modal_token_secret else None
             self.full_args.home_dir = self.settings_vars["home_dir"].get()
+            self.full_args.model_dtype = self._selected_model_dtype()
+            self.full_args.use_xformers = self.settings_vars["use_xformers"].get()
+            self.full_args.num_runs = self.settings_vars["num_runs"].get()
+            self.full_args.use_wandb_hyperopt = self.settings_vars["use_wandb_hyperopt"].get()
+            self.full_args.wandb_project = self.settings_vars["wandb_project"].get().strip() or "Protify"
+            wandb_entity = self.settings_vars["wandb_entity"].get().strip()
+            self.full_args.wandb_entity = wandb_entity if wandb_entity else None
+            self.full_args.sweep_config_path = self.settings_vars["sweep_config_path"].get().strip() or "yamls/sweep.yaml"
+            self.full_args.sweep_count = self.settings_vars["sweep_count"].get()
+            self.full_args.sweep_method = self.settings_vars["sweep_method"].get()
+            self.full_args.sweep_metric_cls = self.settings_vars["sweep_metric_cls"].get().strip() or "eval_loss"
+            self.full_args.sweep_metric_reg = self.settings_vars["sweep_metric_reg"].get().strip() or "eval_loss"
+            self.full_args.sweep_goal = self.settings_vars["sweep_goal"].get()
+            self.full_args.score_only = self.settings_vars["score_only"].get()
+            self.full_args.aa_to_dna = self.settings_vars["aa_to_dna"].get()
+            self.full_args.aa_to_rna = self.settings_vars["aa_to_rna"].get()
+            self.full_args.dna_to_aa = self.settings_vars["dna_to_aa"].get()
+            self.full_args.rna_to_aa = self.settings_vars["rna_to_aa"].get()
+            self.full_args.codon_to_aa = self.settings_vars["codon_to_aa"].get()
+            self.full_args.aa_to_codon = self.settings_vars["aa_to_codon"].get()
+            self.full_args.random_pair_flipping = self.settings_vars["random_pair_flipping"].get()
+            self.full_args.data_dirs = []
+
+            if self.full_args.modal_token_id:
+                os.environ["MODAL_TOKEN_ID"] = self.full_args.modal_token_id
+            if self.full_args.modal_token_secret:
+                os.environ["MODAL_TOKEN_SECRET"] = self.full_args.modal_token_secret
+
+            if self.full_args.use_xformers:
+                os.environ["_USE_XFORMERS"] = "1"
+            elif "_USE_XFORMERS" in os.environ:
+                del os.environ["_USE_XFORMERS"]
             
             # Handle hf_home - convert empty string to None
             hf_home_value = self.settings_vars["hf_home"].get().strip()
@@ -909,12 +1702,14 @@ class GUI(MainProcess):
         
         self.full_args.transformer_dropout = self.settings_vars["transformer_dropout"].get()
         self.full_args.token_attention = self.settings_vars["token_attention"].get()
+        self.full_args.use_bias = self.settings_vars["use_bias"].get()
+        self.full_args.add_token_ids = self.settings_vars["add_token_ids"].get()
         
         self.full_args.sim_type = self.settings_vars["sim_type"].get()
         self.full_args.save_model = self.settings_vars["save_model"].get()
         self.full_args.production_model = self.settings_vars["production_model"].get()
         
-        self.full_args.use_lora = self.settings_vars["lora"].get()
+        self.full_args.lora = self.settings_vars["lora"].get()
         self.full_args.lora_r = self.settings_vars["lora_r"].get()
         self.full_args.lora_alpha = self.settings_vars["lora_alpha"].get()
         self.full_args.lora_dropout = self.settings_vars["lora_dropout"].get()
@@ -937,9 +1732,9 @@ class GUI(MainProcess):
         self.full_args.hybrid_probe = self.settings_vars["hybrid_probe"].get()
         self.full_args.full_finetuning = self.settings_vars["full_finetuning"].get()
         self.full_args.num_epochs = self.settings_vars["num_epochs"].get()
-        self.full_args.trainer_batch_size = self.settings_vars["probe_batch_size"].get()
+        self.full_args.probe_batch_size = self.settings_vars["probe_batch_size"].get()
         self.full_args.base_batch_size = self.settings_vars["base_batch_size"].get()
-        self.full_args.gradient_accumulation_steps = self.settings_vars["probe_grad_accum"].get()
+        self.full_args.probe_grad_accum = self.settings_vars["probe_grad_accum"].get()
         self.full_args.base_grad_accum = self.settings_vars["base_grad_accum"].get()
         self.full_args.lr = self.settings_vars["lr"].get()
         self.full_args.weight_decay = self.settings_vars["weight_decay"].get()
@@ -947,6 +1742,22 @@ class GUI(MainProcess):
         self.full_args.seed = self.settings_vars["seed"].get()
         self.full_args.read_scaler = self.settings_vars["read_scaler"].get()
         self.full_args.deterministic = self.settings_vars["deterministic"].get()
+        self.full_args.num_runs = self.settings_vars["num_runs"].get()
+        self.full_args.use_wandb_hyperopt = self.settings_vars["use_wandb_hyperopt"].get()
+        self.full_args.wandb_project = self.settings_vars["wandb_project"].get().strip() or "Protify"
+        wandb_entity = self.settings_vars["wandb_entity"].get().strip()
+        self.full_args.wandb_entity = wandb_entity if wandb_entity else None
+        self.full_args.sweep_config_path = self.settings_vars["sweep_config_path"].get().strip() or "yamls/sweep.yaml"
+        self.full_args.sweep_count = self.settings_vars["sweep_count"].get()
+        self.full_args.sweep_method = self.settings_vars["sweep_method"].get()
+        self.full_args.sweep_metric_cls = self.settings_vars["sweep_metric_cls"].get().strip() or "eval_loss"
+        self.full_args.sweep_metric_reg = self.settings_vars["sweep_metric_reg"].get().strip() or "eval_loss"
+        self.full_args.sweep_goal = self.settings_vars["sweep_goal"].get()
+        self.full_args.use_xformers = self.settings_vars["use_xformers"].get()
+        if self.full_args.use_xformers:
+            os.environ["_USE_XFORMERS"] = "1"
+        elif "_USE_XFORMERS" in os.environ:
+            del os.environ["_USE_XFORMERS"]
         
         # Create TrainerArguments
         self.trainer_args = TrainerArguments(**self.full_args.__dict__)
@@ -957,7 +1768,11 @@ class GUI(MainProcess):
         self._write_args()
         
         def background_train():
-            if self.full_args.full_finetuning:
+            if self.full_args.use_wandb_hyperopt:
+                if not self.full_args.full_finetuning:
+                    self.save_embeddings_to_disk()
+                HyperoptModule.run_wandb_hyperopt(self)
+            elif self.full_args.full_finetuning:
                 self.run_full_finetuning()
             elif self.full_args.hybrid_probe:
                 self.run_hybrid_probes()
@@ -983,6 +1798,7 @@ class GUI(MainProcess):
         self.full_args.scoring_window = self.settings_vars["scoring_window"].get()
         self.full_args.pg_batch_size = self.settings_vars["pg_batch_size"].get()
         self.full_args.compare_scoring_methods = self.settings_vars["compare_scoring_methods"].get()
+        self.full_args.score_only = self.settings_vars["score_only"].get()
         
         # Update logger args
         args_dict = {k: v for k, v in self.full_args.__dict__.items() if k != 'all_seqs' and 'token' not in k.lower() and 'api' not in k.lower()}
@@ -1020,14 +1836,54 @@ class GUI(MainProcess):
 
     def _run_scikit(self):
         print_message("Starting Scikit-learn models...")
+        assert "datasets" in self.__dict__, "Datasets are not loaded. Run the Data tab first."
+        assert len(self.datasets) > 0, "No datasets are loaded. Run the Data tab first."
+        assert "all_seqs" in self.__dict__, "Sequences are not loaded. Run the Data tab first."
+        assert len(self.all_seqs) > 0, "No sequences are loaded. Run the Data tab first."
         
-        # Gather settings
+        # Gather model settings
+        selected_indices = self.model_listbox.curselection()
+        selected_models = [self.model_listbox.get(i) for i in selected_indices]
+        if not selected_models:
+            selected_models = standard_models
+        self.full_args.model_names = selected_models
+        self.full_args.model_dtype = self._selected_model_dtype()
+        self.full_args.use_xformers = self.settings_vars["use_xformers"].get()
+        self.model_args = BaseModelArguments(**self.full_args.__dict__)
+
+        # Gather embedding settings
+        pooling_str = self.settings_vars["embedding_pooling_types"].get().strip()
+        pooling_list = [p.strip() for p in pooling_str.split(",") if p.strip()]
+        dtype_val = self._selected_embed_dtype()
+
+        self.full_args.embedding_batch_size = self.settings_vars["batch_size"].get()
+        self.full_args.embedding_num_workers = self.settings_vars["num_workers"].get()
+        self.full_args.download_embeddings = self.settings_vars["download_embeddings"].get()
+        self.full_args.matrix_embed = self.settings_vars["matrix_embed"].get()
+        self.full_args.embedding_pooling_types = pooling_list
+        self.full_args.save_embeddings = True
+        self.full_args.embed_dtype = dtype_val
+        self.full_args.sql = self.settings_vars["sql"].get()
+        self._sql = self.full_args.sql
+        self._full = self.full_args.matrix_embed
+        self.embedding_args = EmbeddingArguments(**self.full_args.__dict__)
+
+        # Gather scikit settings
         self.full_args.use_scikit = self.settings_vars["use_scikit"].get()
         self.full_args.scikit_n_iter = self.settings_vars["scikit_n_iter"].get()
         self.full_args.scikit_cv = self.settings_vars["scikit_cv"].get()
         self.full_args.scikit_random_state = self.settings_vars["scikit_random_state"].get()
-        self.full_args.scikit_model_name = self.settings_vars["scikit_model_name"].get()
+        scikit_model_name = self.settings_vars["scikit_model_name"].get().strip()
+        if scikit_model_name:
+            self.full_args.scikit_model_name = scikit_model_name
+        else:
+            self.full_args.scikit_model_name = None
         self.full_args.n_jobs = self.settings_vars["n_jobs"].get()
+        self.full_args.n_iter = self.full_args.scikit_n_iter
+        self.full_args.cv = self.full_args.scikit_cv
+        self.full_args.random_state = self.full_args.scikit_random_state
+        self.full_args.model_name = self.full_args.scikit_model_name
+        self.scikit_args = self._build_scikit_args()
         
         # Update logger args
         args_dict = {k: v for k, v in self.full_args.__dict__.items() if k != 'all_seqs' and 'token' not in k.lower() and 'api' not in k.lower()}
@@ -1035,6 +1891,7 @@ class GUI(MainProcess):
         self._write_args()
         
         def background_scikit():
+            self.save_embeddings_to_disk()
             self.run_scikit_scheme()
             print_done()
             
@@ -1052,6 +1909,12 @@ class GUI(MainProcess):
 
         # Update full_args with model settings
         self.full_args.model_names = selected_models
+        self.full_args.model_dtype = self._selected_model_dtype()
+        self.full_args.use_xformers = self.settings_vars["use_xformers"].get()
+        if self.full_args.use_xformers:
+            os.environ["_USE_XFORMERS"] = "1"
+        elif "_USE_XFORMERS" in os.environ:
+            del os.environ["_USE_XFORMERS"]
         print_message(self.full_args.model_names)
         # Create model args from full args
         self.model_args = BaseModelArguments(**self.full_args.__dict__)
@@ -1073,18 +1936,27 @@ class GUI(MainProcess):
         # Gather settings
         selected_indices = self.data_listbox.curselection()
         selected_datasets = [self.data_listbox.get(i) for i in selected_indices]
+        data_dirs_str = self.settings_vars["data_dirs"].get().strip()
+        data_dirs = [path.strip() for path in data_dirs_str.split(",") if path.strip()]
         
-        if not selected_datasets:
+        if (not selected_datasets) and (len(data_dirs) == 0):
             selected_datasets = standard_data_benchmark
             
         def background_get_data():
             # Update full_args with data settings
             self.full_args.data_names = selected_datasets
-            self.full_args.data_dirs = []
+            self.full_args.data_dirs = data_dirs
             self.full_args.max_length = self.settings_vars["max_length"].get()
             self.full_args.trim = self.settings_vars["trim"].get()
             self.full_args.delimiter = self.settings_vars["delimiter"].get()
-            self.full_args.col_names = self.settings_vars["col_names"].get().split(",")
+            self.full_args.col_names = [name.strip() for name in self.settings_vars["col_names"].get().split(",") if name.strip()]
+            self.full_args.aa_to_dna = self.settings_vars["aa_to_dna"].get()
+            self.full_args.aa_to_rna = self.settings_vars["aa_to_rna"].get()
+            self.full_args.dna_to_aa = self.settings_vars["dna_to_aa"].get()
+            self.full_args.rna_to_aa = self.settings_vars["rna_to_aa"].get()
+            self.full_args.codon_to_aa = self.settings_vars["codon_to_aa"].get()
+            self.full_args.aa_to_codon = self.settings_vars["aa_to_codon"].get()
+            self.full_args.random_pair_flipping = self.settings_vars["random_pair_flipping"].get()
             
             # Handle multi_column - convert space-separated string to list or None
             multi_column_str = self.settings_vars["multi_column"].get().strip()
@@ -1099,6 +1971,12 @@ class GUI(MainProcess):
             self._delimiter = self.full_args.delimiter
             self._col_names = self.full_args.col_names
             self._multi_column = self.full_args.multi_column
+            self._aa_to_dna = self.full_args.aa_to_dna
+            self._aa_to_rna = self.full_args.aa_to_rna
+            self._dna_to_aa = self.full_args.dna_to_aa
+            self._rna_to_aa = self.full_args.rna_to_aa
+            self._codon_to_aa = self.full_args.codon_to_aa
+            self._aa_to_codon = self.full_args.aa_to_codon
 
             # Create data args and get datasets
             self.data_args = DataArguments(**self.full_args.__dict__)
@@ -1121,12 +1999,12 @@ class GUI(MainProcess):
         print_message("Computing embeddings...")
         pooling_str = self.settings_vars["embedding_pooling_types"].get().strip()
         pooling_list = [p.strip() for p in pooling_str.split(",") if p.strip()]
-        dtype_str = self.settings_vars["embed_dtype"].get()
-        dtype_val = self.dtype_map.get(dtype_str, torch.float32)
+        dtype_val = self._selected_embed_dtype()
         
         def background_get_embeddings():
             # Update full args
             self.full_args.all_seqs = self.all_seqs
+            self.full_args.model_dtype = self._selected_model_dtype()
             self.full_args.embedding_batch_size = self.settings_vars["batch_size"].get()
             self.full_args.embedding_num_workers = self.settings_vars["num_workers"].get()
             self.full_args.download_embeddings = self.settings_vars["download_embeddings"].get()
@@ -1149,8 +2027,6 @@ class GUI(MainProcess):
             print_done()
             
         self.run_in_background(background_get_embeddings)
-
-        self.run_in_background(background_run_scikit)
 
     def _browse_replay_log(self):
         filename = filedialog.askopenfilename(

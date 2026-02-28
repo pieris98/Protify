@@ -285,6 +285,38 @@ pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=
   ```
   
   It's recommended to use the user interface alongside an open terminal, as helpful messages and progressbars will show in the terminal while you press the GUI buttons.
+ 
+  ### Run jobs on Modal from the GUI
+ 
+  Protify now includes a dedicated **Modal** tab in the Tk GUI. This replaces the previous browser-based Gradio Modal UI flow.
+ 
+  1. Install Modal locally (same environment as Protify):
+ 
+  ```bash
+  python -m pip install modal
+  ```
+ 
+  2. Provide Modal credentials in the GUI Info tab:
+     - Preferred: `modal_token_id` + `modal_token_secret`
+     - Backward-compatible: `modal_api_key` in `token_id:token_secret` format
+ 
+  3. In the **Modal** tab:
+     - Set `Modal App Name` and backend path (`src/protify/modal_backend.py`)
+     - Select GPU type and timeout
+     - Click **Deploy Modal Backend**
+ 
+  4. Click **Submit Remote Run** to launch the current GUI configuration on Modal.
+ 
+  5. Use **Poll Status** (or auto polling) to monitor:
+     - job status (`PENDING`, `RUNNING`, `SUCCESS`, `FAILED`, `TERMINATED`, `TIMEOUT`)
+     - current phase and heartbeat age
+     - live log tail
+ 
+  6. Click **Fetch Logs/Results/Plots** to download artifacts to your local `modal_artifacts` directory (configurable in the Modal tab).
+ 
+  Notes:
+  - Pass your Hugging Face and W&B tokens in the GUI Info tab so remote runs can authenticate for gated model access, experiment tracking, and Hub uploads.
+  - The Modal backend keeps heartbeat/status updates in persistent storage so the local GUI can detect stalled or failed jobs.
   
   ### An example workflow
   
@@ -350,6 +382,32 @@ pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=
   ```
   python -m main --replay_path logs/your_log_id.txt
   ```
+
+  ### CLI auto-run on Modal
+
+  If you pass Modal credentials as CLI arguments, Protify will automatically run remotely on Modal instead of local execution.
+
+  ```bash
+  python -m main \
+    --modal_token_id YOUR_MODAL_TOKEN_ID \
+    --modal_token_secret YOUR_MODAL_TOKEN_SECRET \
+    --rebuild_modal \
+    --delete_modal_embeddings \
+    --model_names ESM2-8 \
+    --data_names EC
+  ```
+
+  Behavior:
+  - Triggers only when Modal credentials are explicitly provided in CLI args (`--modal_token_id` / `--modal_token_secret` or `--modal_api_key`).
+  - `--rebuild_modal` forces a fresh deploy of `src/protify/modal_backend.py` before execution.
+  - `--delete_modal_embeddings` clears `/data/embeddings` on the Modal volume before job submission (or can be run as a maintenance-only command when no dataset/proteingym run is requested).
+  - Automatically deploys `src/protify/modal_backend.py` if submit/delete fails before app/function lookup succeeds.
+  - Submits the remote job, streams incremental remote logs to your local terminal, and uses the Modal `FunctionCall` result as the terminal source of truth.
+  - Requires the currently deployed backend to provide `get_job_log_delta` (no legacy log-tail fallback).
+  - On completion, fetches artifacts and exits with:
+    - `0` on success
+    - non-zero on failed/terminated/timeout jobs
+  - Saves fetched artifacts to `modal_artifacts/<job_id>` by default.
 
 </details>
 

@@ -512,13 +512,6 @@ class GUI(MainProcess):
         # Transformer Probe Settings
         ttk.Label(self.probe_tab, text="=== Transformer Probe Settings ===").grid(row=6, column=0, columnspan=2, pady=10)
 
-        # Transformer Hidden Dimension
-        ttk.Label(self.probe_tab, text="Transformer Hidden Dimension:").grid(row=7, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["transformer_hidden_size"] = tk.IntVar(value=512)
-        spin_transformer_hidden_size = ttk.Spinbox(self.probe_tab, from_=64, to=4096, textvariable=self.settings_vars["transformer_hidden_size"])
-        spin_transformer_hidden_size.grid(row=7, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 7, 2, "Internal hidden dimension for transformer probe (512 recommended).")
-
         # FF Dimension
         ttk.Label(self.probe_tab, text="Classifier Dimension:").grid(row=8, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["classifier_size"] = tk.IntVar(value=4096)
@@ -1290,7 +1283,7 @@ class GUI(MainProcess):
             "probe_type": self.settings_vars["probe_type"].get(),
             "tokenwise": self.settings_vars["tokenwise"].get(),
             "hidden_size": self.settings_vars["hidden_size"].get(),
-            "transformer_hidden_size": self.settings_vars["transformer_hidden_size"].get(),
+
             "dropout": self.settings_vars["dropout"].get(),
             "n_layers": self.settings_vars["n_layers"].get(),
             "pre_ln": self.settings_vars["pre_ln"].get(),
@@ -1693,7 +1686,6 @@ class GUI(MainProcess):
         self.full_args.hidden_size = self.settings_vars["hidden_size"].get()
         self.full_args.dropout = self.settings_vars["dropout"].get()
         
-        self.full_args.transformer_hidden_size = self.settings_vars["transformer_hidden_size"].get()
         self.full_args.classifier_size = self.settings_vars["classifier_size"].get()
         self.full_args.classifier_dropout = self.settings_vars["classifier_dropout"].get()
         self.full_args.n_heads = self.settings_vars["n_heads"].get()

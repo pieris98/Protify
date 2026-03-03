@@ -29,11 +29,6 @@ parameters:
     values: [True, False]
   
   # Transformer probe specific parameters (only swept when probe_type=transformer)
-  transformer_hidden_size:
-    distribution: q_uniform
-    min: 64
-    max: 2048
-    q: 16
   classifier_dropout:
     distribution: uniform
     min: 0.0

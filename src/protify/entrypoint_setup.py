@@ -1,6 +1,5 @@
 import os
 
-
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # Only error/warning messages
 os.environ['DISABLE_PANDERA_IMPORT_WARNING'] = 'true'
 os.environ['HF_HUB_ENABLE_HF_TRANSFER'] = '1'
@@ -9,6 +8,19 @@ os.environ['TOKENIZERS_PARALLELISM'] = 'true'
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
+# Suppress TensorFlow deprecation warning for tf.losses.sparse_softmax_cross_entropy
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings(
+        "ignore",
+        message="The name tf.losses.sparse_softmax_cross_entropy is deprecated. Please use tf.compat.v1.losses.sparse_softmax_cross_entropy instead.",
+        category=FutureWarning,
+        module=".*tf_keras\\.src\\.losses.*"
+    )
+    try:
+        import tensorflow as tf
+    except ImportError:
+        pass
 
 import torch
 import torch._inductor.config as inductor_config
@@ -29,7 +41,6 @@ inductor_config.max_autotune_gemm_backends = "ATEN,CUTLASS,FBGEMM"
 
 dynamo.config.capture_scalar_outputs = True
 torch._dynamo.config.recompile_limit = 64
-
 
 try:
     import wandb

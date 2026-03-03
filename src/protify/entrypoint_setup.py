@@ -40,7 +40,7 @@ torch.backends.cudnn.benchmark = True
 inductor_config.max_autotune_gemm_backends = "ATEN,CUTLASS,FBGEMM"    
 
 dynamo.config.capture_scalar_outputs = True
-torch._dynamo.config.recompile_limit = 64
+torch._dynamo.config.recompile_limit = 16
 
 try:
     import wandb

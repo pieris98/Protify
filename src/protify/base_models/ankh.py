@@ -113,12 +113,12 @@ class AnkhForProteinGym(nn.Module):
         return log_probs
 
 
-def get_ankh_tokenizer(preset: str):
+def get_ankh_tokenizer(preset: str, model_path: str = None):
     return ANKHTokenizerWrapper(AutoTokenizer.from_pretrained('Synthyra/ANKH_base'))
 
 
-def build_ankh_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
-    model_path = presets[preset]
+def build_ankh_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
+    model_path = model_path or presets[preset]
     if masked_lm:
         model = T5ForConditionalGeneration.from_pretrained(model_path, dtype=dtype).eval()
     else:
@@ -127,8 +127,8 @@ def build_ankh_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = 
     return model, tokenizer
 
 
-def get_ankh_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
-    model_path = presets[preset]
+def get_ankh_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
+    model_path = model_path or presets[preset]
     if hybrid:
         model = T5EncoderModel.from_pretrained(model_path, dtype=dtype).eval()
     else:

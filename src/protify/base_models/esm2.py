@@ -61,21 +61,22 @@ class FastEsmForEmbedding(nn.Module):
             return self.esm(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
 
 
-def get_esm2_tokenizer(preset: str):
+def get_esm2_tokenizer(preset: str, model_path: str = None):
     return ESM2TokenizerWrapper(EsmTokenizer.from_pretrained('facebook/esm2_t6_8M_UR50D'))
 
 
-def build_esm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
+def build_esm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
+    path = model_path or presets[preset]
     if masked_lm:
-        model = AutoModelForMaskedLM.from_pretrained(presets[preset], dtype=dtype, trust_remote_code=True).eval()
+        model = AutoModelForMaskedLM.from_pretrained(path, dtype=dtype, trust_remote_code=True).eval()
     else:
-        model = FastEsmForEmbedding(presets[preset], dtype=dtype).eval()
+        model = FastEsmForEmbedding(path, dtype=dtype).eval()
     tokenizer = get_esm2_tokenizer(preset)
     return model, tokenizer
 
 
-def get_esm2_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
-    model_path = presets[preset]
+def get_esm2_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
+    model_path = model_path or presets[preset]
     if hybrid:
         model = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:

@@ -373,12 +373,12 @@ class AmplifyForMaskedLM(nn.Module):
         )
 
 
-def get_amplify_tokenizer(preset: str):
-    return AmplifyTokenizerWrapper(AutoTokenizer.from_pretrained(presets[preset], trust_remote_code=True))
+def get_amplify_tokenizer(preset: str, model_path: str = None):
+    return AmplifyTokenizerWrapper(AutoTokenizer.from_pretrained(model_path or presets[preset], trust_remote_code=True))
 
 
-def build_amplify_model(preset: str, masked_lm: bool = False, **kwargs) -> Tuple[nn.Module, AutoTokenizer]:
-    model_path = presets[preset]
+def build_amplify_model(preset: str, masked_lm: bool = False, model_path: str = None, **kwargs) -> Tuple[nn.Module, AutoTokenizer]:
+    model_path = model_path or presets[preset]
     if masked_lm:
         model = AmplifyForMaskedLM(model_path).eval()
     else:
@@ -387,8 +387,8 @@ def build_amplify_model(preset: str, masked_lm: bool = False, **kwargs) -> Tuple
     return model, tokenizer
 
 
-def get_amplify_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
-    model_path = presets[preset]
+def get_amplify_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
+    model_path = model_path or presets[preset]
     if hybrid:
         model = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:

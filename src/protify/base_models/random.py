@@ -96,7 +96,7 @@ def _build_random_transformer_config(preset: str) -> TransformerConfig:
     return config
 
 
-def build_random_model(preset: str, masked_lm: bool = False, **kwargs):
+def build_random_model(preset: str, masked_lm: bool = False, model_path: str = None, **kwargs):
     tokenizer = EsmTokenizer.from_pretrained('facebook/esm2_t12_35M_UR50D')
     if preset == 'Random':
         model = RandomModel(EsmConfig.from_pretrained('facebook/esm2_t12_35M_UR50D'))

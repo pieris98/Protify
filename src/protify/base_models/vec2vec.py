@@ -477,21 +477,22 @@ class Vec2VecForEmbedding(nn.Module):
         return translated_ab
 
 
-def get_vec2vec_tokenizer(preset: str):
+def get_vec2vec_tokenizer(preset: str, model_path: str = None):
     # TODO work with new Vec2Vec .tokenizer_a and .tokenizer_b
+    path = model_path or all_presets_with_paths[preset]
     try:
-        tokenizer = AutoTokenizer.from_pretrained(all_presets_with_paths[preset], trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
     except:
-        model = AutoModel.from_pretrained(all_presets_with_paths[preset], trust_remote_code=True)
+        model = AutoModel.from_pretrained(path, trust_remote_code=True)
         tokenizer = AutoTokenizer.from_pretrained(model.config.tokenizer_name)
     return Vec2VecTokenizerWrapper(tokenizer)
 
 
-def build_vec2vec_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
+def build_vec2vec_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
     if masked_lm:
         raise ValueError("Masked LM is not supported for Vec2VecForEmbedding")
     else:
-        model_path = presets[preset]
+        model_path = model_path or presets[preset]
         config = Vec2VecConfig.from_pretrained(model_path)
         encoder_names = config.encoder_names
         encoder_dims = config.encoder_dims

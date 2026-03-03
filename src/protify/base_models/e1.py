@@ -58,13 +58,13 @@ class E1ForEmbedding(nn.Module):
             return self.e1(**kwargs, output_hidden_states=False, output_attentions=False).last_hidden_state
 
 
-def get_e1_tokenizer(preset: str):
+def get_e1_tokenizer(preset: str, model_path: str = None):
     tokenizer = E1BatchPreparer()
     return E1TokenizerWrapper(tokenizer)
 
 
-def build_e1_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
-    model_path = presets[preset]
+def build_e1_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
+    model_path = model_path or presets[preset]
     if masked_lm:
         model = AutoModelForMaskedLM.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:
@@ -73,8 +73,8 @@ def build_e1_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = No
     return model, tokenizer
 
 
-def get_e1_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
-    model_path = presets[preset]
+def get_e1_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
+    model_path = model_path or presets[preset]
     if hybrid:
         model = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:

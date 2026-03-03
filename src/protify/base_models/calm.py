@@ -969,24 +969,25 @@ class CaLmForEmbedding(nn.Module):
             return self.calm(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
 
 
-def get_calm_tokenizer(preset: str):
+def get_calm_tokenizer(preset: str, model_path: str = None):
     normalized_preset = _normalize_calm_preset(preset)
-    return CaLMTokenizerWrapper(RnaTokenizer.from_pretrained(presets[normalized_preset]))
+    return CaLMTokenizerWrapper(RnaTokenizer.from_pretrained(model_path or presets[normalized_preset]))
 
 
-def build_calm_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
+def build_calm_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
     normalized_preset = _normalize_calm_preset(preset)
+    path = model_path or presets[normalized_preset]
     if masked_lm:
         raise ValueError(f"Model {preset} does not support masked language modeling")
     else:
-        model = CaLmForEmbedding(presets[normalized_preset], dtype=dtype).eval()
-    tokenizer = get_calm_tokenizer(normalized_preset)
+        model = CaLmForEmbedding(path, dtype=dtype).eval()
+    tokenizer = get_calm_tokenizer(normalized_preset, model_path=model_path)
     return model, tokenizer
 
 
-def get_calm_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
+def get_calm_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
     normalized_preset = _normalize_calm_preset(preset)
-    model_path = presets[normalized_preset]
+    model_path = model_path or presets[normalized_preset]
     if hybrid:
         model = _load_calm_backbone(model_path, add_pooling_layer=False, dtype=dtype).eval()
     else:

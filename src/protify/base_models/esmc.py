@@ -55,22 +55,23 @@ class ESMplusplusForEmbedding(nn.Module):
             return self.esm(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
 
 
-def get_esmc_tokenizer(preset: str):
+def get_esmc_tokenizer(preset: str, model_path: str = None):
     tokenizer = EsmSequenceTokenizer()
     return ESMTokenizerWrapper(tokenizer)
 
 
-def build_esmc_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
+def build_esmc_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
+    path = model_path or presets[preset]
     if masked_lm:
-        model = AutoModelForMaskedLM.from_pretrained(presets[preset], dtype=dtype, trust_remote_code=True).eval()
+        model = AutoModelForMaskedLM.from_pretrained(path, dtype=dtype, trust_remote_code=True).eval()
     else:
-        model = ESMplusplusForEmbedding(presets[preset], dtype=dtype).eval()
+        model = ESMplusplusForEmbedding(path, dtype=dtype).eval()
     tokenizer = get_esmc_tokenizer(preset)
     return model, tokenizer
 
 
-def get_esmc_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
-    model_path = presets[preset]
+def get_esmc_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
+    model_path = model_path or presets[preset]
     if hybrid:
         model = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:

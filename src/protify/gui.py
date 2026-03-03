@@ -1274,6 +1274,8 @@ class GUI(MainProcess):
             "aa_to_codon": self.settings_vars["aa_to_codon"].get(),
             "random_pair_flipping": self.settings_vars["random_pair_flipping"].get(),
             "model_names": selected_models,
+            "model_paths": None,
+            "model_types": None,
             "model_dtype": self.settings_vars["model_dtype"].get(),
             "use_xformers": self.settings_vars["use_xformers"].get(),
             "embedding_batch_size": self.settings_vars["batch_size"].get(),
@@ -1847,6 +1849,8 @@ class GUI(MainProcess):
         if not selected_models:
             selected_models = standard_models
         self.full_args.model_names = selected_models
+        self.full_args.model_paths = None
+        self.full_args.model_types = None
         self.full_args.model_dtype = self._selected_model_dtype()
         self.full_args.use_xformers = self.settings_vars["use_xformers"].get()
         self.model_args = BaseModelArguments(**self.full_args.__dict__)
@@ -1909,6 +1913,8 @@ class GUI(MainProcess):
 
         # Update full_args with model settings
         self.full_args.model_names = selected_models
+        self.full_args.model_paths = None
+        self.full_args.model_types = None
         self.full_args.model_dtype = self._selected_model_dtype()
         self.full_args.use_xformers = self.settings_vars["use_xformers"].get()
         if self.full_args.use_xformers:

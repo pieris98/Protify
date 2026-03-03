@@ -224,12 +224,8 @@ def embed_and_diagnose(
         embedder = Embedder(embedder_args, sequences)
         
         try:
-            if 'custom' in model_name.lower():
-                clean_model_name = model_name.split('---')[-1].split('/')[-1]
-            else:
-                clean_model_name = model_name
             # read embeddings from disk if they exist
-            to_embed, save_path, embeddings_dict = embedder._read_embeddings_from_disk(clean_model_name)
+            to_embed, save_path, embeddings_dict = embedder._read_embeddings_from_disk(model_name)
             
             if len(to_embed) > 0:
                 result = embedder._embed_sequences(

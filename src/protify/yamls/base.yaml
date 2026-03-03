@@ -36,6 +36,11 @@ data_dirs: []
 # BaseModelArguments:
 model_names:
   - ESM2-8
+# Alternative: use model_paths + model_types instead of model_names (mutually exclusive)
+# model_paths:
+#   - answerdotai/ModernBERT-base
+# model_types:
+#   - custom
 
 
 # ProbeArguments:

@@ -88,12 +88,12 @@ class gLM2GAIAForEmbedding(nn.Module):
         return out.last_hidden_state
 
 
-def get_glm2_tokenizer(preset: str):
-    return GLMTokenizerWrapper(AutoTokenizer.from_pretrained(presets[preset], trust_remote_code=True))
+def get_glm2_tokenizer(preset: str, model_path: str = None):
+    return GLMTokenizerWrapper(AutoTokenizer.from_pretrained(model_path or presets[preset], trust_remote_code=True))
 
 
-def build_glm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
-    model_path = presets[preset]
+def build_glm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
+    model_path = model_path or presets[preset]
     if masked_lm:
         model = AutoModelForMaskedLM.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:
@@ -105,8 +105,8 @@ def build_glm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = 
     return model, tokenizer
 
 
-def get_glm2_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
-    model_path = presets[preset]
+def get_glm2_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
+    model_path = model_path or presets[preset]
     if hybrid:
         model = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:

@@ -53,19 +53,19 @@ class Prott5ForEmbedding(nn.Module):
             return self.plm(input_ids, attention_mask=attention_mask).last_hidden_state
 
 
-def get_prott5_tokenizer(preset: str):
-    return T5TokenizerWrapper(T5Tokenizer.from_pretrained(presets[preset]))
+def get_prott5_tokenizer(preset: str, model_path: str = None):
+    return T5TokenizerWrapper(T5Tokenizer.from_pretrained(model_path or presets[preset]))
 
 
-def build_prott5_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
-    model_path = presets[preset]
+def build_prott5_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
+    model_path = model_path or presets[preset]
     model = Prott5ForEmbedding(model_path, dtype=dtype).eval()
     tokenizer = get_prott5_tokenizer(preset)
     return model, tokenizer
 
 
-def get_prott5_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
-    model_path = presets[preset]
+def get_prott5_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
+    model_path = model_path or presets[preset]
     if hybrid:
         model = T5EncoderModel.from_pretrained(model_path, dtype=dtype).eval()
     else:

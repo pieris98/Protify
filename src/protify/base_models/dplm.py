@@ -393,18 +393,18 @@ class DPLMForEmbedding(nn.Module):
                 return self.dplm(input_ids, attention_mask=attention_mask)['last_hidden_state']
 
 
-def get_dplm_tokenizer(preset: str):
+def get_dplm_tokenizer(preset: str, model_path: str = None):
     return DPLMTokenizerWrapper(EsmTokenizer.from_pretrained('facebook/esm2_t6_8M_UR50D'))
 
 
-def build_dplm_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
-    model = DPLMForEmbedding(presets[preset], return_logits=masked_lm, dtype=dtype).eval()
+def build_dplm_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
+    model = DPLMForEmbedding(model_path or presets[preset], return_logits=masked_lm, dtype=dtype).eval()
     tokenizer = get_dplm_tokenizer(preset)
     return model, tokenizer
 
 
-def get_dplm_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None):
-    model_path = presets[preset]
+def get_dplm_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
+    model_path = model_path or presets[preset]
     if hybrid:
         model = EsmForDPLM.from_pretrained(model_path, dtype=dtype).eval()
     else:

@@ -52,16 +52,16 @@ class ProtCLMForEmbedding(nn.Module):
         return out.last_hidden_state
 
 
-def get_protCLM_tokenizer(preset: str) -> BaseSequenceTokenizer:
+def get_protCLM_tokenizer(preset: str, model_path: str = None) -> BaseSequenceTokenizer:
     return ProtCLMTokenizerWrapper(
-        AutoTokenizer.from_pretrained(presets[preset], trust_remote_code=True)
+        AutoTokenizer.from_pretrained(model_path or presets[preset], trust_remote_code=True)
     )
 
 
-def build_protCLM(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs) -> Tuple[AutoModel, BaseSequenceTokenizer]:
+def build_protCLM(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs) -> Tuple[AutoModel, BaseSequenceTokenizer]:
     if masked_lm:
         raise ValueError(f"Model {preset} does not support masked language modeling")
-    model_path = presets[preset]
+    model_path = model_path or presets[preset]
     model = ProtCLMForEmbedding(model_path, dtype=dtype).eval()
     tokenizer = get_protCLM_tokenizer(preset)
     return model, tokenizer
@@ -73,8 +73,9 @@ def get_protCLM_for_training(
     num_labels: int = None,
     hybrid: bool = False,
     dtype: torch.dtype = None,
+    model_path: str = None,
     ):
-    model_path = presets[preset]
+    model_path = model_path or presets[preset]
     if hybrid:
         model = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
     else:

@@ -374,6 +374,28 @@ pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=
   ```
   python -m main --model_names ESM2-8 ESM2-35 ESMC-300 ProtBert ANKH-Base Random Random-Transformer --data_names EC DeepLoc-2 enzyme-kcat MB solubility --patience 3
   ```
+
+  ### Using custom or non-preset models
+
+  Instead of preset `--model_names`, you can use `--model_paths` and `--model_types` to load any HuggingFace or local model directly. The two lists are positionally paired and mutually exclusive with `--model_names`.
+
+  Load a custom model via `AutoModel`:
+  ```
+  python -m main --model_paths answerdotai/ModernBERT-base --model_types custom --data_names DeepLoc-2
+  ```
+
+  Load a fine-tuned version of a known architecture:
+  ```
+  python -m main --model_paths my-org/finetuned-esm2 --model_types esm2 --data_names DeepLoc-2
+  ```
+
+  Mix multiple models of different types:
+  ```
+  python -m main --model_paths Synthyra/ESM2-8M answerdotai/ModernBERT-base --model_types esm2 custom --data_names DeepLoc-2
+  ```
+
+  Valid `--model_types` values: `esm2`, `dsm`, `esmc`, `protbert`, `prott5`, `ankh`, `glm`, `dplm`, `dplm2`, `protclm`, `onehot`, `amplify`, `e1`, `vec2vec`, `calm`, `custom`, `random`.
+
   Or, set up a yaml file with your desired settings (so you don't have to type out everything in the CLI)
   ```
   python -m main --yaml_path yamls/your_custom_yaml_path.yaml

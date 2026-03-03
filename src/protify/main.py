@@ -52,7 +52,9 @@ def parse_arguments():
     parser.add_argument("--random_pair_flipping", action="store_true", default=False, help="Enable random swapping of paired inputs during training.")
 
     # ----------------- BaseModelArguments ----------------- #
-    parser.add_argument("--model_names", nargs="+", default=["ESM2-8"], help="List of model names to use. To use a custom model, use the format 'custom---<path_to_model>'.")
+    parser.add_argument("--model_names", nargs="+", default=None, help="List of preset model names to use (e.g. ESM2-8). Mutually exclusive with --model_paths/--model_types.")
+    parser.add_argument("--model_paths", nargs="+", default=None, help="List of model paths (HuggingFace or local). Must be paired with --model_types. Mutually exclusive with --model_names.")
+    parser.add_argument("--model_types", nargs="+", default=None, help="List of model type keywords paired with --model_paths (e.g. esm2, esmc, protbert, prott5, ankh, glm, dplm, dplm2, protclm, onehot, amplify, e1, vec2vec, calm, custom, random).")
     parser.add_argument("--model_dtype", type=str, choices=["fp32", "fp16", "bf16", "float32", "float16", "bfloat16"], default="bf16", help="Data type for loading base models.")
     parser.add_argument("--use_xformers", action="store_true", default=False, help="Use xformers memory efficient attention for AMPLIFY models (default: False).")
 
@@ -156,6 +158,17 @@ def parse_arguments():
     parser.add_argument("--sweep_metric_reg",type=str,default="eval_loss", help="Regression metric to optimize during sweep (e.g., eval_r_squared, eval_spearman_rho, eval_pearson_rho)")
     parser.add_argument("--sweep_goal", type=str, default='minimize', choices=['maximize', 'minimize'], help="Goal for the sweep metric (maximize/minimize)")
     args = parser.parse_args()
+
+    # Validate model_names vs model_paths/model_types mutual exclusivity
+    if args.model_paths is not None:
+        assert args.model_types is not None, "--model_types is required when --model_paths is provided."
+        assert len(args.model_paths) == len(args.model_types), f"--model_paths ({len(args.model_paths)}) and --model_types ({len(args.model_types)}) must have the same length."
+        assert args.model_names is None, "--model_names cannot be used together with --model_paths/--model_types."
+    elif args.model_types is not None:
+        assert args.model_paths is not None, "--model_paths is required when --model_types is provided."
+    if args.model_names is None and args.model_paths is None:
+        args.model_names = ["ESM2-8"]
+
     args.modal_cli_credentials_provided = (
         ("--modal_api_key" in raw_argv)
         or ("--modal_token_id" in raw_argv)
@@ -290,6 +303,12 @@ def parse_arguments():
             yaml_args.model_dtype = args.model_dtype
         if "embed_dtype" not in yaml_args.__dict__:
             yaml_args.embed_dtype = args.embed_dtype
+        if "model_paths" not in yaml_args.__dict__:
+            yaml_args.model_paths = args.model_paths
+        if "model_types" not in yaml_args.__dict__:
+            yaml_args.model_types = args.model_types
+        if "model_names" not in yaml_args.__dict__:
+            yaml_args.model_names = args.model_names
         return yaml_args
     else:
         return args
@@ -454,10 +473,10 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
     def save_embeddings_to_disk(self):
         self.embedding_args.save_embeddings = True
         embedder = Embedder(self.embedding_args, self.all_seqs)
-        for model_name in self.model_args.model_names:
-            _ = embedder(model_name)
+        for display_name, dispatch_type, model_path in self.model_args.model_entries():
+            _ = embedder(display_name, model_type=dispatch_type, model_path=model_path)
 
-    def _create_model_factory(self, model_name, tokenwise, num_labels, hybrid):
+    def _create_model_factory(self, model_name, tokenwise, num_labels, hybrid, model_path=None):
         """Function for creating fresh models in multi-run mode."""
         def factory():
             model, _ = get_base_model_for_training(
@@ -466,6 +485,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 num_labels=num_labels,
                 hybrid=hybrid,
                 dtype=self.model_args.model_dtype,
+                model_path=model_path,
             )
             if self.probe_args.lora:
                 model = wrap_lora(model, self.probe_args.lora_r, self.probe_args.lora_alpha, self.probe_args.lora_dropout)
@@ -575,6 +595,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             ppi=False,
             source_model_name=None,
             sweep_mode: bool = False,
+            model_path: str = None,
         ):
         if source_model_name is None:
             source_model_name = model_name
@@ -582,13 +603,14 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         num_labels = self.probe_args.num_labels
         num_runs = getattr(self.trainer_args, 'num_runs', 1)
         
-        model_factory = self._create_model_factory(model_name, tokenwise, num_labels, hybrid=False) if num_runs > 1 else None
+        model_factory = self._create_model_factory(model_name, tokenwise, num_labels, hybrid=False, model_path=model_path) if num_runs > 1 else None
         model, tokenizer = get_base_model_for_training(
             model_name,
             tokenwise=tokenwise,
             num_labels=num_labels,
             hybrid=False,
             dtype=self.model_args.model_dtype,
+            model_path=model_path,
         )
         if self.probe_args.lora:
             model = wrap_lora(model, self.probe_args.lora_r, self.probe_args.lora_alpha, self.probe_args.lora_dropout)
@@ -623,6 +645,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             ppi=False,
             source_model_name=None,
             sweep_mode: bool = False,
+            model_path: str = None,
         ):
         if source_model_name is None:
             source_model_name = model_name
@@ -653,7 +676,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         num_labels = self.probe_args.num_labels
         num_runs = getattr(self.trainer_args, 'num_runs', 1)
         
-        model_factory = self._create_model_factory(model_name, tokenwise, num_labels, hybrid=True) if num_runs > 1 else None
+        model_factory = self._create_model_factory(model_name, tokenwise, num_labels, hybrid=True, model_path=model_path) if num_runs > 1 else None
         probe_factory = self._create_probe_factory() if num_runs > 1 else None
         model, tokenizer = get_base_model_for_training(
             model_name,
@@ -661,6 +684,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             num_labels=num_labels,
             hybrid=True,
             dtype=self.model_args.model_dtype,
+            model_path=model_path,
         )
         if self.probe_args.lora:
             model = wrap_lora(model, self.probe_args.lora_r, self.probe_args.lora_alpha, self.probe_args.lora_dropout)
@@ -692,15 +716,15 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
     def run_full_finetuning(self):
         total_combinations = len(self.model_args.model_names) * len(self.datasets)
         self.logger.info(f"Processing {total_combinations} model/dataset combinations")
-        for model_name in self.model_args.model_names:
+        for display_name, dispatch_type, model_path in self.model_args.model_entries():
             for data_name, dataset in self.datasets.items():
                 self.logger.info(f"Processing dataset: {data_name}")
                 train_set, valid_set, test_set, num_labels, label_type, ppi = dataset
                 self.probe_args.num_labels = num_labels
                 self.probe_args.task_type = label_type
                 self.trainer_args.task_type = label_type
-                self.logger.info(f'Training probe for {data_name} with {model_name}')
-                _ = self._run_full_finetuning(model_name, data_name, train_set, valid_set, test_set, ppi)
+                self.logger.info(f'Training probe for {data_name} with {display_name}')
+                _ = self._run_full_finetuning(dispatch_type, data_name, train_set, valid_set, test_set, ppi, model_path=model_path)
                 torch.cuda.empty_cache()
 
     @log_method_calls
@@ -714,23 +738,23 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         
         # for each model, gather the settings and embeddings
         # assumes save_embeddings_to_disk has already been called
-        for model_name in self.model_args.model_names:
-            self.logger.info(f"Processing model: {model_name}")
+        for display_name, dispatch_type, model_path in self.model_args.model_entries():
+            self.logger.info(f"Processing model: {display_name}")
     
             # get tokenizer
-            tokenizer = get_tokenizer(model_name)
+            tokenizer = get_tokenizer(dispatch_type, model_path=model_path)
 
             # get embedding size
             pooling_types = self.embedding_args.pooling_types
             if self._sql:
                 # for sql, the embeddings will be gathered in real time during training
-                filename = get_embedding_filename(model_name, self._full, pooling_types, 'db')
+                filename = get_embedding_filename(display_name, self._full, pooling_types, 'db')
                 save_path = os.path.join(self.embedding_args.embedding_save_dir, filename)
                 input_size = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
                 emb_dict = None
             else:
                 # for pth, the embeddings are loaded entirely into RAM and accessed during training
-                filename = get_embedding_filename(model_name, self._full, pooling_types, 'pth')
+                filename = get_embedding_filename(display_name, self._full, pooling_types, 'pth')
                 save_path = os.path.join(self.embedding_args.embedding_save_dir, filename)
                 emb_dict = torch_load(save_path)
                 input_size = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
@@ -752,11 +776,11 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 self.probe_args.task_type = label_type
                 ### TODO we currently need both, settings should probably be consolidated
                 self.trainer_args.task_type = label_type
-                self.logger.info(f'Training probe for {data_name} with {model_name}')
+                self.logger.info(f'Training probe for {data_name} with {display_name}')
                 ### TODO eventually add options for optimizers and schedulers
                 ### TODO here is probably where we can differentiate between the different training schemes
                 _ = self._run_hybrid_probe(
-                    model_name=model_name,
+                    model_name=dispatch_type,
                     data_name=data_name,
                     train_set=train_set,
                     valid_set=valid_set,
@@ -764,7 +788,8 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     tokenizer=tokenizer,
                     emb_dict=emb_dict,
                     ppi=ppi,
-                    source_model_name=model_name,
+                    source_model_name=display_name,
+                    model_path=model_path,
                 )
                 torch.cuda.empty_cache()
                 ### TODO may link from probe here to running inference on input csv or HF datasets
@@ -780,28 +805,23 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         
         # for each model, gather the settings and embeddings
         # assumes save_embeddings_to_disk has already been called
-        for model_name in self.model_args.model_names:
-            self.logger.info(f"Processing model: {model_name}")
+        for display_name, dispatch_type, model_path in self.model_args.model_entries():
+            self.logger.info(f"Processing model: {display_name}")
     
             # get tokenizer
-            tokenizer = get_tokenizer(model_name)
-
-            if 'custom' in model_name.lower():
-                clean_model_name = model_name.split('---')[-1].split('/')[-1]
-            else:
-                clean_model_name = model_name
+            tokenizer = get_tokenizer(dispatch_type, model_path=model_path)
 
             # get embedding size
             pooling_types = self.embedding_args.pooling_types
             if self._sql:
                 # for sql, the embeddings will be gathered in real time during training
-                filename = get_embedding_filename(clean_model_name, self._full, pooling_types, 'db')
+                filename = get_embedding_filename(display_name, self._full, pooling_types, 'db')
                 save_path = os.path.join(self.embedding_args.embedding_save_dir, filename)
                 input_size = self.get_embedding_dim_sql(save_path, test_seq, tokenizer)
                 emb_dict = None
             else:
                 # for pth, the embeddings are loaded entirely into RAM and accessed during training
-                filename = get_embedding_filename(clean_model_name, self._full, pooling_types, 'pth')
+                filename = get_embedding_filename(display_name, self._full, pooling_types, 'pth')
                 save_path = os.path.join(self.embedding_args.embedding_save_dir, filename)
                 emb_dict = torch_load(save_path)
                 input_size = self.get_embedding_dim_pth(emb_dict, test_seq, tokenizer)
@@ -825,11 +845,11 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 self.probe_args.task_type = label_type
                 ### TODO we currently need both, settings should probably be consolidated
                 self.trainer_args.task_type = label_type
-                self.logger.info(f'Training probe for {data_name} with {clean_model_name}')
+                self.logger.info(f'Training probe for {data_name} with {display_name}')
                 ### TODO eventually add options for optimizers and schedulers
                 ### TODO here is probably where we can differentiate between the different training schemes
                 _ = self._run_nn_probe(
-                    model_name=clean_model_name,
+                    model_name=display_name,
                     data_name=data_name,
                     train_set=train_set,
                     valid_set=valid_set,
@@ -837,7 +857,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                     tokenizer=tokenizer,
                     emb_dict=emb_dict,
                     ppi=ppi,
-                    source_model_name=model_name,
+                    source_model_name=display_name,
                 )
                 torch.cuda.empty_cache()
                 ### TODO may link from probe here to running inference on input csv or HF datasets
@@ -850,10 +870,10 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
             scikit_probe.n_jobs = self.full_args.n_jobs
         else:
             scikit_probe.n_jobs = 1
-        for model_name in self.model_args.model_names:
+        for display_name, dispatch_type, model_path in self.model_args.model_entries():
             for data_name, dataset in self.datasets.items():
                 ### find best scikit model and parameters via cross validation and lazy predict
-                X_train, y_train, X_valid, y_valid, X_test, y_test, label_type = self.prepare_scikit_dataset(model_name, dataset)
+                X_train, y_train, X_valid, y_valid, X_test, y_test, label_type = self.prepare_scikit_dataset(display_name, dataset)
                 
                 # If a specific model is specified, skip LazyPredict and go straight to that model
                 if self.scikit_args.model_name is not None:
@@ -872,7 +892,7 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
                 
                 # Log the results for plotting
                 metrics_dict = {'test_mcc': results.final_scores} if isinstance(results.final_scores, (int, float)) else results.final_scores
-                self.log_metrics(data_name, model_name, metrics_dict, split_name='test')
+                self.log_metrics(data_name, display_name, metrics_dict, split_name='test')
     
     @log_method_calls
     def generate_plots(self):
@@ -899,9 +919,10 @@ class MainProcess(MetricsLogger, DataMixin, TrainerMixin):
         dms_ids = expand_dms_ids_all(dms_ids, mode=mode)
         if len(dms_ids) == 0:
             raise ValueError("--dms_ids is required when --proteingym is specified")
-        model_names = getattr(self.full_args, 'model_names', []) or []
+        model_names = self.model_args.model_names
         if len(model_names) == 0:
             raise ValueError("--model_names must specify at least one model")
+        assert self.model_args._model_paths is None, "ProteinGym zero-shot requires --model_names (preset names), not --model_paths/--model_types."
         # Where to write results
         results_root = getattr(self.full_args, 'results_dir', 'results')
         results_dir = os.path.join(results_root, 'proteingym')

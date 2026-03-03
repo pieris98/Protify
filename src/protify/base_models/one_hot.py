@@ -118,14 +118,14 @@ ALPHABET_DICT = {
 }
 
 
-def build_one_hot_model(preset: str = 'OneHot-Protein', **kwargs):
+def build_one_hot_model(preset: str = 'OneHot-Protein', model_path: str = None, **kwargs):
     alphabet = str(ALPHABET_DICT[preset])
     tokenizer = CharTokenizer(alphabet)
     model = OneHotModel(tokenizer.vocab_size)
     return model, tokenizer
 
 
-def get_one_hot_tokenizer(preset: str):
+def get_one_hot_tokenizer(preset: str, model_path: str = None):
     return CharTokenizer(ALPHABET_DICT[preset])
 
 

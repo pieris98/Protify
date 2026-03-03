@@ -769,14 +769,14 @@ class DPLM2ForEmbedding(nn.Module):
         return out.last_hidden_state
 
 
-def get_dplm2_tokenizer(preset: str):
+def get_dplm2_tokenizer(preset: str, model_path: str = None):
     return DPLM2TokenizerWrapper(
         EsmTokenizer.from_pretrained("facebook/esm2_t6_8M_UR50D")
     )
 
 
-def build_dplm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, **kwargs):
-    model_path = presets[preset]
+def build_dplm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
+    model_path = model_path or presets[preset]
     if masked_lm:
         model = EsmForDPLM2.from_pretrained(model_path, dtype=dtype).eval()
     else:
@@ -791,8 +791,9 @@ def get_dplm2_for_training(
     num_labels: int = None,
     hybrid: bool = False,
     dtype: torch.dtype = None,
+    model_path: str = None,
 ):
-    model_path = presets[preset]
+    model_path = model_path or presets[preset]
     if hybrid:
         model = EsmForDPLM2.from_pretrained(model_path, dtype=dtype).eval()
     else:

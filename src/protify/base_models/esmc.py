@@ -1,15 +1,21 @@
 """
 We use the FastPLM implementation of ESMC.
 """
+import sys
+import os
 import torch
 import torch.nn as nn
 from typing import Optional, Union, List, Dict
 
-from transformers import (
-    AutoModel,
-    AutoModelForSequenceClassification,
-    AutoModelForTokenClassification,
-    AutoModelForMaskedLM,
+_FASTPLMS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'FastPLMs')
+if _FASTPLMS not in sys.path:
+    sys.path.insert(0, _FASTPLMS)
+
+from esm_plusplus.modeling_esm_plusplus import (
+    ESMplusplusModel,
+    ESMplusplusForMaskedLM,
+    ESMplusplusForSequenceClassification,
+    ESMplusplusForTokenClassification,
 )
 from .base_tokenizer import BaseSequenceTokenizer
 from .esmc_utils import EsmSequenceTokenizer
@@ -38,7 +44,7 @@ class ESMTokenizerWrapper(BaseSequenceTokenizer):
 class ESMplusplusForEmbedding(nn.Module):
     def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.esm = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True)
+        self.esm = ESMplusplusModel.from_pretrained(model_path, dtype=dtype)
 
     def forward(
             self,
@@ -63,7 +69,7 @@ def get_esmc_tokenizer(preset: str, model_path: str = None):
 def build_esmc_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
     path = model_path or presets[preset]
     if masked_lm:
-        model = AutoModelForMaskedLM.from_pretrained(path, dtype=dtype, trust_remote_code=True).eval()
+        model = ESMplusplusForMaskedLM.from_pretrained(path, dtype=dtype).eval()
     else:
         model = ESMplusplusForEmbedding(path, dtype=dtype).eval()
     tokenizer = get_esmc_tokenizer(preset)
@@ -73,12 +79,12 @@ def build_esmc_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = 
 def get_esmc_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
     model_path = model_path or presets[preset]
     if hybrid:
-        model = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
+        model = ESMplusplusModel.from_pretrained(model_path, dtype=dtype).eval()
     else:
         if tokenwise:
-            model = AutoModelForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype, trust_remote_code=True).eval()
+            model = ESMplusplusForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
         else:
-            model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype, trust_remote_code=True).eval()
+            model = ESMplusplusForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
     tokenizer = get_esmc_tokenizer(preset)
     return model, tokenizer
 

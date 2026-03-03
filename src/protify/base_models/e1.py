@@ -1,16 +1,21 @@
 """
 We use the FastPLM implementation of E1.
 """
+import sys
+import os
 import torch
 import torch.nn as nn
 from typing import Optional, Union, List, Dict, Tuple
 
-from transformers import (
-    AutoModel,
-    AutoModelForSequenceClassification,
-    AutoModelForTokenClassification,
-    AutoModelForMaskedLM,
-    AutoConfig,
+_FASTPLMS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'FastPLMs')
+if _FASTPLMS not in sys.path:
+    sys.path.insert(0, _FASTPLMS)
+
+from e1_fastplms.modeling_e1 import (
+    E1Model,
+    E1ForMaskedLM,
+    E1ForSequenceClassification,
+    E1ForTokenClassification,
 )
 from .base_tokenizer import BaseSequenceTokenizer
 from .e1_utils import E1BatchPreparer
@@ -37,13 +42,7 @@ class E1TokenizerWrapper(BaseSequenceTokenizer):
 class E1ForEmbedding(nn.Module):
     def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
-        self.e1 = AutoModel.from_pretrained(
-            model_path,
-            config=config,
-            dtype=dtype,
-            trust_remote_code=True,
-        )
+        self.e1 = E1Model.from_pretrained(model_path, dtype=dtype)
 
     def forward(
             self,
@@ -66,7 +65,7 @@ def get_e1_tokenizer(preset: str, model_path: str = None):
 def build_e1_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
     model_path = model_path or presets[preset]
     if masked_lm:
-        model = AutoModelForMaskedLM.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
+        model = E1ForMaskedLM.from_pretrained(model_path, dtype=dtype).eval()
     else:
         model = E1ForEmbedding(model_path, dtype=dtype).eval()
     tokenizer = get_e1_tokenizer(preset)
@@ -76,12 +75,12 @@ def build_e1_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = No
 def get_e1_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
     model_path = model_path or presets[preset]
     if hybrid:
-        model = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
+        model = E1Model.from_pretrained(model_path, dtype=dtype).eval()
     else:
         if tokenwise:
-            model = AutoModelForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype, trust_remote_code=True).eval()
+            model = E1ForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
         else:
-            model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype, trust_remote_code=True).eval()
+            model = E1ForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
     tokenizer = get_e1_tokenizer(preset)
     return model, tokenizer
 

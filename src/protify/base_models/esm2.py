@@ -1,17 +1,23 @@
 """
 We use the FastESM2 implementation of ESM2.
 """
+import sys
+import os
 import torch
 import torch.nn as nn
 from typing import Optional, Union, List, Dict
 
-from transformers import (
-    AutoModel,
-    AutoModelForSequenceClassification,
-    AutoModelForTokenClassification,
-    AutoModelForMaskedLM,
-    EsmTokenizer,
+_FASTPLMS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'FastPLMs')
+if _FASTPLMS not in sys.path:
+    sys.path.insert(0, _FASTPLMS)
+
+from esm2.modeling_fastesm import (
+    FastEsmModel,
+    FastEsmForMaskedLM,
+    FastEsmForSequenceClassification,
+    FastEsmForTokenClassification,
 )
+from transformers import EsmTokenizer
 from .base_tokenizer import BaseSequenceTokenizer
 
 
@@ -44,7 +50,7 @@ class ESM2TokenizerWrapper(BaseSequenceTokenizer):
 class FastEsmForEmbedding(nn.Module):
     def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.esm = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True)
+        self.esm = FastEsmModel.from_pretrained(model_path, dtype=dtype)
 
     def forward(
             self,
@@ -68,7 +74,7 @@ def get_esm2_tokenizer(preset: str, model_path: str = None):
 def build_esm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
     path = model_path or presets[preset]
     if masked_lm:
-        model = AutoModelForMaskedLM.from_pretrained(path, dtype=dtype, trust_remote_code=True).eval()
+        model = FastEsmForMaskedLM.from_pretrained(path, dtype=dtype).eval()
     else:
         model = FastEsmForEmbedding(path, dtype=dtype).eval()
     tokenizer = get_esm2_tokenizer(preset)
@@ -78,12 +84,12 @@ def build_esm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = 
 def get_esm2_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
     model_path = model_path or presets[preset]
     if hybrid:
-        model = AutoModel.from_pretrained(model_path, dtype=dtype, trust_remote_code=True).eval()
+        model = FastEsmModel.from_pretrained(model_path, dtype=dtype).eval()
     else:
         if tokenwise:
-            model = AutoModelForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype, trust_remote_code=True).eval()
+            model = FastEsmForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
         else:
-            model = AutoModelForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype, trust_remote_code=True).eval()
+            model = FastEsmForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
     tokenizer = get_esm2_tokenizer(preset)
     return model, tokenizer
 

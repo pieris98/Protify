@@ -44,7 +44,8 @@ class ESMTokenizerWrapper(BaseSequenceTokenizer):
 class ESMplusplusForEmbedding(nn.Module):
     def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.esm = ESMplusplusModel.from_pretrained(model_path, dtype=dtype)
+        self.esm = ESMplusplusModel.from_pretrained(model_path, dtype=dtype, attn_backend="auto")
+        self.esm.attn_backend = "auto"
 
     def forward(
             self,
@@ -69,7 +70,8 @@ def get_esmc_tokenizer(preset: str, model_path: str = None):
 def build_esmc_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
     path = model_path or presets[preset]
     if masked_lm:
-        model = ESMplusplusForMaskedLM.from_pretrained(path, dtype=dtype).eval()
+        model = ESMplusplusForMaskedLM.from_pretrained(path, dtype=dtype, attn_backend="auto").eval()
+        model.attn_backend = "auto"
     else:
         model = ESMplusplusForEmbedding(path, dtype=dtype).eval()
     tokenizer = get_esmc_tokenizer(preset)
@@ -79,12 +81,23 @@ def build_esmc_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = 
 def get_esmc_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
     model_path = model_path or presets[preset]
     if hybrid:
-        model = ESMplusplusModel.from_pretrained(model_path, dtype=dtype).eval()
+        model = ESMplusplusModel.from_pretrained(model_path, dtype=dtype, attn_backend="auto").eval()
     else:
         if tokenwise:
-            model = ESMplusplusForTokenClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
+            model = ESMplusplusForTokenClassification.from_pretrained(
+                model_path,
+                num_labels=num_labels,
+                dtype=dtype,
+                attn_backend="auto",
+            ).eval()
         else:
-            model = ESMplusplusForSequenceClassification.from_pretrained(model_path, num_labels=num_labels, dtype=dtype).eval()
+            model = ESMplusplusForSequenceClassification.from_pretrained(
+                model_path,
+                num_labels=num_labels,
+                dtype=dtype,
+                attn_backend="auto",
+            ).eval()
+    model.attn_backend = "auto"
     tokenizer = get_esmc_tokenizer(preset)
     return model, tokenizer
 

@@ -1,6 +1,7 @@
-from src.protify.probes.lazy_predict import LazyClassifier, LazyRegressor
-import numpy as np
 import argparse
+import numpy as np
+
+from ..probes.lazy_predict import LazyClassifier, LazyRegressor
 
 # Example usage:
 #python -m src.protify.testing_suite.test_lazy_predict --verbose 1

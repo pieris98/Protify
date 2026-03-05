@@ -1,3 +1,10 @@
+import os
+import sys
+
+_src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
 """Top-level package for Protify.
 
 Exposes common subpackages for convenient imports whether Protify is used

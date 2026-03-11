@@ -1,3 +1,4 @@
+pytest
 torch>=2.5.1
 torchvision
 tensorflow==2.20.0

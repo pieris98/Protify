@@ -469,10 +469,10 @@ class GUI(MainProcess):
         combo_probe = ttk.Combobox(
             self.probe_tab,
             textvariable=self.settings_vars["probe_type"],
-            values=["linear", "transformer", "retrievalnet", "lyra"]
+            values=["linear", "transformer", "interpnet", "lyra"]
         )
         combo_probe.grid(row=0, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 0, 2, "Type of probe architecture to use (linear, transformer, or retrievalnet).")
+        self.add_help_button(self.probe_tab, 0, 2, "Type of probe architecture to use (linear, transformer, or interpnet).")
 
         # Tokenwise
         ttk.Label(self.probe_tab, text="Tokenwise:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
@@ -561,12 +561,18 @@ class GUI(MainProcess):
         spin_transformer_dropout.grid(row=13, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.probe_tab, 13, 2, "Dropout probability in the transformer layers (0.0-1.0).")
         
-        # Token Attention
-        ttk.Label(self.probe_tab, text="Token Attention:").grid(row=14, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["token_attention"] = tk.BooleanVar(value=False)
-        check_token_attention = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["token_attention"])
-        check_token_attention.grid(row=14, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 14, 2, "If true, use TokenFormer instead of Transformer blocks.")
+        # Attention Backend
+        ttk.Label(self.probe_tab, text="Attention Backend:").grid(row=14, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["attention_backend"] = tk.StringVar(value="flex")
+        backend_combo = ttk.Combobox(
+            self.probe_tab,
+            textvariable=self.settings_vars["attention_backend"],
+            values=["kernels", "flex", "sdpa"],
+            state="readonly",
+            width=17,
+        )
+        backend_combo.grid(row=14, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 14, 2, "Select the attention backend for transformer-style probes.")
 
         # Use Bias
         ttk.Label(self.probe_tab, text="Use Bias:").grid(row=15, column=0, padx=10, pady=5, sticky="w")
@@ -582,8 +588,8 @@ class GUI(MainProcess):
         check_add_token_ids.grid(row=16, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.probe_tab, 16, 2, "Add learned token type IDs for pair tasks.")
 
-        # RetrievalNet Settings Section
-        ttk.Label(self.probe_tab, text="=== RetrievalNet Settings ===").grid(row=17, column=0, columnspan=2, pady=10)
+        # InterpNet Settings Section
+        ttk.Label(self.probe_tab, text="=== InterpNet Settings ===").grid(row=17, column=0, columnspan=2, pady=10)
         
         # Sim Type
         ttk.Label(self.probe_tab, text="Similarity Type:").grid(row=18, column=0, padx=10, pady=5, sticky="w")
@@ -603,43 +609,50 @@ class GUI(MainProcess):
         check_save_model.grid(row=19, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.probe_tab, 19, 2, "Whether to save the trained probe model to disk.")
 
+        # Push Raw Probe
+        ttk.Label(self.probe_tab, text="Push Raw Probe:").grid(row=20, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["push_raw_probe"] = tk.BooleanVar(value=False)
+        check_push_raw_probe = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["push_raw_probe"])
+        check_push_raw_probe.grid(row=20, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 20, 2, "With Save Model, push raw probe class to Hub (load with e.g. Class.from_pretrained(repo_id)) instead of packaged AutoModel.")
+
         # Production Model
-        ttk.Label(self.probe_tab, text="Production Model:").grid(row=20, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Production Model:").grid(row=21, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["production_model"] = tk.BooleanVar(value=False)
         check_prod_model = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["production_model"])
-        check_prod_model.grid(row=20, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 20, 2, "Whether to prepare the model for production deployment.")
+        check_prod_model.grid(row=21, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 21, 2, "Whether to prepare the model for production deployment.")
 
         # LoRA Settings Section
-        ttk.Label(self.probe_tab, text="=== LoRA Settings ===").grid(row=21, column=0, columnspan=2, pady=10)
+        ttk.Label(self.probe_tab, text="=== LoRA Settings ===").grid(row=22, column=0, columnspan=2, pady=10)
         
         # Lora checkbox
-        ttk.Label(self.probe_tab, text="Use LoRA:").grid(row=22, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Use LoRA:").grid(row=23, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora"] = tk.BooleanVar(value=False)
         check_lora = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["lora"])
-        check_lora.grid(row=22, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 22, 2, "Whether to use Low-Rank Adaptation (LoRA) for fine-tuning.")
+        check_lora.grid(row=23, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 23, 2, "Whether to use Low-Rank Adaptation (LoRA) for fine-tuning.")
 
         # LoRA r
-        ttk.Label(self.probe_tab, text="LoRA r:").grid(row=23, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="LoRA r:").grid(row=24, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora_r"] = tk.IntVar(value=8)
         spin_lora_r = ttk.Spinbox(self.probe_tab, from_=1, to=128, textvariable=self.settings_vars["lora_r"])
-        spin_lora_r.grid(row=23, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 23, 2, "Rank parameter r for LoRA (lower = more efficient, higher = more expressive).")
+        spin_lora_r.grid(row=24, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 24, 2, "Rank parameter r for LoRA (lower = more efficient, higher = more expressive).")
 
         # LoRA alpha
-        ttk.Label(self.probe_tab, text="LoRA alpha:").grid(row=24, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="LoRA alpha:").grid(row=25, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora_alpha"] = tk.DoubleVar(value=32.0)
         spin_lora_alpha = ttk.Spinbox(self.probe_tab, from_=1.0, to=128.0, increment=1.0, textvariable=self.settings_vars["lora_alpha"])
-        spin_lora_alpha.grid(row=24, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 24, 2, "Alpha parameter for LoRA, controls update scale.")
+        spin_lora_alpha.grid(row=25, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 25, 2, "Alpha parameter for LoRA, controls update scale.")
 
         # LoRA dropout
-        ttk.Label(self.probe_tab, text="LoRA dropout:").grid(row=25, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="LoRA dropout:").grid(row=26, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["lora_dropout"] = tk.DoubleVar(value=0.01)
         spin_lora_dropout = ttk.Spinbox(self.probe_tab, from_=0.0, to=0.5, increment=0.01, textvariable=self.settings_vars["lora_dropout"])
-        spin_lora_dropout.grid(row=25, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 25, 2, "Dropout probability for LoRA layers (0.0-0.5).")
+        spin_lora_dropout.grid(row=26, column=1, padx=10, pady=5)
+        self.add_help_button(self.probe_tab, 26, 2, "Dropout probability for LoRA layers (0.0-0.5).")
         
         # Add a button to create the probe
         run_button = ttk.Button(self.probe_tab, text="Save Probe Arguments", command=self._create_probe_args)
@@ -1299,16 +1312,17 @@ class GUI(MainProcess):
             "classifier_dropout": self.settings_vars["classifier_dropout"].get(),
             "n_heads": self.settings_vars["n_heads"].get(),
             "rotary": self.settings_vars["rotary"].get(),
+            "attention_backend": self.settings_vars["attention_backend"].get(),
             "probe_pooling_types": probe_pooling,
             "use_bias": self.settings_vars["use_bias"].get(),
             "save_model": self.settings_vars["save_model"].get(),
+            "push_raw_probe": self.settings_vars["push_raw_probe"].get(),
             "production_model": self.settings_vars["production_model"].get(),
             "lora": self.settings_vars["lora"].get(),
             "lora_r": self.settings_vars["lora_r"].get(),
             "lora_alpha": self.settings_vars["lora_alpha"].get(),
             "lora_dropout": self.settings_vars["lora_dropout"].get(),
             "sim_type": self.settings_vars["sim_type"].get(),
-            "token_attention": self.settings_vars["token_attention"].get(),
             "add_token_ids": self.settings_vars["add_token_ids"].get(),
             "num_epochs": self.settings_vars["num_epochs"].get(),
             "probe_batch_size": self.settings_vars["probe_batch_size"].get(),
@@ -1698,17 +1712,18 @@ class GUI(MainProcess):
         self.full_args.classifier_dropout = self.settings_vars["classifier_dropout"].get()
         self.full_args.n_heads = self.settings_vars["n_heads"].get()
         self.full_args.rotary = self.settings_vars["rotary"].get()
+        self.full_args.attention_backend = self.settings_vars["attention_backend"].get()
         
         pooling_str = self.settings_vars["probe_pooling_types"].get().strip()
         self.full_args.probe_pooling_types = [p.strip() for p in pooling_str.split(",") if p.strip()]
         
         self.full_args.transformer_dropout = self.settings_vars["transformer_dropout"].get()
-        self.full_args.token_attention = self.settings_vars["token_attention"].get()
         self.full_args.use_bias = self.settings_vars["use_bias"].get()
         self.full_args.add_token_ids = self.settings_vars["add_token_ids"].get()
         
         self.full_args.sim_type = self.settings_vars["sim_type"].get()
         self.full_args.save_model = self.settings_vars["save_model"].get()
+        self.full_args.push_raw_probe = self.settings_vars["push_raw_probe"].get()
         self.full_args.production_model = self.settings_vars["production_model"].get()
         
         self.full_args.lora = self.settings_vars["lora"].get()

@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from typing import List
 from .linear_probe import LinearProbe, LinearProbeConfig
 from .transformer_probe import TransformerForSequenceClassification, TransformerForTokenClassification, TransformerProbeConfig
-from .retrievalnet import RetrievalNetForSequenceClassification, RetrievalNetForTokenClassification, RetrievalNetConfig
+from .interpnet import InterpNetForSequenceClassification, InterpNetForTokenClassification, InterpNetConfig
 from .lyra_probe import LyraForSequenceClassification, LyraForTokenClassification, LyraConfig
 
 
@@ -10,7 +10,7 @@ from .lyra_probe import LyraForSequenceClassification, LyraForTokenClassificatio
 class ProbeArguments:
     def __init__(
             self,
-            probe_type: str = 'linear', # valid options: linear, transformer, retrievalnet
+            probe_type: str = 'linear', # valid options: linear, transformer, interpnet
             tokenwise: bool = False,
             ### Linear Probe
             input_size: int = 960,
@@ -21,7 +21,6 @@ class ProbeArguments:
             task_type: str = 'singlelabel',
             pre_ln: bool = True,
             sim_type: str = 'dot',
-            token_attention: bool = False,
             use_bias: bool = False,
             add_token_ids: bool = False,
             ### Transformer Probe
@@ -31,8 +30,10 @@ class ProbeArguments:
             classifier_dropout: float = 0.2,
             n_heads: int = 4,
             rotary: bool = True,
+            attention_backend: str = "flex",
+            output_s_max: bool = False,
             probe_pooling_types: List[str] = field(default_factory=lambda: ['mean', 'cls']),
-            ### RetrievalNet
+            ### InterpNet
             # TODO
             ### LoRA
             lora: bool = False,
@@ -51,7 +52,6 @@ class ProbeArguments:
         self.num_labels = num_labels
         self.n_layers = n_layers
         self.sim_type = sim_type
-        self.token_attention = token_attention
         self.add_token_ids = add_token_ids
         self.task_type = task_type
         self.pre_ln = pre_ln
@@ -61,6 +61,8 @@ class ProbeArguments:
         self.classifier_dropout = classifier_dropout
         self.n_heads = n_heads
         self.rotary = rotary
+        self.attention_backend = attention_backend
+        self.output_s_max = output_s_max
         self.pooling_types = probe_pooling_types
         self.lora = lora
         self.lora_r = lora_r
@@ -84,12 +86,12 @@ def get_probe(args: ProbeArguments):
         transformer_args['hidden_size'] = args.transformer_hidden_size
         config = TransformerProbeConfig(**transformer_args)
         return TransformerForTokenClassification(config)
-    elif args.probe_type == 'retrievalnet' and not args.tokenwise:
-        config = RetrievalNetConfig(**args.__dict__)
-        return RetrievalNetForSequenceClassification(config)
-    elif args.probe_type == 'retrievalnet' and args.tokenwise:
-        config = RetrievalNetConfig(**args.__dict__)
-        return RetrievalNetForTokenClassification(config)
+    elif args.probe_type == 'interpnet' and not args.tokenwise:
+        config = InterpNetConfig(**args.__dict__)
+        return InterpNetForSequenceClassification(config)
+    elif args.probe_type == 'interpnet' and args.tokenwise:
+        config = InterpNetConfig(**args.__dict__)
+        return InterpNetForTokenClassification(config)
     elif args.probe_type == 'lyra' and not args.tokenwise:
         config = LyraConfig(**args.__dict__)
         return LyraForSequenceClassification(config)
@@ -120,12 +122,12 @@ def rebuild_probe_from_saved_config(
     if probe_type == "transformer" and tokenwise:
         config = TransformerProbeConfig(**config_dict)
         return TransformerForTokenClassification(config)
-    if probe_type == "retrievalnet" and not tokenwise:
-        config = RetrievalNetConfig(**config_dict)
-        return RetrievalNetForSequenceClassification(config)
-    if probe_type == "retrievalnet" and tokenwise:
-        config = RetrievalNetConfig(**config_dict)
-        return RetrievalNetForTokenClassification(config)
+    if probe_type == "interpnet" and not tokenwise:
+        config = InterpNetConfig(**config_dict)
+        return InterpNetForSequenceClassification(config)
+    if probe_type == "interpnet" and tokenwise:
+        config = InterpNetConfig(**config_dict)
+        return InterpNetForTokenClassification(config)
     if probe_type == "lyra" and not tokenwise:
         config = LyraConfig(**config_dict)
         return LyraForSequenceClassification(config)

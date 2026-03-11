@@ -24,8 +24,8 @@ def _infer_probe_type(probe_model: nn.Module) -> str:
         return "linear"
     if probe_class_name in ["TransformerForSequenceClassification", "TransformerForTokenClassification"]:
         return "transformer"
-    if probe_class_name in ["RetrievalNetForSequenceClassification", "RetrievalNetForTokenClassification"]:
-        return "retrievalnet"
+    if probe_class_name in ["InterpNetForSequenceClassification", "InterpNetForTokenClassification"]:
+        return "interpnet"
     if probe_class_name in ["LyraForSequenceClassification", "LyraForTokenClassification"]:
         return "lyra"
     raise ValueError(f"Unsupported probe class for packaged export: {probe_class_name}")

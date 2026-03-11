@@ -19,10 +19,10 @@ To list all supported models with their descriptions:
 
 ```bash
 # List all supported models
-python -m src.protify.base_models.get_base_models --list
+py -m src.protify.base_models.get_base_models --list
 
 # To download standard models
-python -m src.protify.base_models.get_base_models --download
+py -m src.protify.base_models.get_base_models --download
 ```
 
 ### Listing Datasets
@@ -31,10 +31,10 @@ To list all supported datasets with their descriptions:
 
 ```bash
 # List all datasets
-python -m src.protify.data.dataset_utils --list
+py -m src.protify.data.dataset_utils --list
 
 # Get information about a specific dataset
-python -m src.protify.data.dataset_utils --info EC
+py -m src.protify.data.dataset_utils --info EC
 ```
 
 ### Combined Listing
@@ -43,16 +43,16 @@ For a combined view of both models and datasets:
 
 ```bash
 # List both models and datasets
-python -m src.protify.resource_info --all
+py -m src.protify.resource_info --all
 
 # List only standard models and datasets
-python -m src.protify.resource_info --all --standard-only
+py -m src.protify.resource_info --all --standard-only
 
 # List only models
-python -m src.protify.resource_info --models
+py -m src.protify.resource_info --models
 
 # List only datasets
-python -m src.protify.resource_info --datasets
+py -m src.protify.resource_info --datasets
 ```
 
 ## Programmatic Access
@@ -99,3 +99,11 @@ Datasets are categorized by their task types:
 3. **Regression**: Prediction of continuous values (e.g., enzyme-kcat, optimal-temperature)
 4. **Protein-Protein Interaction**: Tasks focused on protein interactions (e.g., human-ppi, gold-ppi)
 5. **Token-wise Classification/Regression**: Residue-level prediction tasks (e.g., SecondaryStructure-3)
+
+---
+
+## See also
+
+- [Documentation hub](README.md) for the full documentation index
+- [Data](data.md) for how datasets are loaded and used
+- [Models and embeddings](models_and_embeddings.md) for base models and embedding options

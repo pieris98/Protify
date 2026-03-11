@@ -5,13 +5,7 @@ from transformers import EsmTokenizer, EsmConfig
 from transformers.utils import ModelOutput
 from dataclasses import dataclass
 
-try:
-    from model_components.transformer import TransformerForMaskedLM, TransformerConfig
-except:
-    try:
-        from protify.model_components.transformer import TransformerForMaskedLM, TransformerConfig
-    except:
-        from ..model_components.transformer import TransformerForMaskedLM, TransformerConfig
+from ..model_components.transformer import TransformerConfig, TransformerForMaskedLM
 
 
 presets = {

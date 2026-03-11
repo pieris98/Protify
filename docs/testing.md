@@ -51,14 +51,21 @@ On Windows use `py`; on Linux/mac you can use `python` if preferred. Ensure the 
 
 ## Docker
 
-If the project has a [Dockerfile](../Dockerfile) and you want tests to run in a container (e.g. with a specific CUDA or OS environment), you can follow the workspace rule for Docker-based tests: build the image first, then run pytest inside the container with the workspace mounted. For example (Linux-style):
+If the project has a [Dockerfile](../Dockerfile) and you want tests to run in a container (e.g. with a specific CUDA or OS environment), build the image first, then run pytest with the workspace mounted and working directory at repo root (`-w /workspace`):
 
+**Linux / macOS:**
 ```bash
 docker build -t protify-env:latest .
-docker run --rm -v "$(pwd)":/workspace -w /workspace protify-env:latest python -m pytest src/protify/testing_suite -v
+docker run --rm -v "${PWD}":/workspace -w /workspace protify-env:latest python -m pytest src/protify/testing_suite -v
 ```
 
-On Windows, use the appropriate volume mount and working directory (e.g. `-v "%CD%":/workspace`). For GPU-dependent tests, add `--gpus all` to the run command if your setup supports it.
+**Windows:**
+```bash
+docker build -t protify-env:latest .
+docker run --rm -v "%CD%":/workspace -w /workspace protify-env:latest py -m pytest src/protify/testing_suite -v
+```
+
+For GPU-dependent tests, add `--gpus all` to the run command. To run the main CLI or GUI in Docker, use `-w /workspace/src/protify` and `python -m main` or `python -m gui`; see [Getting started > Docker](getting_started.md#docker).
 
 ---
 

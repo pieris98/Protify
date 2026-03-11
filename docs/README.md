@@ -8,7 +8,7 @@ For the full project story, installation options, and high-level usage, see the 
 
 ## Quick start
 
-1. **Install:** `pip install -e .` from the repo root (or use the [Docker](getting_started.md#docker) image).
+1. **Install:** `pip install -e .` from the repo root (or use the [Docker](getting_started.md#docker) image). With Docker: run from repo root using the [Getting started Docker section](getting_started.md#docker) (no need to cd into `src/protify`).
 2. **Minimal CLI run** (one model, one dataset, probe-only):
 
    ```bash

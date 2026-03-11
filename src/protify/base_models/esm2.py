@@ -50,8 +50,8 @@ class ESM2TokenizerWrapper(BaseSequenceTokenizer):
 class FastEsmForEmbedding(nn.Module):
     def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.esm = FastEsmModel.from_pretrained(model_path, dtype=dtype, attn_backend="auto")
-        self.esm.attn_backend = "auto"
+        self.esm = FastEsmModel.from_pretrained(model_path, dtype=dtype, attn_backend="flex")
+        self.esm.attn_backend = "flex"
 
     def forward(
             self,
@@ -75,8 +75,8 @@ def get_esm2_tokenizer(preset: str, model_path: str = None):
 def build_esm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
     path = model_path or presets[preset]
     if masked_lm:
-        model = FastEsmForMaskedLM.from_pretrained(path, dtype=dtype, attn_backend="auto").eval()
-        model.attn_backend = "auto"
+        model = FastEsmForMaskedLM.from_pretrained(path, dtype=dtype, attn_backend="flex").eval()
+        model.attn_backend = "flex"
     else:
         model = FastEsmForEmbedding(path, dtype=dtype).eval()
     tokenizer = get_esm2_tokenizer(preset)
@@ -86,23 +86,23 @@ def build_esm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = 
 def get_esm2_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
     model_path = model_path or presets[preset]
     if hybrid:
-        model = FastEsmModel.from_pretrained(model_path, dtype=dtype, attn_backend="auto").eval()
+        model = FastEsmModel.from_pretrained(model_path, dtype=dtype, attn_backend="flex").eval()
     else:
         if tokenwise:
             model = FastEsmForTokenClassification.from_pretrained(
                 model_path,
                 num_labels=num_labels,
                 dtype=dtype,
-                attn_backend="auto",
+                attn_backend="flex",
             ).eval()
         else:
             model = FastEsmForSequenceClassification.from_pretrained(
                 model_path,
                 num_labels=num_labels,
                 dtype=dtype,
-                attn_backend="auto",
+                attn_backend="flex",
             ).eval()
-    model.attn_backend = "auto"
+    model.attn_backend = "flex"
     tokenizer = get_esm2_tokenizer(preset)
     return model, tokenizer
 

@@ -46,8 +46,8 @@ class DPLM2TokenizerWrapper(BaseSequenceTokenizer):
 class DPLM2ForEmbedding(nn.Module):
     def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.dplm2 = DPLM2ForMaskedLM.from_pretrained(model_path, dtype=dtype, attn_backend="auto")
-        self.dplm2.attn_backend = "auto"
+        self.dplm2 = DPLM2ForMaskedLM.from_pretrained(model_path, dtype=dtype, attn_backend="flex")
+        self.dplm2.attn_backend = "flex"
 
     def forward(
         self,
@@ -75,8 +75,8 @@ def get_dplm2_tokenizer(preset: str, model_path: str = None):
 def build_dplm2_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
     model_path = model_path or presets[preset]
     if masked_lm:
-        model = DPLM2ForMaskedLM.from_pretrained(model_path, dtype=dtype, attn_backend="auto").eval()
-        model.attn_backend = "auto"
+        model = DPLM2ForMaskedLM.from_pretrained(model_path, dtype=dtype, attn_backend="flex").eval()
+        model.attn_backend = "flex"
     else:
         model = DPLM2ForEmbedding(model_path, dtype=dtype).eval()
     tokenizer = get_dplm2_tokenizer(preset)
@@ -93,23 +93,23 @@ def get_dplm2_for_training(
 ):
     model_path = model_path or presets[preset]
     if hybrid:
-        model = DPLM2ForMaskedLM.from_pretrained(model_path, dtype=dtype, attn_backend="auto").eval()
+        model = DPLM2ForMaskedLM.from_pretrained(model_path, dtype=dtype, attn_backend="flex").eval()
     else:
         if tokenwise:
             model = DPLM2ForTokenClassification.from_pretrained(
                 model_path,
                 num_labels=num_labels,
                 dtype=dtype,
-                attn_backend="auto",
+                attn_backend="flex",
             ).eval()
         else:
             model = DPLM2ForSequenceClassification.from_pretrained(
                 model_path,
                 num_labels=num_labels,
                 dtype=dtype,
-                attn_backend="auto",
+                attn_backend="flex",
             ).eval()
-    model.attn_backend = "auto"
+    model.attn_backend = "flex"
     tokenizer = get_dplm2_tokenizer(preset)
     return model, tokenizer
 

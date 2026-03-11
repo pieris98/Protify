@@ -248,14 +248,28 @@ cd src/protify
 ```
 
 With Docker
+
+Run all commands from the **repository root** on your host (no need to `cd src/protify`). Build the image once, then run the CLI with the project mounted at `/workspace` and the container working directory set to `/workspace/src/protify` so that `python -m main` runs correctly.
+
+**Linux / macOS:**
 ```bash
 git clone https://github.com/Gleghorn-Lab/Protify.git
 cd Protify
 git submodule update --init --remote --recursive
 docker build -t protify-env:latest .
-docker run --rm --gpus all -v ${PWD}:/workspace protify-env:latest python -m main
+docker run --rm -it --gpus all -v "${PWD}":/workspace -w /workspace/src/protify protify-env:latest python -m main --data_names EC --model_names ESM2 --probe_type interpnet --max_length 128 --probe_batch_size 4
 ```
-Note: You may need to include `sudo` before the docker commands.
+
+**Windows (PowerShell or cmd):**
+```bash
+git clone https://github.com/Gleghorn-Lab/Protify.git
+cd Protify
+git submodule update --init --remote --recursive
+docker build -t protify-env:latest .
+docker run --rm -it --gpus all -v "%CD%":/workspace -w /workspace/src/protify protify-env:latest py -m main --data_names EC --model_names ESM2 --probe_type interpnet --max_length 128 --probe_batch_size 4
+```
+
+Omit the `--data_names` and other CLI args to see help, or add any options you need. Output paths like `--log_dir` and `--results_dir` are relative to `/workspace/src/protify`; use e.g. `--log_dir /workspace/logs` to write at project root. Note: you may need `sudo` before the docker commands on Linux.
 
 ### Optional: xformers for AMPLIFY
 
@@ -374,6 +388,12 @@ pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=
   ```
   python -m main --model_names ESM2-8 ESM2-35 ESMC-300 ProtBert ANKH-Base Random Random-Transformer --data_names EC DeepLoc-2 enzyme-kcat MB solubility --patience 3
   ```
+
+  With Docker (from the repo root on your host):
+  ```
+  docker run --rm -it --gpus all -v "${PWD}":/workspace -w /workspace/src/protify protify-env:latest python -m main --model_names ESM2-8 ESM2-35 ESMC-300 ProtBert ANKH-Base Random Random-Transformer --data_names EC DeepLoc-2 enzyme-kcat MB solubility --patience 3
+  ```
+  On Windows use `-v "%CD%":/workspace` and `py -m main` instead of `python -m main`.
 
   ### Using custom or non-preset models
 

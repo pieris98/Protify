@@ -190,6 +190,8 @@ def parse_arguments():
     if args.model_names is None and args.model_paths is None:
         args.model_names = ["ESM2-8"]
 
+    assert args.probe_type == "linear" or args.matrix_embed, "When probe_type is not linear, --matrix_embed must be True."
+
     args.modal_cli_credentials_provided = (
         ("--modal_api_key" in raw_argv)
         or ("--modal_token_id" in raw_argv)

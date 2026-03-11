@@ -257,6 +257,28 @@ py -m src.protify.main --yaml_path src/protify/yamls/base.yaml --use_wandb_hyper
 py -m src.protify.main --yaml_path my_config.yaml --num_epochs 20 --lr 5e-5 --save_embeddings
 ```
 
+### Docker
+
+Run from the repository root on your host with the workspace mounted and working directory set to `/workspace/src/protify`. Linux/mac example:
+
+```bash
+docker run --rm -it --gpus all -v "${PWD}":/workspace -w /workspace/src/protify protify-env:latest python -m main --model_names ESM2-8 ESM2-35 --data_names DeepLoc-2 --num_epochs 5 --results_dir my_results
+```
+
+ProteinGym zero-shot:
+
+```bash
+docker run --rm -it --gpus all -v "${PWD}":/workspace -w /workspace/src/protify protify-env:latest python -m main --proteingym --model_names ESM2-150 --dms_ids all --mode benchmark
+```
+
+YAML with overrides:
+
+```bash
+docker run --rm -it --gpus all -v "${PWD}":/workspace -w /workspace/src/protify protify-env:latest python -m main --yaml_path yamls/base.yaml --num_epochs 20 --lr 5e-5 --save_embeddings
+```
+
+On Windows use `-v "%CD%":/workspace` and `py -m main` instead of `python -m main`. Ensure the image is built first: `docker build -t protify-env:latest .`
+
 ---
 
 ## See also

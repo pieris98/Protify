@@ -1,11 +1,43 @@
+import io
 import os
 import torch
 import shutil
 import pyfiglet
 from functools import partial
 
+import numpy as np
 
 torch_load = partial(torch.load, map_location='cpu', weights_only=True)
+
+
+def tensor_to_embedding_blob(tensor: torch.Tensor) -> bytes:
+    """Serialize a tensor to bytes for SQLite blob storage. Supports all torch dtypes."""
+    buffer = io.BytesIO()
+    torch.save(tensor.cpu(), buffer)
+    return buffer.getvalue()
+
+
+def embedding_blob_to_tensor(
+    blob: bytes,
+    fallback_shape: tuple[int, ...] | None = None,
+) -> torch.Tensor:
+    """
+    Deserialize an embedding blob from SQLite. Tries PyTorch format first; on failure
+    treats blob as legacy raw float32 and reshapes with fallback_shape.
+    """
+    try:
+        t = torch_load(io.BytesIO(blob))
+        if isinstance(t, torch.Tensor):
+            return t
+    except Exception:
+        pass
+    if fallback_shape is not None:
+        return torch.tensor(
+            np.frombuffer(blob, dtype=np.float32).reshape(fallback_shape)
+        )
+    raise ValueError(
+        "Blob is not PyTorch-serialized and no fallback_shape provided for legacy float32."
+    )
 
 
 def clear_screen():

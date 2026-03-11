@@ -42,8 +42,8 @@ class E1TokenizerWrapper(BaseSequenceTokenizer):
 class E1ForEmbedding(nn.Module):
     def __init__(self, model_path: str, dtype: torch.dtype = None):
         super().__init__()
-        self.e1 = E1Model.from_pretrained(model_path, dtype=dtype, attn_backend="auto")
-        self.e1.attn_backend = "auto"
+        self.e1 = E1Model.from_pretrained(model_path, dtype=dtype, attn_backend="flex")
+        self.e1.attn_backend = "flex"
 
     def forward(
             self,
@@ -66,8 +66,8 @@ def get_e1_tokenizer(preset: str, model_path: str = None):
 def build_e1_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = None, model_path: str = None, **kwargs):
     model_path = model_path or presets[preset]
     if masked_lm:
-        model = E1ForMaskedLM.from_pretrained(model_path, dtype=dtype, attn_backend="auto").eval()
-        model.attn_backend = "auto"
+        model = E1ForMaskedLM.from_pretrained(model_path, dtype=dtype, attn_backend="flex").eval()
+        model.attn_backend = "flex"
     else:
         model = E1ForEmbedding(model_path, dtype=dtype).eval()
     tokenizer = get_e1_tokenizer(preset)
@@ -77,23 +77,23 @@ def build_e1_model(preset: str, masked_lm: bool = False, dtype: torch.dtype = No
 def get_e1_for_training(preset: str, tokenwise: bool = False, num_labels: int = None, hybrid: bool = False, dtype: torch.dtype = None, model_path: str = None):
     model_path = model_path or presets[preset]
     if hybrid:
-        model = E1Model.from_pretrained(model_path, dtype=dtype, attn_backend="auto").eval()
+        model = E1Model.from_pretrained(model_path, dtype=dtype, attn_backend="flex").eval()
     else:
         if tokenwise:
             model = E1ForTokenClassification.from_pretrained(
                 model_path,
                 num_labels=num_labels,
                 dtype=dtype,
-                attn_backend="auto",
+                attn_backend="flex",
             ).eval()
         else:
             model = E1ForSequenceClassification.from_pretrained(
                 model_path,
                 num_labels=num_labels,
                 dtype=dtype,
-                attn_backend="auto",
+                attn_backend="flex",
             ).eval()
-    model.attn_backend = "auto"
+    model.attn_backend = "flex"
     tokenizer = get_e1_tokenizer(preset)
     return model, tokenizer
 

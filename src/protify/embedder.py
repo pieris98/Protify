@@ -16,13 +16,13 @@ try:
     from data.dataset_classes import SimpleProteinDataset
     from base_models.get_base_models import get_base_model
     from pooler import Pooler
-    from utils import torch_load, print_message, maybe_compile
+    from utils import torch_load, print_message, maybe_compile, tensor_to_embedding_blob
 except ImportError:
     from .seed_utils import seed_worker, dataloader_generator, get_global_seed
     from .data.dataset_classes import SimpleProteinDataset
     from .base_models.get_base_models import get_base_model
     from .pooler import Pooler
-    from .utils import torch_load, print_message, maybe_compile
+    from .utils import torch_load, print_message, maybe_compile, tensor_to_embedding_blob
 
 
 def build_collator(tokenizer) -> Callable[[List[str]], tuple[torch.Tensor, torch.Tensor]]:
@@ -276,8 +276,8 @@ class Embedder:
                     emb = emb[mask.bool()]
                 
                 if self.sql:
-                    c.execute("INSERT OR REPLACE INTO embeddings VALUES (?, ?)", 
-                            (seq, emb.numpy().tobytes())) # only supports float32
+                    c.execute("INSERT OR REPLACE INTO embeddings VALUES (?, ?)",
+                            (seq, tensor_to_embedding_blob(emb)))
                 else:
                     embeddings_dict[seq] = emb.to(self.embed_dtype)
             

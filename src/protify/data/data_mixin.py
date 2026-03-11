@@ -10,11 +10,11 @@ from datasets import load_dataset, Dataset
 from dataclasses import dataclass
 
 try:
-    from utils import print_message
+    from utils import print_message, embedding_blob_to_tensor
     from seed_utils import get_global_seed
     from embedder import get_embedding_filename
 except ImportError:
-    from ..utils import print_message
+    from ..utils import print_message, embedding_blob_to_tensor
     from ..seed_utils import get_global_seed
     from ..embedder import get_embedding_filename
 from .supported_datasets import supported_datasets, standard_data_benchmark, vector_benchmark
@@ -189,11 +189,11 @@ class DataMixin:
 
     def _select_from_sql(self, c, seq, cast_to_torch=True):
         c.execute("SELECT embedding FROM embeddings WHERE sequence = ?", (seq,))
-        embedding = np.frombuffer(c.fetchone()[0], dtype=np.float32).reshape(1, -1)
-        if self._full:
-            embedding = embedding.reshape(len(seq), -1)
-        if cast_to_torch:
-            embedding = torch.tensor(embedding)
+        raw = c.fetchone()[0]
+        fallback_shape = (1, -1) if not self._full else (len(seq), -1)
+        embedding = embedding_blob_to_tensor(raw, fallback_shape=fallback_shape)
+        if not cast_to_torch:
+            embedding = embedding.numpy()
         return embedding
 
     def _select_from_pth(self, emb_dict, seq, cast_to_np=False):
@@ -862,12 +862,12 @@ class DataMixin:
     def get_embedding_dim_sql(self, save_path, test_seq, tokenizer):
         import sqlite3
         test_seq_len = len(tokenizer(test_seq, return_tensors='pt')['input_ids'][0])
-        
+
         with sqlite3.connect(save_path) as conn:
             c = conn.cursor()
             c.execute("SELECT embedding FROM embeddings WHERE sequence = ?", (test_seq,))
             test_embedding = c.fetchone()[0]
-            test_embedding = torch.tensor(np.frombuffer(test_embedding, dtype=np.float32).reshape(1, -1))
+            test_embedding = embedding_blob_to_tensor(test_embedding, fallback_shape=(1, -1))
         if self._full:
             test_embedding = test_embedding.reshape(test_seq_len, -1)
         embedding_dim = test_embedding.shape[-1]

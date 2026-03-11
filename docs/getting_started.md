@@ -39,14 +39,21 @@ Alternatively, from `src/protify` you can run `py -m main` and `py -m gui` (see 
 
 ### Docker
 
-From the repo root:
+Run all commands from the **repository root** on your host; you do not need to `cd src/protify`. Mount the project at `/workspace` and set the container working directory to `/workspace/src/protify` so that `py -m main` and `py -m gui` work without changing the module path.
 
+**Linux / macOS:**
 ```bash
 docker build -t protify-env:latest .
-docker run --rm --gpus all -v "%CD%":/workspace protify-env:latest py -m main
+docker run --rm -it --gpus all -v "${PWD}":/workspace -w /workspace/src/protify protify-env:latest python -m main --model_names ESM2-8 --data_names DeepLoc-2 --num_epochs 2
 ```
 
-On Windows use `%CD%`; on Linux/mac use `$(pwd)` or `${PWD}`. Adjust the module path if your image runs from a different working directory (e.g. `py -m src.protify.main`).
+**Windows:**
+```bash
+docker build -t protify-env:latest .
+docker run --rm -it --gpus all -v "%CD%":/workspace -w /workspace/src/protify protify-env:latest py -m main --model_names ESM2-8 --data_names DeepLoc-2 --num_epochs 2
+```
+
+Paths like `--log_dir` and `--results_dir` are relative to `/workspace/src/protify`. To write outputs at project root, use e.g. `--log_dir /workspace/logs` and `--results_dir /workspace/results`.
 
 ### Optional: xformers for AMPLIFY
 
@@ -67,7 +74,7 @@ pip install xformers
 | `py -m main` | Same as main, when run from `src/protify`. |
 | `py -m gui` | Same as gui, when run from `src/protify`. |
 
-Use `py` on Windows; you can use `python` if it points to the same interpreter.
+Use `py` on Windows; you can use `python` if it points to the same interpreter. **In Docker:** use `-w /workspace/src/protify` and then `py -m main` or `py -m gui` (no `src.protify` prefix needed).
 
 ---
 

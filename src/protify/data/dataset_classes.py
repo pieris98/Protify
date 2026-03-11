@@ -8,9 +8,9 @@ from torch.utils.data import Dataset as TorchDataset
 from tqdm.auto import tqdm
 
 try:
-    from utils import print_message
+    from utils import print_message, embedding_blob_to_tensor
 except ImportError:
-    from ..utils import print_message
+    from ..utils import print_message, embedding_blob_to_tensor
 from typing import List
 
 
@@ -68,7 +68,7 @@ class PairEmbedsLabelsDatasetFromDisk(TorchDataset):
         if row is None:
             raise ValueError(f"Embedding not found for sequence: {seq}")
         emb_data = row[0]
-        emb = torch.tensor(np.frombuffer(emb_data, dtype=np.float32).reshape(-1, self.input_size))
+        emb = embedding_blob_to_tensor(emb_data, fallback_shape=(-1, self.input_size))
         return emb
 
     def read_embeddings(self):
@@ -237,7 +237,7 @@ class EmbedsLabelsDatasetFromDisk(TorchDataset):
             result = c.execute("SELECT embedding FROM embeddings WHERE sequence=?", (self.seqs[i],))
             row = result.fetchone()
             emb_data = row[0]
-            emb = torch.tensor(np.frombuffer(emb_data, dtype=np.float32).reshape(-1, self.input_size))
+            emb = embedding_blob_to_tensor(emb_data, fallback_shape=(-1, self.input_size))
             if self.full:
                 padding_needed = self.max_length - emb.size(0)
                 emb = F.pad(emb, (0, 0, 0, padding_needed), value=0)
@@ -403,7 +403,7 @@ class MultiEmbedsLabelsDatasetFromDisk(TorchDataset):
         if row is None:
             raise ValueError(f"Embedding not found for sequence: {seq}")
         emb_data = row[0]
-        emb = torch.tensor(np.frombuffer(emb_data, dtype=np.float32).reshape(-1, self.input_size))
+        emb = embedding_blob_to_tensor(emb_data, fallback_shape=(-1, self.input_size))
         return emb
 
     def _combine_matrix(self, parts: List[torch.Tensor]) -> torch.Tensor:

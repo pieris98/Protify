@@ -1,12 +1,12 @@
 # Probes and Training
 
-This page documents probe types (linear, transformer, retrievalnet, lyra), `ProbeArguments` and `get_probe`, `TrainerArguments` and `TrainerMixin`, and the training flows: probe-only (`run_nn_probes`), full finetuning, hybrid, and scikit. It also covers `num_runs` aggregation and model save/export.
+This page documents probe types (linear, transformer, interpnet, lyra), `ProbeArguments` and `get_probe`, `TrainerArguments` and `TrainerMixin`, and the training flows: probe-only (`run_nn_probes`), full finetuning, hybrid, and scikit. It also covers `num_runs` aggregation and model save/export.
 
 ---
 
 ## Overview
 
-A **probe** is a trainable head on top of (frozen or trainable) base model embeddings. Protify supports four probe types: **linear** (MLP), **transformer**, **retrievalnet**, and **lyra**. Training can be probe-only (default), full base-model finetuning, or hybrid (train probe then finetune base+probe). The scikit path uses precomputed embeddings with sklearn-style models. All probes share a common forward API (embeddings, attention_mask, optional labels) and return loss, logits, and optional hidden_states/attentions.
+A **probe** is a trainable head on top of (frozen or trainable) base model embeddings. Protify supports four probe types: **linear** (MLP), **transformer**, **interpnet**, and **lyra**. Training can be probe-only (default), full base-model finetuning, or hybrid (train probe then finetune base+probe). The scikit path uses precomputed embeddings with sklearn-style models. All probes share a common forward API (embeddings, attention_mask, optional labels) and return loss, logits, and optional hidden_states/attentions.
 
 ---
 
@@ -36,10 +36,10 @@ flowchart LR
 |------|----------|-------|-------------|
 | **linear** | Yes | No | MLP on pooled embeddings. Fastest; good baseline. |
 | **transformer** | Yes | Yes | Transformer stack + pooler/classifier. Uses [model_components](model_components.md) Transformer. |
-| **retrievalnet** | Yes | Yes | Transformer + attention-based logits (AttentionLogitsSequence / AttentionLogitsToken). |
+| **interpnet** | Yes | Yes | Transformer + attention-based logits (AttentionLogitsSequence / AttentionLogitsToken). |
 | **lyra** | Yes | Yes | S4/Lyra probe; no shared model_components. |
 
-**When to use:** Linear for speed and baselines; transformer or retrievalnet for better accuracy when compute allows; lyra for sequence modeling alternatives. Token-wise is for residue-level tasks (e.g. secondary structure).
+**When to use:** Linear for speed and baselines; transformer or interpnet for better accuracy when compute allows; lyra for sequence modeling alternatives. Token-wise is for residue-level tasks (e.g. secondary structure).
 
 ---
 
@@ -49,17 +49,17 @@ Defined in [get_probe.py](../src/protify/probes/get_probe.py). Key attributes (C
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
-| `probe_type` | str | linear | linear, transformer, retrievalnet, lyra. |
+| `probe_type` | str | linear | linear, transformer, interpnet, lyra. |
 | `tokenwise` | bool | False | Token-wise prediction. |
 | `input_size` | int | 960 | Input dimension (set from embedding size). |
 | `hidden_size` | int | 8192 | Hidden size for linear probe MLP. |
-| `transformer_hidden_size` | int | 512 | Hidden size for transformer/retrievalnet. |
+| `transformer_hidden_size` | int | 512 | Hidden size for transformer/interpnet. |
 | `dropout` | float | 0.2 | Dropout. |
 | `num_labels` | int | 2 | Number of classes (set from data). |
 | `n_layers` | int | 1 | Number of layers. |
 | `task_type` | str | singlelabel | singlelabel, multilabel, regression, etc. |
 | `pre_ln` | bool | True | Pre-LayerNorm. |
-| `sim_type` | str | dot | dot, cosine, euclidean (retrievalnet). |
+| `sim_type` | str | dot | dot, cosine, euclidean (interpnet). |
 | `use_bias` | bool | False | Bias in Linear layers. |
 | `add_token_ids` | bool | False | Token type embeddings for PPI. |
 | `classifier_size` | int | 4096 | Classifier FF dimension. |
@@ -78,7 +78,7 @@ Defined in [get_probe.py](../src/protify/probes/get_probe.py). Key attributes (C
 ## get_probe and rebuild_probe_from_saved_config
 
 - **get_probe(args: ProbeArguments)**  
-  Returns a probe instance: `LinearProbe`, `TransformerForSequenceClassification`, `TransformerForTokenClassification`, `RetrievalNetForSequenceClassification`, `RetrievalNetForTokenClassification`, or the Lyra variants. Config is built from `args.__dict__` (with `hidden_size` overridden by `transformer_hidden_size` for transformer/retrievalnet).
+  Returns a probe instance: `LinearProbe`, `TransformerForSequenceClassification`, `TransformerForTokenClassification`, `InterpNetForSequenceClassification`, `InterpNetForTokenClassification`, or the Lyra variants. Config is built from `args.__dict__` (with `hidden_size` overridden by `transformer_hidden_size` for transformer/interpnet).
 
 - **rebuild_probe_from_saved_config(probe_type, tokenwise, probe_config)**  
   Rebuilds the same probe classes from a saved config dict (e.g. when loading a packaged model).
@@ -103,6 +103,7 @@ Defined in [trainers.py](../src/protify/probes/trainers.py).
 | `patience` | int | 3 | Early-stopping patience. |
 | `read_scaler` | int | 100 | For dataset read scaling (e.g. SQL). |
 | `save_model` | bool | False | Save/push model (e.g. to Hub). |
+| `push_raw_probe` | bool | False | With save_model, push raw probe class to Hub (load with Class.from_pretrained(repo_id)) instead of packaged AutoModel. |
 | `seed` | int | 42 | Random seed. |
 | `plots_dir` | str | None | Directory for CI plots. |
 | `full_finetuning` | bool | False | Full finetuning mode. |
@@ -132,7 +133,12 @@ When `num_runs > 1`, the trainer runs training `num_runs` times with different s
 
 ## save_model and export
 
-When `save_model` is True, after training the code can export a packaged model (backbone + probe) to the HuggingFace Hub via `export_packaged_model_to_hub(...)`, or push the model and a README. Production export uses the same probe rebuild API so that the packaged artifact can be loaded elsewhere.
+When `save_model` is True, after training the code can export to the HuggingFace Hub in two ways:
+
+- **Default (packaged):** Export a packaged model (backbone + probe) via `export_packaged_model_to_hub(...)`. The repo is loadable with `AutoModel.from_pretrained(repo_id)`. If packaged export is not supported or fails, it falls back to pushing the full model (hybrid or probe) and a README.
+- **Raw probe (`--push_raw_probe`):** Skip packaged export and push only the raw probe class (e.g. `InterpNetForSequenceClassification`) plus a README. Load with the probe class directly, e.g. `from protify.probes.interpnet import InterpNetForSequenceClassification` then `InterpNetForSequenceClassification.from_pretrained("user/repo_id")`. For hybrid runs, only the probe submodule is pushed, not the full hybrid.
+
+Production export uses the same probe rebuild API so that the packaged artifact can be loaded elsewhere.
 
 ---
 

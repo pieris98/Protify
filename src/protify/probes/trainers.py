@@ -74,6 +74,7 @@ class TrainerArguments:
             patience: int = 3,
             read_scaler: int = 100,
             save_model: bool = False,
+            push_raw_probe: bool = False,
             seed: int = 42,
             train_data_size: int = 100,
             plots_dir: str = None,
@@ -95,6 +96,7 @@ class TrainerArguments:
         self.task_type = task_type
         self.patience = patience
         self.save = save_model
+        self.push_raw_probe = push_raw_probe
         self.read_scaler = read_scaler
         self.seed = seed
         self.train_data_size = train_data_size
@@ -328,32 +330,13 @@ Protify is an open source platform designed to simplify and democratize workflow
                         test_metrics=test_metrics,
                     )
 
-                    packaged_export_succeeded = False
-                    if probe or isinstance(trainer.model, HybridProbe):
-                        try:
-                            packaged_export_succeeded, export_message = export_packaged_model_to_hub(
-                                trained_model=trainer.model,
-                                source_model_name=source_model_name,
-                                probe_args=self.probe_args,
-                                embedding_args=self.embedding_args,
-                                tokenizer=tokenizer,
-                                repo_id=repo_id,
-                                model_card=model_card,
-                                ppi=ppi,
-                                private=True,
-                                hf_token=hf_token,
-                            )
-                            print_message(export_message)
-                        except Exception as packaged_error:
-                            print_message(f"Warning: packaged export failed for {repo_id}: {packaged_error}")
-
-                    if not packaged_export_succeeded:
-                        print_message(f"Falling back to direct model push_to_hub for {repo_id}")
+                    if self.trainer_args.push_raw_probe and (probe or isinstance(trainer.model, HybridProbe)):
+                        probe_to_push = trainer.model.probe if isinstance(trainer.model, HybridProbe) else trainer.model
                         if hf_token is not None:
-                            trainer.model.push_to_hub(repo_id, private=True, token=hf_token)
+                            probe_to_push.push_to_hub(repo_id, private=True, token=hf_token)
                             api = HfApi(token=hf_token)
                         else:
-                            trainer.model.push_to_hub(repo_id, private=True)
+                            probe_to_push.push_to_hub(repo_id, private=True)
                             api = HfApi()
                         api.upload_file(
                             path_or_fileobj=model_card.encode("utf-8"),
@@ -361,6 +344,41 @@ Protify is an open source platform designed to simplify and democratize workflow
                             repo_id=repo_id,
                             repo_type="model",
                         )
+                        print_message(f"Raw probe uploaded to Hugging Face Hub: {repo_id} (load with e.g. Class.from_pretrained('{repo_id}'))")
+                    else:
+                        packaged_export_succeeded = False
+                        if probe or isinstance(trainer.model, HybridProbe):
+                            try:
+                                packaged_export_succeeded, export_message = export_packaged_model_to_hub(
+                                    trained_model=trainer.model,
+                                    source_model_name=source_model_name,
+                                    probe_args=self.probe_args,
+                                    embedding_args=self.embedding_args,
+                                    tokenizer=tokenizer,
+                                    repo_id=repo_id,
+                                    model_card=model_card,
+                                    ppi=ppi,
+                                    private=True,
+                                    hf_token=hf_token,
+                                )
+                                print_message(export_message)
+                            except Exception as packaged_error:
+                                print_message(f"Warning: packaged export failed for {repo_id}: {packaged_error}")
+
+                        if not packaged_export_succeeded:
+                            print_message(f"Falling back to direct model push_to_hub for {repo_id}")
+                            if hf_token is not None:
+                                trainer.model.push_to_hub(repo_id, private=True, token=hf_token)
+                                api = HfApi(token=hf_token)
+                            else:
+                                trainer.model.push_to_hub(repo_id, private=True)
+                                api = HfApi()
+                            api.upload_file(
+                                path_or_fileobj=model_card.encode("utf-8"),
+                                path_in_repo="README.md",
+                                repo_id=repo_id,
+                                repo_type="model",
+                            )
                     print_message(f"Successfully saved model to HuggingFace Hub: {repo_id}")
             except Exception as e:
                 import traceback

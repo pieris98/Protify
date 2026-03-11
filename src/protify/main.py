@@ -59,7 +59,7 @@ def parse_arguments():
     parser.add_argument("--use_xformers", action="store_true", default=False, help="Use xformers memory efficient attention for AMPLIFY models (default: False).")
 
     # ----------------- ProbeArguments ----------------- #
-    parser.add_argument("--probe_type", choices=["linear", "transformer", "retrievalnet", "lyra"], default="linear", help="Type of probe.")
+    parser.add_argument("--probe_type", choices=["linear", "transformer", "interpnet", "lyra"], default="linear", help="Type of probe.")
     parser.add_argument("--tokenwise", action="store_true", default=False, help="Tokenwise probe (default: False).")
     parser.add_argument("--hidden_size", type=int, default=8192, help="Hidden dimension size for linear probe MLP.")
     parser.add_argument("--transformer_hidden_size", type=int, default=512, help="Hidden dimension size for transformer probe.")
@@ -78,6 +78,7 @@ def parse_arguments():
     parser.add_argument("--probe_pooling_types", nargs="+", default=["mean", "var"], help="Pooling types to use.")
     parser.add_argument("--use_bias", action="store_true", default=False, help="Use bias in Linear layers (default: False)")
     parser.add_argument("--save_model", action="store_true", default=False, help="Save trained model (default: False).")
+    parser.add_argument("--push_raw_probe", action="store_true", default=False, help="With --save_model, push raw probe class to Hub (load with e.g. InterpNetForSequenceClassification.from_pretrained(repo_id)) instead of packaged AutoModel.")
     parser.add_argument("--production_model", action="store_true", default=False, help="Production model (default: False).")
     parser.add_argument("--lora", action="store_true", default=False, help="Use LoRA (default: False).")
     parser.add_argument("--lora_r", type=int, default=8, help="Number of trainable parameters in the LoRA model.")
@@ -288,6 +289,7 @@ def parse_arguments():
         yaml_args.codon_to_aa = _merge_store_true(args.codon_to_aa, "codon_to_aa")
         yaml_args.aa_to_codon = _merge_store_true(args.aa_to_codon, "aa_to_codon")
         yaml_args.random_pair_flipping = _merge_store_true(args.random_pair_flipping, "random_pair_flipping")
+        yaml_args.push_raw_probe = _merge_store_true(args.push_raw_probe, "push_raw_probe")
         # Ensure ProteinGym defaults exist when using YAML configs
         if not hasattr(yaml_args, 'proteingym'):
             yaml_args.proteingym = False

@@ -85,7 +85,7 @@ The schema is defined by the union of [base.yaml](../src/protify/yamls/base.yaml
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
-| `--probe_type` | choice | linear | linear, transformer, retrievalnet, lyra. |
+| `--probe_type` | choice | linear | linear, transformer, interpnet, lyra. |
 | `--tokenwise` | flag | False | Token-wise prediction. |
 | `--hidden_size` | int | 8192 | Hidden size for linear probe MLP. |
 | `--transformer_hidden_size` | int | 512 | Hidden size for transformer probe. |
@@ -102,12 +102,13 @@ The schema is defined by the union of [base.yaml](../src/protify/yamls/base.yaml
 | `--probe_pooling_types` | list | [mean, var] | Pooling types for probe. |
 | `--use_bias` | flag | False | Use bias in Linear layers. |
 | `--save_model` | flag | False | Save trained model. |
+| `--push_raw_probe` | flag | False | With --save_model, push raw probe class to Hub (load with e.g. Class.from_pretrained(repo_id)) instead of packaged AutoModel. |
 | `--production_model` | flag | False | Production model flag. |
 | `--lora` | flag | False | Use LoRA. |
 | `--lora_r` | int | 8 | LoRA rank. |
 | `--lora_alpha` | float | 32.0 | LoRA alpha. |
 | `--lora_dropout` | float | 0.01 | LoRA dropout. |
-| `--sim_type` | choice | dot | dot, euclidean, cosine (retrievalnet). |
+| `--sim_type` | choice | dot | dot, euclidean, cosine (interpnet). |
 | `--add_token_ids` | flag | False | Add token type embeddings for PPI. |
 
 ### Scikit

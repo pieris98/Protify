@@ -26,12 +26,12 @@ from .losses import get_loss_fct
 
 
 @dataclass
-class RetrievalNetOutput(SequenceClassifierOutput):
+class InterpNetOutput(SequenceClassifierOutput):
     s_max: tuple[list[torch.Tensor] | None, ...] | None = None
 
 
-class RetrievalNetConfig(PretrainedConfig):
-    model_type = "retrievalnet"
+class InterpNetConfig(PretrainedConfig):
+    model_type = "interpnet"
 
     def __init__(
         self,
@@ -67,11 +67,11 @@ class RetrievalNetConfig(PretrainedConfig):
         self.use_bias = use_bias
 
 
-class RetrievalNetForSequenceClassification(PreTrainedModel):
-    config_class = RetrievalNetConfig
+class InterpNetForSequenceClassification(PreTrainedModel):
+    config_class = InterpNetConfig
     all_tied_weights_keys = {}
 
-    def __init__(self, config: RetrievalNetConfig):
+    def __init__(self, config: InterpNetConfig):
         super().__init__(config)
         if config.n_layers > 0:
             self.input_proj = nn.Linear(config.input_size, config.hidden_size, bias=config.use_bias)
@@ -105,7 +105,7 @@ class RetrievalNetForSequenceClassification(PreTrainedModel):
         output_attentions: bool = False,
         output_hidden_states: bool = False,
         output_s_max: Optional[bool] = None,
-    ) -> RetrievalNetOutput:
+    ) -> InterpNetOutput:
         transformer_hidden_states = None
         transformer_s_max = None
 
@@ -145,7 +145,7 @@ class RetrievalNetForSequenceClassification(PreTrainedModel):
             else:
                 loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1).long())
 
-        return RetrievalNetOutput(
+        return InterpNetOutput(
             loss=loss,
             logits=logits,
             hidden_states=hidden_state_output if output_hidden_states else None,
@@ -154,11 +154,11 @@ class RetrievalNetForSequenceClassification(PreTrainedModel):
         )
 
 
-class RetrievalNetForTokenClassification(PreTrainedModel):
-    config_class = RetrievalNetConfig
+class InterpNetForTokenClassification(PreTrainedModel):
+    config_class = InterpNetConfig
     all_tied_weights_keys = {}
 
-    def __init__(self, config: RetrievalNetConfig):
+    def __init__(self, config: InterpNetConfig):
         super().__init__(config)
         if config.n_layers > 0:
             self.input_proj = nn.Linear(config.input_size, config.hidden_size, bias=config.use_bias)
@@ -193,7 +193,7 @@ class RetrievalNetForTokenClassification(PreTrainedModel):
         output_hidden_states: bool = False,
         output_s_max: Optional[bool] = None,
         **kwargs,
-    ) -> RetrievalNetOutput:
+    ) -> InterpNetOutput:
         del kwargs
         transformer_hidden_states = None
         transformer_attentions = None
@@ -236,7 +236,7 @@ class RetrievalNetForTokenClassification(PreTrainedModel):
             else:
                 loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1).long())
 
-        return RetrievalNetOutput(
+        return InterpNetOutput(
             loss=loss,
             logits=logits,
             hidden_states=transformer_hidden_states if output_hidden_states else None,

@@ -26,7 +26,7 @@ The GUI is the same **MainProcess** as the CLI, run with `GUI=True` and an initi
 | **Model** | Select models (preset names or paths + types). "Apply" sets full_args.model_names (or model_paths/model_types) and builds BaseModelArguments. |
 | **Data** | Dataset names or local dirs, max_length, trim, delimiter, col_names, translation flags, multi_column. "Get data" sets data_args and calls get_datasets(). |
 | **Embedding** | Batch size, workers, download_embeddings, matrix_embed, pooling types, save_embeddings, sql. "Get embeddings" sets embedding_args and calls save_embeddings_to_disk(). |
-| **Probe** | Probe type, tokenwise, sizes, dropout, pre_ln, rotary, attention_backend, probe_pooling_types, LoRA, sim_type. "Configure probe" updates full_args and builds ProbeArguments. |
+| **Probe** | Probe type, tokenwise, sizes, dropout, pre_ln, rotary, attention_backend, probe_pooling_types, Save Model, Push Raw Probe, LoRA, sim_type. "Configure probe" updates full_args and builds ProbeArguments. |
 | **Trainer** | Epochs, batch sizes, lr, weight_decay, patience, full_finetuning, hybrid_probe, num_runs. "Run trainer" sets trainer_args and runs the same branches as CLI (W&B hyperopt, full finetuning, hybrid, or run_nn_probes). |
 | **Modal** | Deploy backend, submit remote run, poll status, cancel, fetch logs/results/plots. Uses run_in_background for deploy, submit, poll, cancel, fetch. |
 | **ProteinGym** | DMS IDs, mode, scoring method, etc. "Run" calls run_proteingym_zero_shot() (or compare_scoring_methods) in background. |

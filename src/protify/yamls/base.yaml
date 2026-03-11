@@ -44,7 +44,7 @@ model_names:
 
 
 # ProbeArguments:
-probe_type: linear  # valid options: linear, transformer, retrievalnet
+probe_type: linear  # valid options: linear, transformer, interpnet
 tokenwise: !!bool false
 hidden_size: !!int 8192
 dropout: !!float 0.2
@@ -61,6 +61,7 @@ output_s_max: !!bool false
 probe_pooling_types:
   - cls
 save_model: !!bool false
+push_raw_probe: !!bool false
 production_model: !!bool false
 use_lora: !!bool false
 lora_r: !!int 8

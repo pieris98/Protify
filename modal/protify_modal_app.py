@@ -1363,7 +1363,7 @@ def web_interface():
                             sql = gr.Checkbox(label="Use SQL Storage", value=False)
                         
                         with gr.Accordion("🔍 Probe Settings", open=False):
-                            probe_type = gr.Dropdown(choices=["linear", "transformer", "retrievalnet", "lyra"], value="linear")
+                            probe_type = gr.Dropdown(choices=["linear", "transformer", "interpnet", "lyra"], value="linear")
                             tokenwise = gr.Checkbox(label="Tokenwise", value=False)
                             pre_ln = gr.Checkbox(label="Pre Layer Norm", value=True)
                             n_layers = gr.Number(label="Number of Layers", value=1, precision=0)

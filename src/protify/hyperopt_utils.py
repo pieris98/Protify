@@ -40,7 +40,7 @@ class HyperoptModule:
         self.base_trainer_args = copy.deepcopy(self.mp.trainer_args.__dict__)
         
         self.probe_keys = {
-            'hidden_size','transformer_hidden_size','dropout','n_layers','pre_ln','classifier_size',
+            'hidden_size','dropout','n_layers','pre_ln','classifier_size',
             'classifier_dropout','n_heads','rotary','use_bias','probe_pooling_types',
             'lora','lora_r','lora_alpha','lora_dropout','probe_type','tokenwise', 'pooling_types'
         }
@@ -53,7 +53,7 @@ class HyperoptModule:
             'embedding_pooling_types'
         }
         self.int_keys = {
-            'hidden_size', 'transformer_hidden_size', 'n_layers', 'classifier_size', 'n_heads', 
+            'hidden_size', 'n_layers', 'classifier_size', 'n_heads', 
             'lora_r', 'lora_alpha', 'num_epochs', 'probe_batch_size',
             'base_batch_size', 'probe_grad_accum', 'base_grad_accum',
             'patience', 'seed'
@@ -74,12 +74,6 @@ class HyperoptModule:
             n_heads = max(1, val // 64)
             cfg['n_heads'] = n_heads
 
-        if 'transformer_hidden_size' in cfg:
-            val = cfg['transformer_hidden_size']
-            # Automatically set n_heads based on transformer_hidden_size (transformer probe)
-            n_heads = max(1, val // 64)
-            cfg['n_heads'] = n_heads
-                
         if 'dropout' in cfg:
             cfg['transformer_dropout'] = cfg['dropout']
 
@@ -234,7 +228,7 @@ class HyperoptModule:
         
         # Define which parameters are relevant for each probe type
         linear_probe_params = {'lr', 'weight_decay', 'hidden_size', 'n_layers', 'dropout', 'pre_ln', 'use_bias', 'probe_batch_size'}
-        transformer_probe_params = {'lr', 'weight_decay', 'transformer_hidden_size', 'n_layers', 'transformer_dropout', 'pre_ln', 
+        transformer_probe_params = {'lr', 'weight_decay', 'hidden_size', 'n_layers', 'transformer_dropout', 'pre_ln', 
                                      'classifier_dropout', 'classifier_size', 'use_bias', 'probe_pooling_types', 'embedding_pooling_types', 'probe_batch_size'}
         lora_params = {'lora_r', 'lora_alpha', 'lora_dropout'}
         

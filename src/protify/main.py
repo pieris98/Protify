@@ -81,8 +81,7 @@ def parse_arguments():
     # ----------------- ProbeArguments ----------------- #
     parser.add_argument("--probe_type", choices=["linear", "transformer", "interpnet", "lyra"], default="linear", help="Type of probe.")
     parser.add_argument("--tokenwise", action="store_true", default=False, help="Tokenwise probe (default: False).")
-    parser.add_argument("--hidden_size", type=int, default=8192, help="Hidden dimension size for linear probe MLP.")
-    parser.add_argument("--transformer_hidden_size", type=int, default=512, help="Hidden dimension size for transformer probe.")
+    parser.add_argument("--hidden_size", type=int, default=8192, help="Hidden dimension size for probe.")
     parser.add_argument("--dropout", type=float, default=0.2, help="Dropout rate.")
     parser.add_argument("--n_layers", type=int, default=1, help="Number of layers.")
     parser.add_argument("--pre_ln", action="store_false", default=True,

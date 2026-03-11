@@ -24,7 +24,6 @@ class ProbeArguments:
             use_bias: bool = False,
             add_token_ids: bool = False,
             ### Transformer Probe
-            transformer_hidden_size: int = 512,  # For transformer probe
             classifier_size: int = 4096,
             transformer_dropout: float = 0.1,
             classifier_dropout: float = 0.2,
@@ -47,7 +46,6 @@ class ProbeArguments:
         self.tokenwise = tokenwise
         self.input_size = input_size
         self.hidden_size = hidden_size
-        self.transformer_hidden_size = transformer_hidden_size
         self.dropout = dropout
         self.num_labels = num_labels
         self.n_layers = n_layers
@@ -75,16 +73,10 @@ def get_probe(args: ProbeArguments):
         config = LinearProbeConfig(**args.__dict__)
         return LinearProbe(config)
     elif args.probe_type == 'transformer' and not args.tokenwise:
-        # Use transformer_hidden_size for the transformer probe
-        transformer_args = args.__dict__.copy()
-        transformer_args['hidden_size'] = args.transformer_hidden_size
-        config = TransformerProbeConfig(**transformer_args)
+        config = TransformerProbeConfig(**args.__dict__)
         return TransformerForSequenceClassification(config)
     elif args.probe_type == 'transformer' and args.tokenwise:
-        # Use transformer_hidden_size for the transformer probe's internal dimension
-        transformer_args = args.__dict__.copy()
-        transformer_args['hidden_size'] = args.transformer_hidden_size
-        config = TransformerProbeConfig(**transformer_args)
+        config = TransformerProbeConfig(**args.__dict__)
         return TransformerForTokenClassification(config)
     elif args.probe_type == 'interpnet' and not args.tokenwise:
         config = InterpNetConfig(**args.__dict__)

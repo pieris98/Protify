@@ -1,31 +1,12 @@
-import os
-import sys
-from typing import Any, Dict, Optional
-
 import torch
 from torch import nn
 from transformers import AutoModel, PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import SequenceClassifierOutput, TokenClassifierOutput
+from typing import Any, Dict, Optional
 
-
-try:
-    from protify.base_models.supported_models import all_presets_with_paths
-    from protify.pooler import Pooler
-    from protify.probes.get_probe import rebuild_probe_from_saved_config
-except ImportError:
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    candidate_paths = [
-        current_dir,
-        os.path.dirname(current_dir),
-        os.path.dirname(os.path.dirname(current_dir)),
-        os.path.join(current_dir, "src"),
-    ]
-    for candidate in candidate_paths:
-        if os.path.isdir(candidate) and candidate not in sys.path:
-            sys.path.insert(0, candidate)
-    from protify.base_models.supported_models import all_presets_with_paths
-    from protify.pooler import Pooler
-    from protify.probes.get_probe import rebuild_probe_from_saved_config
+from ..base_models.supported_models import all_presets_with_paths
+from ..pooler import Pooler
+from .get_probe import rebuild_probe_from_saved_config
 
 
 class PackagedProbeConfig(PretrainedConfig):

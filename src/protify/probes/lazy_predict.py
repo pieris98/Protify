@@ -11,8 +11,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder, OrdinalEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.utils import all_estimators
-from sklearn.base import RegressorMixin
-from sklearn.base import ClassifierMixin
+from sklearn.base import RegressorMixin, ClassifierMixin
 from sklearn.metrics import (
     accuracy_score,
     balanced_accuracy_score,
@@ -22,12 +21,8 @@ from sklearn.metrics import (
     mean_squared_error,
 )
 
-try:
-    from utils import print_message
-    from seed_utils import get_global_seed
-except ImportError:
-    from ..utils import print_message
-    from ..seed_utils import get_global_seed
+from ..utils import print_message
+from ..seed_utils import get_global_seed
 
 warnings.filterwarnings("ignore")
 pd.set_option("display.precision", 2)

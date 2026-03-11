@@ -1,11 +1,31 @@
-import os
 import argparse
+import os
 import sys
+
 import yaml
 from types import SimpleNamespace
 
-from modal_cli import _run_on_modal_cli, _should_auto_run_modal
-from modal_utils import parse_modal_api_key
+# Ensure src is in sys.path
+_current_dir = os.path.dirname(os.path.abspath(__file__))
+_src_dir = os.path.abspath(os.path.join(_current_dir, ".."))
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
+# Docker/Mount fallback: If the 'src/protify' folder was mounted directly
+# as the root (e.g. /workspace) and lost its 'protify' wrapper name.
+try:
+    import protify
+except ImportError:
+    if os.path.exists(os.path.join(_current_dir, "__init__.py")):
+        import importlib.util
+        _spec = importlib.util.spec_from_file_location("protify", os.path.join(_current_dir, "__init__.py"))
+        if _spec is not None:
+            _protify_mod = importlib.util.module_from_spec(_spec)
+            sys.modules["protify"] = _protify_mod
+            _spec.loader.exec_module(_protify_mod)
+
+from protify.modal_cli import _run_on_modal_cli, _should_auto_run_modal
+from protify.modal_utils import parse_modal_api_key
 
 
 def parse_arguments():  
@@ -353,29 +373,29 @@ if __name__ == "__main__":
     # Set global seed before doing anything else
     # If seed is None, set_global_seed will derive it from current time
     if args.deterministic:
-        from seed_utils import set_determinism
+        from protify.seed_utils import set_determinism
         set_determinism()
     
-    import entrypoint_setup # needs to happen after set_determinism()
+    import protify.entrypoint_setup # needs to happen after set_determinism()
 
 
 import torch
 from torchinfo import summary
 
-from probes.get_probe import ProbeArguments, get_probe
-from base_models.get_base_models import BaseModelArguments, get_tokenizer, get_base_model_for_training
-from base_models.utils import wrap_lora
-from data.data_mixin import DataMixin, DataArguments
-from probes.trainers import TrainerMixin, TrainerArguments
-from probes.scikit_classes import ScikitArguments, ScikitProbe
-from embedder import EmbeddingArguments, Embedder, get_embedding_filename
-from logger import MetricsLogger, log_method_calls
-from utils import torch_load, print_message, expand_dms_ids_all
-from visualization.plot_result import create_plots
-from hyperopt_utils import HyperoptModule
-from benchmarks.proteingym.scorer import ProteinGymRunner
-from benchmarks.proteingym.compare_scoring_methods import compare_scoring_methods
-from seed_utils import set_global_seed
+from protify.base_models.get_base_models import BaseModelArguments, get_base_model_for_training, get_tokenizer
+from protify.base_models.utils import wrap_lora
+from protify.benchmarks.proteingym.compare_scoring_methods import compare_scoring_methods
+from protify.benchmarks.proteingym.scorer import ProteinGymRunner
+from protify.data.data_mixin import DataArguments, DataMixin
+from protify.embedder import Embedder, EmbeddingArguments, get_embedding_filename
+from protify.hyperopt_utils import HyperoptModule
+from protify.logger import MetricsLogger, log_method_calls
+from protify.probes.get_probe import ProbeArguments, get_probe
+from protify.probes.scikit_classes import ScikitArguments, ScikitProbe
+from protify.probes.trainers import TrainerArguments, TrainerMixin
+from protify.seed_utils import set_global_seed
+from protify.utils import expand_dms_ids_all, print_message, torch_load
+from protify.visualization.plot_result import create_plots
 
 
 class MainProcess(MetricsLogger, DataMixin, TrainerMixin):

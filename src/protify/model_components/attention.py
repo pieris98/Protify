@@ -1,268 +1,306 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
-from functools import partial
 from einops import rearrange, repeat
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
+
+from .attention_utils import (
+    AttentionBackend,
+    BlockMask,
+    _repeat_kv,
+    flex_attention_func,
+    kernels_attention_func,
+    resolve_attention_backend,
+    sdpa_attention_func,
+)
 
 
-Linear = partial(nn.Linear, bias=False)
-LayerNorm = partial(nn.LayerNorm, bias=False)
+Linear = nn.Linear
+LayerNorm = nn.LayerNorm
 
 
-def rotate_half(x, interleaved=False):
+def rotate_half(x: torch.Tensor, interleaved: bool = False) -> torch.Tensor:
     if not interleaved:
         x1, x2 = x.chunk(2, dim=-1)
         return torch.cat((-x2, x1), dim=-1)
-    else:
-        x1, x2 = x[..., ::2], x[..., 1::2]
-        return rearrange(
-            torch.stack((-x2, x1), dim=-1), "... d two -> ... (d two)", two=2
-        )
+
+    x1, x2 = x[..., ::2], x[..., 1::2]
+    return rearrange(
+        torch.stack((-x2, x1), dim=-1),
+        "... d two -> ... (d two)",
+        two=2,
+    )
 
 
-def apply_rotary_emb_torch(x, cos, sin, interleaved=False, _inplace=False):
-    """
-    x: (batch_size, seqlen, nheads, headdim)
-    cos, sin: (seqlen, rotary_dim / 2)
-    """
-    ro_dim = cos.shape[-1] * 2
-    assert ro_dim <= x.shape[-1]
-    seqlen = x.size(1)
-    cos = cos[:seqlen]
-    sin = sin[:seqlen]
-    cos = repeat(cos, "s d -> s 1 (2 d)")
-    sin = repeat(sin, "s d -> s 1 (2 d)")
+def apply_rotary_emb_torch(
+    x: torch.Tensor,
+    cos: torch.Tensor,
+    sin: torch.Tensor,
+    interleaved: bool = False,
+) -> torch.Tensor:
+    rotary_dim = cos.shape[-1] * 2
+    assert rotary_dim <= x.shape[-1], "Rotary dimension cannot exceed head dimension."
+    seq_len = x.size(1)
+    cos = repeat(cos[:seq_len], "s d -> 1 s 1 (2 d)")
+    sin = repeat(sin[:seq_len], "s d -> 1 s 1 (2 d)")
     return torch.cat(
-        [
-            x[..., :ro_dim] * cos + rotate_half(x[..., :ro_dim], interleaved) * sin,
-            x[..., ro_dim:],
-        ],
+        (
+            x[..., :rotary_dim] * cos + rotate_half(x[..., :rotary_dim], interleaved) * sin,
+            x[..., rotary_dim:],
+        ),
         dim=-1,
     )
 
 
-class RotaryEmbedding(torch.nn.Module):
+class RotaryEmbedding(nn.Module):
     def __init__(
         self,
         dim: int,
-        base=10000.0,
-        interleaved=False,
-        scale_base=None,
-        scaling_factor=1.0,
-        pos_idx_in_fp32=True,
-        device=None,
+        base: float = 10000.0,
+        interleaved: bool = False,
+        scaling_factor: float = 1.0,
+        device: torch.device | None = None,
     ):
         super().__init__()
         self.dim = dim
         self.base = float(base)
-        self.pos_idx_in_fp32 = pos_idx_in_fp32
-        # Generate and save the inverse frequency buffer (non trainable)
         self.interleaved = interleaved
-        self.scale_base = scale_base
         self.scaling_factor = scaling_factor
         self.device = device
-
         self._seq_len_cached = 0
         self._cos_cached = None
         self._sin_cached = None
-        self._cos_k_cached = None
-        self._sin_k_cached = None
         self.reset_parameters()
 
-    def reset_parameters(self):
-        inv_freq = self._compute_inv_freq(self.device)
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
-        arange = torch.arange(0, self.dim, 2, device=self.device, dtype=torch.float32)
-        scale = (
-            (arange + 0.4 * self.dim) / (1.4 * self.dim)
-            if self.scale_base is not None
-            else None
-        )
-        self.register_buffer("scale", scale)
-
-    def _compute_inv_freq(self, device=None):
-        return 1 / (
+    def reset_parameters(self) -> None:
+        inv_freq = 1 / (
             self.base
             ** (
-                torch.arange(0, self.dim, 2, device=device, dtype=torch.float32)
+                torch.arange(0, self.dim, 2, device=self.device, dtype=torch.float32)
                 / self.dim
             )
         )
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
 
-    def _update_cos_sin_cache(self, seqlen, device=None, dtype=None):
+    def _update_cos_sin_cache(
+        self,
+        seq_len: int,
+        device: torch.device,
+        dtype: torch.dtype,
+    ) -> None:
         if (
-            seqlen > self._seq_len_cached
-            or self._cos_cached is None
-            or self._cos_cached.device != device
-            or self._cos_cached.dtype != dtype
-            or (self.training and self._cos_cached.is_inference())
+            seq_len <= self._seq_len_cached
+            and self._cos_cached is not None
+            and self._sin_cached is not None
+            and self._cos_cached.device == device
+            and self._cos_cached.dtype == dtype
         ):
-            self._seq_len_cached = seqlen
-            if self.pos_idx_in_fp32:
-                t = torch.arange(seqlen, device=device, dtype=torch.float32)
-                t /= self.scaling_factor
-                if self.inv_freq.dtype != torch.float32:
-                    inv_freq = self.inv_freq.to(torch.float32)
-                else:
-                    inv_freq = self.inv_freq
-            else:
-                t = torch.arange(seqlen, device=device, dtype=self.inv_freq.dtype)
-                t /= self.scaling_factor
-                inv_freq = self.inv_freq
-            freqs = torch.outer(t, inv_freq)
+            return
 
-            if self.scale is None:
-                self._cos_cached = torch.cos(freqs).to(dtype)
-                self._sin_cached = torch.sin(freqs).to(dtype)
-            else:
-                power = (
-                    torch.arange(
-                        seqlen, dtype=self.scale.dtype, device=self.scale.device
-                    )
-                    - seqlen // 2
-                ) / self.scale_base
-                scale = self.scale.to(device=power.device) ** power.unsqueeze(-1)
-                self._cos_cached = (torch.cos(freqs) * scale).to(dtype)
-                self._sin_cached = (torch.sin(freqs) * scale).to(dtype)
-                self._cos_k_cached = (torch.cos(freqs) / scale).to(dtype)
-                self._sin_k_cached = (torch.sin(freqs) / scale).to(dtype)
+        self._seq_len_cached = seq_len
+        positions = torch.arange(seq_len, device=device, dtype=torch.float32) / self.scaling_factor
+        freqs = torch.outer(positions, self.inv_freq.to(device=device, dtype=torch.float32))
+        self._cos_cached = torch.cos(freqs).to(dtype)
+        self._sin_cached = torch.sin(freqs).to(dtype)
 
-    def forward(self, q: torch.Tensor, k: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        q: (batch, seqlen, nheads, headdim)
-        k: (batch, seqlen, nheads, headdim)
-        """
-        self._update_cos_sin_cache(q.shape[1], device=q.device, dtype=q.dtype)
-        assert self._cos_cached is not None
-        assert self._sin_cached is not None
-        if self.scale is None:
-            return (
-                apply_rotary_emb_torch(
-                    q,
-                    self._cos_cached,
-                    self._sin_cached,
-                    self.interleaved,
-                    True,  # inplace=True
-                ),
-                apply_rotary_emb_torch(
-                    k,
-                    self._cos_cached,
-                    self._sin_cached,
-                    self.interleaved,
-                    True,  # inplace=True
-                ),
-            )  # type: ignore
-        else:
-            assert False
+    def forward(self, query_states: torch.Tensor, key_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        self._update_cos_sin_cache(query_states.shape[1], query_states.device, query_states.dtype)
+        assert self._cos_cached is not None, "Cosine rotary cache is not initialized."
+        assert self._sin_cached is not None, "Sine rotary cache is not initialized."
+        return (
+            apply_rotary_emb_torch(query_states, self._cos_cached, self._sin_cached, self.interleaved),
+            apply_rotary_emb_torch(key_states, self._cos_cached, self._sin_cached, self.interleaved),
+        )
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, hidden_size: int, n_heads: int, rotary: bool = True):
+    def __init__(
+        self,
+        hidden_size: int,
+        n_heads: int,
+        rotary: bool = True,
+        attention_backend: str = "flex",
+        use_bias: bool = False,
+    ):
         super().__init__()
         self.hidden_size = hidden_size
         self.n_heads = n_heads
-        self.d_head = self.hidden_size // self.n_heads
-        self.layernorm_qkv = nn.Sequential(
-            LayerNorm(hidden_size), Linear(hidden_size, hidden_size * 3)
-        )
-        self.out_proj = Linear(hidden_size, hidden_size)
-        self.q_ln = LayerNorm(hidden_size, bias=False)
-        self.k_ln = LayerNorm(hidden_size, bias=False)
-        self.reshaper = partial(rearrange, pattern="b s (h d) -> b h s d", h=n_heads)
-        self.rotary = RotaryEmbedding(hidden_size // n_heads) if rotary else None
+        self.d_head = hidden_size // n_heads
+        assert self.d_head * self.n_heads == self.hidden_size, "hidden_size must be divisible by n_heads."
+        self.scale = 1.0 / (self.d_head ** 0.5)
+        self.q_proj = Linear(hidden_size, hidden_size, bias=use_bias)
+        self.k_proj = Linear(hidden_size, hidden_size, bias=use_bias)
+        self.v_proj = Linear(hidden_size, hidden_size, bias=use_bias)
+        self.out_proj = Linear(hidden_size, hidden_size, bias=use_bias)
+        self.rotary = RotaryEmbedding(self.d_head) if rotary else None
+        self.attention_backend = resolve_attention_backend(attention_backend)
 
-    def _apply_rotary(self, q: torch.Tensor, k: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        q = q.unflatten(-1, (self.n_heads, self.d_head))
-        k = k.unflatten(-1, (self.n_heads, self.d_head))
-        q, k = self.rotary(q, k)
-        q = q.flatten(-2, -1)
-        k = k.flatten(-2, -1)
-        return q, k
+    def set_attention_backend(self, attention_backend: str) -> None:
+        self.attention_backend = resolve_attention_backend(attention_backend)
 
-    def forward(self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        # attention mask already prepped for sdpa shape (bs, 1, seq_len, seq_len)
-        qkv = self.layernorm_qkv(x) # (bs, seq_len, d_model * 3)
-        q, k, v = torch.chunk(qkv, 3, dim=-1) # (bs, seq_len, hidden_size)
-        q, k = self.q_ln(q).to(q.dtype), self.k_ln(k).to(q.dtype)
-        if self.rotary:
-            q, k = self._apply_rotary(q, k)
-        q, k, v = map(self.reshaper, (q, k, v)) # (bs, n_heads, seq_len, d_head)
-        a = F.scaled_dot_product_attention(q, k, v, attention_mask) # (bs, n_heads, seq_len, d_head)
-        a = rearrange(a, "b h s d -> b s (h d)") # (bs, seq_len, n_heads * d_head)
-        return self.out_proj(a) # (bs, seq_len, hidden_size)
+    def prepare_qkv(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        batch_size, seq_len, _ = hidden_states.shape
+        query_states = self.q_proj(hidden_states).view(batch_size, seq_len, self.n_heads, self.d_head)
+        key_states = self.k_proj(hidden_states).view(batch_size, seq_len, self.n_heads, self.d_head)
+        value_states = self.v_proj(hidden_states).view(batch_size, seq_len, self.n_heads, self.d_head)
+        if self.rotary is not None:
+            query_states, key_states = self.rotary(query_states, key_states)
+        return query_states, key_states, value_states
 
+    @torch.no_grad()
+    def _compute_s_max(
+        self,
+        query_states: torch.Tensor,
+        key_states: torch.Tensor,
+    ) -> list[torch.Tensor]:
+        query_bhld = query_states.transpose(1, 2).contiguous()
+        key_bhld = key_states.transpose(1, 2).contiguous()
+        key_bhld = _repeat_kv(key_bhld, 1)
+        query_norm = torch.linalg.vector_norm(query_bhld, dim=-1)
+        key_norm = torch.linalg.vector_norm(key_bhld, dim=-1)
+        s_max_bound = (
+            query_norm.max(dim=-1).values
+            * key_norm.max(dim=-1).values
+        ).max(dim=0).values * self.scale
+        return [s_max_bound[head_idx] for head_idx in range(self.n_heads)]
 
-class PAttention(nn.Module):
-    """
-    Cross-attention mechanism for token-parameter-attention (b, L, d) -> (b, L, n_tokens) ->  (b, L, d)
-    """
-    def __init__(
-            self,
-            hidden_size: int,
-            n_tokens: int,
-            dropout: float = 0.2,
-    ):
-        super(PAttention, self).__init__()
-        self.n_tokens = n_tokens
-        self.Wq = Linear(hidden_size, hidden_size)
-        self.Pk = nn.Parameter(torch.randn(1, n_tokens, hidden_size))
-        self.Pv = nn.Parameter(torch.randn(1, n_tokens, hidden_size))
-        self.dropout = nn.Dropout(dropout)
+    def _manual_attention(
+        self,
+        query_states: torch.Tensor,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor,
+        attention_mask_4d: torch.Tensor | None,
+        output_s_max: bool,
+    ) -> tuple[torch.Tensor, torch.Tensor, list[torch.Tensor] | None]:
+        query_bhld = query_states.transpose(1, 2).contiguous()
+        key_bhld = key_states.transpose(1, 2).contiguous()
+        value_bhld = value_states.transpose(1, 2).contiguous()
+        attention_logits = torch.matmul(query_bhld, key_bhld.transpose(-2, -1)) * self.scale
+        if attention_mask_4d is not None:
+            attention_logits = attention_logits.masked_fill(attention_mask_4d.logical_not(), float("-inf"))
+        attention_weights = F.softmax(attention_logits, dim=-1)
+        attn_output = torch.matmul(attention_weights, value_bhld)
+        s_max = self._compute_s_max(query_states, key_states) if output_s_max else None
+        return attn_output, attention_weights, s_max
+
+    def _dispatch_attention(
+        self,
+        query_states: torch.Tensor,
+        key_states: torch.Tensor,
+        value_states: torch.Tensor,
+        attention_mask_2d: torch.Tensor | None,
+        attention_mask_4d: torch.Tensor | None,
+        flex_block_mask: BlockMask | None,
+        output_attentions: bool,
+        output_s_max: bool,
+    ) -> tuple[torch.Tensor, torch.Tensor | None, list[torch.Tensor] | None]:
+        if output_attentions:
+            return self._manual_attention(
+                query_states=query_states,
+                key_states=key_states,
+                value_states=value_states,
+                attention_mask_4d=attention_mask_4d,
+                output_s_max=output_s_max,
+            )
+
+        query_bhld = query_states.transpose(1, 2).contiguous()
+        key_bhld = key_states.transpose(1, 2).contiguous()
+        value_bhld = value_states.transpose(1, 2).contiguous()
+
+        if self.attention_backend == AttentionBackend.KERNELS:
+            attn_output = kernels_attention_func(
+                query_states=query_states,
+                key_states=key_states,
+                value_states=value_states,
+                attention_mask_2d=attention_mask_2d,
+            ).transpose(1, 2).contiguous()
+        elif self.attention_backend == AttentionBackend.FLEX:
+            attn_output = flex_attention_func(
+                query_states=query_bhld,
+                key_states=key_bhld,
+                value_states=value_bhld,
+                flex_block_mask=flex_block_mask,
+            )
+        elif self.attention_backend == AttentionBackend.SDPA:
+            attn_output = sdpa_attention_func(
+                query_states=query_bhld,
+                key_states=key_bhld,
+                value_states=value_bhld,
+                attention_mask_4d=attention_mask_4d,
+            )
+        else:
+            raise AssertionError(f"Unsupported attention backend: {self.attention_backend}.")
+
+        s_max = self._compute_s_max(query_states, key_states) if output_s_max else None
+        return attn_output, None, s_max
 
     def forward(
         self,
-        x: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        b, L, _ = x.size()
-        if attention_mask is not None:
-            attention_mask = attention_mask[:, None, :].expand(b, self.n_token, self.L).bool()
-        
-        q = self.Wq(x) # (b, L, d)
-        out = F.scaled_dot_product_attention(q, self.Pk, self.Pv, attn_mask=attention_mask, is_causal=False) # (b, L, d)
-        return self.dropout(out)
+        hidden_states: torch.Tensor,
+        attention_mask_2d: torch.Tensor | None = None,
+        attention_mask_4d: torch.Tensor | None = None,
+        flex_block_mask: BlockMask | None = None,
+        output_attentions: bool = False,
+        output_s_max: bool = False,
+    ) -> tuple[torch.Tensor, torch.Tensor | None, list[torch.Tensor] | None]:
+        query_states, key_states, value_states = self.prepare_qkv(hidden_states)
+        attn_output, attention_weights, s_max = self._dispatch_attention(
+            query_states=query_states,
+            key_states=key_states,
+            value_states=value_states,
+            attention_mask_2d=attention_mask_2d,
+            attention_mask_4d=attention_mask_4d,
+            flex_block_mask=flex_block_mask,
+            output_attentions=output_attentions,
+            output_s_max=output_s_max,
+        )
+        attn_output = attn_output.transpose(1, 2).reshape(
+            hidden_states.shape[0],
+            hidden_states.shape[1],
+            self.hidden_size,
+        )
+        return self.out_proj(attn_output), attention_weights, s_max
 
 
 class AttentionLogitsSequence(nn.Module):
     """
     Cross-attention mechanism for token-parameter-attention (b, L, d) -> (b, L, num_labels) -> (b, num_labels)
     """
-    def __init__(self, hidden_size: int, num_labels: int = 1, sim_type: str = 'dot'):
-        super(AttentionLogitsSequence, self).__init__()
+
+    def __init__(self, hidden_size: int, num_labels: int = 1, sim_type: str = "dot"):
+        super().__init__()
         self.num_labels = num_labels
         self.Wp = nn.Parameter(torch.randn(1, hidden_size, num_labels))
-        self.Wx = Linear(hidden_size, hidden_size)
+        self.Wx = Linear(hidden_size, hidden_size, bias=False)
         self.sim_type = sim_type
 
-    def mean_pooling(self, emb: torch.Tensor, attention_mask: Optional[torch.Tensor] = None): # (b, L, d) -> (b, d)
+    def mean_pooling(self, emb: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         if attention_mask is None:
             return emb.mean(dim=1)
-        else:
-            return (emb * attention_mask).sum(dim=1) / attention_mask.sum(dim=1) # (b, d)
+        return (emb * attention_mask).sum(dim=1) / attention_mask.sum(dim=1)
 
-    def dot_product(self, x: torch.Tensor, p: torch.Tensor): # (b, L, d) * (b, d, num_labels) -> (b, L, num_labels)
+    def dot_product(self, x: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
         return torch.matmul(x, p)
 
-    def euclidean_distance(self, x: torch.Tensor, p: torch.Tensor): # (b, L, d) * (b, d, num_labels) -> (b, L, num_labels)
-        # x: (b, L, d), p: (b, d, num_labels)
-        x_exp = x.unsqueeze(-1)  # (b, L, d, 1)
-        p_exp = p.unsqueeze(1)   # (b, 1, d, num_labels)
-        dist = torch.abs(torch.norm(x_exp - p_exp, p=2, dim=2))  # (b, L, num_labels)
+    def euclidean_distance(self, x: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
+        x_exp = x.unsqueeze(-1)
+        p_exp = p.unsqueeze(1)
+        dist = torch.abs(torch.norm(x_exp - p_exp, p=2, dim=2))
         return -dist
 
     def cosine_similarity(
-            self,
-            x: torch.Tensor,
-            p: torch.Tensor,
-            attention_mask: torch.Tensor = None,
-    ) -> torch.Tensor: # (b, L, d) * (b, d, num_labels) -> (b, L, num_labels)
+        self,
+        x: torch.Tensor,
+        p: torch.Tensor,
+        attention_mask: torch.Tensor,
+    ) -> torch.Tensor:
         x = x * attention_mask
         x = F.normalize(x, p=2, dim=-1)
         p = F.normalize(p, p=2, dim=1)
         cos_sims = torch.matmul(x, p)
-        assert cos_sims.max().item() <= 1.0 and cos_sims.min().item() >= -1.0, "Cosine similarity values should be between -1 and 1"
+        assert cos_sims.max().item() <= 1.0 and cos_sims.min().item() >= -1.0, (
+            "Cosine similarity values should be between -1 and 1."
+        )
         return cos_sims
 
     def forward(
@@ -271,26 +309,26 @@ class AttentionLogitsSequence(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        b, l, _ = x.size()
-        p = self.Wp.expand(b, -1, -1) # (b, d, num_labels)
-        x = self.Wx(x) # (b, L, d)
+        del kwargs
+        batch_size, seq_len, _ = x.size()
+        p = self.Wp.expand(batch_size, -1, -1)
+        x = self.Wx(x)
 
         if attention_mask is None:
-            attention_mask = torch.ones(b, l, device=x.device, dtype=x.dtype)
-        
-        attention_mask = attention_mask.unsqueeze(-1)
+            attention_mask = torch.ones(batch_size, seq_len, device=x.device, dtype=x.dtype)
 
-        if self.sim_type == 'dot':
+        pooled_attention_mask = attention_mask.unsqueeze(-1)
+
+        if self.sim_type == "dot":
             y = self.dot_product(x, p)
-        elif self.sim_type == 'euclidean':
+        elif self.sim_type == "euclidean":
             y = self.euclidean_distance(x, p)
-        elif self.sim_type == 'cosine':
-            y = self.cosine_similarity(x, p, attention_mask)
+        elif self.sim_type == "cosine":
+            y = self.cosine_similarity(x, p, pooled_attention_mask)
         else:
             raise ValueError(f"Invalid similarity type: {self.sim_type}")
 
-        # y (b, L, num_labels)
-        logits = self.mean_pooling(y, attention_mask) # (b, num_labels)
+        logits = self.mean_pooling(y, pooled_attention_mask)
         return logits, y, x
 
 
@@ -298,98 +336,53 @@ class AttentionLogitsToken(nn.Module):
     """
     Cross-attention mechanism for token-parameter-attention (b, L, d) -> (b, L, num_labels)
     """
-    def __init__(self, hidden_size: int, num_labels: int = 1, sim_type: str = 'dot'):
-        super(AttentionLogitsToken, self).__init__()
+
+    def __init__(self, hidden_size: int, num_labels: int = 1, sim_type: str = "dot"):
+        super().__init__()
         self.num_labels = num_labels
         self.Wp = nn.Parameter(torch.randn(1, hidden_size, num_labels))
-        self.Wx = Linear(hidden_size, hidden_size)
+        self.Wx = Linear(hidden_size, hidden_size, bias=False)
         self.sim_type = sim_type
 
-    def dot_product(self, x: torch.Tensor, p: torch.Tensor):
+    def dot_product(self, x: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
         return torch.matmul(x, p)
-    
-    def euclidean_distance(self, x: torch.Tensor, p: torch.Tensor):
+
+    def euclidean_distance(self, x: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
         return torch.norm(x - p, p=2, dim=-1)
-    
+
     def cosine_similarity(
-            self,
-            x: torch.Tensor,
-            p: torch.Tensor,
-            attention_mask: Optional[torch.Tensor] = None,
+        self,
+        x: torch.Tensor,
+        p: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if attention_mask is not None:
             x = x * attention_mask.unsqueeze(-1)
-        
+
         x = F.normalize(x, p=2, dim=-1)
         p = F.normalize(p, p=2, dim=1)
         cos_sims = torch.matmul(x, p)
-        assert cos_sims.max().item() <= 1.0 and cos_sims.min().item() >= -1.0, "Cosine similarity values should be between -1 and 1"
+        assert cos_sims.max().item() <= 1.0 and cos_sims.min().item() >= -1.0, (
+            "Cosine similarity values should be between -1 and 1."
+        )
         return cos_sims
 
     def forward(
-            self,
-            x: torch.Tensor,
-            attention_mask: Optional[torch.Tensor] = None,
-            **kwargs,
+        self,
+        x: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        **kwargs,
     ) -> torch.Tensor:
-        b, L, d = x.size()
-        p = self.Wp.expand(b, -1, -1) # (b, d, num_labels)
-        x = self.Wx(x) # (b, L, d)
-        if self.sim_type == 'dot':
+        del kwargs
+        batch_size, _, _ = x.size()
+        p = self.Wp.expand(batch_size, -1, -1)
+        x = self.Wx(x)
+        if self.sim_type == "dot":
             logits = self.dot_product(x, p)
-        elif self.sim_type == 'euclidean':
+        elif self.sim_type == "euclidean":
             logits = self.euclidean_distance(x, p)
-        elif self.sim_type == 'cosine':
+        elif self.sim_type == "cosine":
             logits = self.cosine_similarity(x, p, attention_mask)
         else:
             raise ValueError(f"Invalid similarity type: {self.sim_type}")
-        return logits # (b, L, num_labels)
-
-
-class MultiHeadPAttention(nn.Module):
-    def __init__(
-            self,
-            hidden_size: int,
-            n_heads: int,
-            n_tokens: int,
-            dropout: float = 0.2,
-            rotary: bool = True,
-            causal: bool = False,
-    ):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.n_heads = n_heads
-        self.d_head = self.hidden_size // self.n_heads
-        self.Wq = PAttention(hidden_size, n_tokens=n_tokens, dropout=dropout)
-        self.Wk = PAttention(hidden_size, n_tokens=n_tokens, dropout=dropout)
-        self.Wv = PAttention(hidden_size, n_tokens=n_tokens, dropout=dropout)
-        self.out_proj = Linear((hidden_size // n_heads) * n_heads, hidden_size)
-        self.q_ln = LayerNorm(hidden_size)
-        self.k_ln = LayerNorm(hidden_size)
-        self.reshaper = partial(rearrange, pattern="b s (h d) -> b h s d", h=n_heads)
-        self.rotary = RotaryEmbedding(hidden_size // n_heads) if rotary else None
-        self.causal = causal
-
-    def _apply_rotary(self, q: torch.Tensor, k: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        q = q.unflatten(-1, (self.n_heads, self.d_head))
-        k = k.unflatten(-1, (self.n_heads, self.d_head))
-        q, k = self.rotary(q, k)
-        q = q.flatten(-2, -1)
-        k = k.flatten(-2, -1)
-        return q, k
-
-    def forward(self, x: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        # attention mask already prepped for sdpa shape (bs, 1, seq_len, seq_len)
-        b, L, _ = x.shape
-        if attention_mask is not None and attention_mask.dim() == 2:
-            attention_mask = attention_mask[:, None, None, :].expand(b, 1, L, L).bool()
-        q = self.Wq(x)
-        k = self.Wk(x)
-        v = self.Wv(x)
-        q, k = self.q_ln(q).to(q.dtype), self.k_ln(k).to(q.dtype)
-        if self.rotary:
-            q, k = self._apply_rotary(q, k)
-        q, k, v = map(self.reshaper, (q, k, v)) # (bs, n_heads, seq_len, d_head)
-        a = F.scaled_dot_product_attention(q, k, v, attention_mask if not self.causal else None, is_causal=self.causal) # (bs, n_heads, seq_len, d_head)
-        a = rearrange(a, "b h s d -> b s (h d)") # (bs, seq_len, n_heads * d_head)
-        return self.out_proj(a) # (bs, seq_len, hidden_size)
+        return logits

@@ -874,9 +874,9 @@ def web_interface():
             # Probe tab
             probe_type, tokenwise, pre_ln, n_layers, hidden_size, dropout,
             classifier_size, classifier_dropout, n_heads, rotary,
-            probe_pooling_types, transformer_dropout, token_attention,
-            sim_type, save_model, production_model, lora, lora_r,
-            lora_alpha, lora_dropout,
+            probe_pooling_types, transformer_dropout, attention_backend,
+            output_s_max, sim_type, save_model, production_model,
+            lora, lora_r, lora_alpha, lora_dropout,
             # Trainer tab
             hybrid_probe, full_finetuning, num_epochs, probe_batch_size,
             base_batch_size, probe_grad_accum, base_grad_accum, lr,
@@ -975,7 +975,8 @@ def web_interface():
             "rotary": bool(rotary),
             "probe_pooling_types": str_to_list(probe_pooling_types) if probe_pooling_types else ["mean", "var"],
             "transformer_dropout": float(transformer_dropout) if transformer_dropout else 0.1,
-            "token_attention": bool(token_attention),
+            "attention_backend": attention_backend or "flex",
+            "output_s_max": bool(output_s_max),
             "sim_type": sim_type or "dot",
             "save_model": bool(save_model),
             "production_model": bool(production_model),
@@ -1374,7 +1375,8 @@ def web_interface():
                             rotary = gr.Checkbox(label="Rotary", value=True)
                             probe_pooling_types = gr.Textbox(label="Probe Pooling Types (comma-separated)", value="mean,var")
                             transformer_dropout = gr.Number(label="Transformer Dropout", value=0.1, precision=3)
-                            token_attention = gr.Checkbox(label="Token Attention", value=False)
+                            attention_backend = gr.Dropdown(choices=["kernels", "flex", "sdpa"], value="flex", label="Attention Backend")
+                            output_s_max = gr.Checkbox(label="Return s_max", value=False)
                             sim_type = gr.Dropdown(choices=["dot", "euclidean", "cosine"], value="dot")
                             save_model = gr.Checkbox(label="Save Model", value=False)
                             production_model = gr.Checkbox(label="Production Model", value=False)
@@ -1450,9 +1452,9 @@ def web_interface():
                     matrix_embed, embedding_pooling_types, embed_dtype, sql,
                     probe_type, tokenwise, pre_ln, n_layers, hidden_size, dropout,
                     classifier_size, classifier_dropout, n_heads, rotary,
-                    probe_pooling_types, transformer_dropout, token_attention,
-                    sim_type, save_model, production_model, lora, lora_r,
-                    lora_alpha, lora_dropout,
+                    probe_pooling_types, transformer_dropout, attention_backend,
+                    output_s_max, sim_type, save_model, production_model,
+                    lora, lora_r, lora_alpha, lora_dropout,
                     hybrid_probe, full_finetuning, num_epochs, probe_batch_size,
                     base_batch_size, probe_grad_accum, base_grad_accum, lr,
                     weight_decay, patience, seed, read_scaler, deterministic,

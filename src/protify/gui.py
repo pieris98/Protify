@@ -561,12 +561,18 @@ class GUI(MainProcess):
         spin_transformer_dropout.grid(row=13, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.probe_tab, 13, 2, "Dropout probability in the transformer layers (0.0-1.0).")
         
-        # Token Attention
-        ttk.Label(self.probe_tab, text="Token Attention:").grid(row=14, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["token_attention"] = tk.BooleanVar(value=False)
-        check_token_attention = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["token_attention"])
-        check_token_attention.grid(row=14, column=1, padx=10, pady=5, sticky="w")
-        self.add_help_button(self.probe_tab, 14, 2, "If true, use TokenFormer instead of Transformer blocks.")
+        # Attention Backend
+        ttk.Label(self.probe_tab, text="Attention Backend:").grid(row=14, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["attention_backend"] = tk.StringVar(value="flex")
+        backend_combo = ttk.Combobox(
+            self.probe_tab,
+            textvariable=self.settings_vars["attention_backend"],
+            values=["kernels", "flex", "sdpa"],
+            state="readonly",
+            width=17,
+        )
+        backend_combo.grid(row=14, column=1, padx=10, pady=5, sticky="w")
+        self.add_help_button(self.probe_tab, 14, 2, "Select the attention backend for transformer-style probes.")
 
         # Use Bias
         ttk.Label(self.probe_tab, text="Use Bias:").grid(row=15, column=0, padx=10, pady=5, sticky="w")
@@ -1299,6 +1305,7 @@ class GUI(MainProcess):
             "classifier_dropout": self.settings_vars["classifier_dropout"].get(),
             "n_heads": self.settings_vars["n_heads"].get(),
             "rotary": self.settings_vars["rotary"].get(),
+            "attention_backend": self.settings_vars["attention_backend"].get(),
             "probe_pooling_types": probe_pooling,
             "use_bias": self.settings_vars["use_bias"].get(),
             "save_model": self.settings_vars["save_model"].get(),
@@ -1308,7 +1315,6 @@ class GUI(MainProcess):
             "lora_alpha": self.settings_vars["lora_alpha"].get(),
             "lora_dropout": self.settings_vars["lora_dropout"].get(),
             "sim_type": self.settings_vars["sim_type"].get(),
-            "token_attention": self.settings_vars["token_attention"].get(),
             "add_token_ids": self.settings_vars["add_token_ids"].get(),
             "num_epochs": self.settings_vars["num_epochs"].get(),
             "probe_batch_size": self.settings_vars["probe_batch_size"].get(),
@@ -1698,12 +1704,12 @@ class GUI(MainProcess):
         self.full_args.classifier_dropout = self.settings_vars["classifier_dropout"].get()
         self.full_args.n_heads = self.settings_vars["n_heads"].get()
         self.full_args.rotary = self.settings_vars["rotary"].get()
+        self.full_args.attention_backend = self.settings_vars["attention_backend"].get()
         
         pooling_str = self.settings_vars["probe_pooling_types"].get().strip()
         self.full_args.probe_pooling_types = [p.strip() for p in pooling_str.split(",") if p.strip()]
         
         self.full_args.transformer_dropout = self.settings_vars["transformer_dropout"].get()
-        self.full_args.token_attention = self.settings_vars["token_attention"].get()
         self.full_args.use_bias = self.settings_vars["use_bias"].get()
         self.full_args.add_token_ids = self.settings_vars["add_token_ids"].get()
         

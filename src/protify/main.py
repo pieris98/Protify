@@ -73,6 +73,8 @@ def parse_arguments():
     parser.add_argument("--n_heads", type=int, default=4, help="Number of heads in multi-head attention.")
     parser.add_argument("--rotary", action="store_false", default=True,
                         help="Disable rotary embeddings (default: enabled). Use --rotary to toggle off.")
+    parser.add_argument("--attention_backend", choices=["kernels", "flex", "sdpa"], default="flex", help="Attention backend for transformer-style probes.")
+    parser.add_argument("--output_s_max", action="store_true", default=False, help="Return s_max bounds from transformer-style probe attention layers.")
     parser.add_argument("--probe_pooling_types", nargs="+", default=["mean", "var"], help="Pooling types to use.")
     parser.add_argument("--use_bias", action="store_true", default=False, help="Use bias in Linear layers (default: False)")
     parser.add_argument("--save_model", action="store_true", default=False, help="Save trained model (default: False).")
@@ -82,7 +84,6 @@ def parse_arguments():
     parser.add_argument("--lora_alpha", type=float, default=32.0, help="Alpha for the LoRA model.")
     parser.add_argument("--lora_dropout", type=float, default=0.01, help="Dropout rate for the LoRA model.")
     parser.add_argument("--sim_type", choices=["dot", "euclidean", "cosine"], default="dot", help="Cross-attention mechanism for token-parameter-attention")
-    parser.add_argument("--token_attention", action="store_true", default=False, help="If true, use TokenFormer instead of Transformer blocks")
     parser.add_argument("--add_token_ids", action="store_true", default=False, help="If true, add learned token type embeddings to distinguish protein A vs B in PPI tasks.")
 
     # ----------------- ScikitArguments ----------------- #

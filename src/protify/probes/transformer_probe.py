@@ -1,4 +1,5 @@
 import torch
+from dataclasses import dataclass
 from torch import nn
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import SequenceClassifierOutput, TokenClassifierOutput
@@ -12,6 +13,7 @@ except ImportError:
         from protify.pooler import Pooler
     except ImportError:
         from pooler import Pooler
+
 try:
     from ..model_components.mlp import intermediate_correction_fn
 except ImportError:
@@ -19,36 +21,50 @@ except ImportError:
         from protify.model_components.mlp import intermediate_correction_fn
     except ImportError:
         from model_components.mlp import intermediate_correction_fn
+
 try:
-    from ..model_components.transformer import Transformer, TokenFormer
+    from ..model_components.transformer import Transformer
 except ImportError:
     try:
-        from protify.model_components.transformer import Transformer, TokenFormer
+        from protify.model_components.transformer import Transformer
     except ImportError:
-        from model_components.transformer import Transformer, TokenFormer
+        from model_components.transformer import Transformer
+
 from .losses import get_loss_fct
+
+
+@dataclass
+class ProbeSequenceClassifierOutput(SequenceClassifierOutput):
+    s_max: tuple[list[torch.Tensor] | None, ...] | None = None
+
+
+@dataclass
+class ProbeTokenClassifierOutput(TokenClassifierOutput):
+    s_max: tuple[list[torch.Tensor] | None, ...] | None = None
 
 
 class TransformerProbeConfig(PretrainedConfig):
     model_type = "probe"
+
     def __init__(
-            self,
-            input_size: int = 768,
-            hidden_size: int = 512,
-            classifier_size: int = 4096,
-            transformer_dropout: float = 0.1,
-            classifier_dropout: float = 0.2,
-            num_labels: int = 2,
-            n_layers: int = 1,
-            token_attention: bool = False,
-            n_heads: int = 4,
-            task_type: str = 'singlelabel',
-            rotary: bool = True,
-            pre_ln: bool = True,
-            probe_pooling_types: List[str] = ['mean', 'cls'],
-            use_bias: bool = False,
-            add_token_ids: bool = False,
-            **kwargs,
+        self,
+        input_size: int = 768,
+        hidden_size: int = 512,
+        classifier_size: int = 4096,
+        transformer_dropout: float = 0.1,
+        classifier_dropout: float = 0.2,
+        num_labels: int = 2,
+        n_layers: int = 1,
+        n_heads: int = 4,
+        task_type: str = "singlelabel",
+        rotary: bool = True,
+        pre_ln: bool = True,
+        probe_pooling_types: List[str] = ["mean", "cls"],
+        use_bias: bool = False,
+        add_token_ids: bool = False,
+        attention_backend: str = "flex",
+        output_s_max: bool = False,
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.input_size = input_size
@@ -63,14 +79,16 @@ class TransformerProbeConfig(PretrainedConfig):
         self.rotary = rotary
         self.pre_ln = pre_ln
         self.pooling_types = probe_pooling_types
-        self.token_attention = token_attention
         self.use_bias = use_bias
         self.add_token_ids = add_token_ids
+        self.attention_backend = attention_backend
+        self.output_s_max = output_s_max
 
 
 class TransformerForSequenceClassification(PreTrainedModel):
     config_class = TransformerProbeConfig
     all_tied_weights_keys = {}
+
     def __init__(self, config: TransformerProbeConfig):
         super().__init__(config)
         self.config = config
@@ -78,92 +96,100 @@ class TransformerForSequenceClassification(PreTrainedModel):
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels
         self.input_size = config.input_size
-        use_bias = config.use_bias
-        self.add_token_ids = getattr(config, 'add_token_ids', False)
+        self.add_token_ids = config.add_token_ids
 
         if config.pre_ln:
             self.input_layer = nn.Sequential(
                 nn.LayerNorm(config.input_size),
-                nn.Linear(config.input_size, config.hidden_size, bias=use_bias)
+                nn.Linear(config.input_size, config.hidden_size, bias=config.use_bias),
             )
         else:
-            self.input_layer = nn.Linear(config.input_size, config.hidden_size, bias=use_bias)
+            self.input_layer = nn.Linear(config.input_size, config.hidden_size, bias=config.use_bias)
 
-        # Learned token type embeddings (e.g. protein A vs protein B for PPI tasks):
-        # type 0 = protein A, type 1 = protein B
-        # Gives the model an explicit signal for which tokens belong to which segment
         if self.add_token_ids:
             self.token_type_embedding = nn.Embedding(2, config.hidden_size)
 
-        transformer_class = TokenFormer if config.token_attention else Transformer
-        self.transformer = transformer_class(
+        self.transformer = Transformer(
             hidden_size=config.hidden_size,
             n_heads=config.n_heads,
             n_layers=config.n_layers,
-            expansion_ratio=8/3,
+            expansion_ratio=8 / 3,
             dropout=config.transformer_dropout,
-            rotary=True,
-            use_bias=use_bias,
+            rotary=config.rotary,
+            use_bias=config.use_bias,
+            attention_backend=config.attention_backend,
         )
 
         classifier_input_size = config.hidden_size * len(config.pooling_types)
         proj_dim = intermediate_correction_fn(expansion_ratio=2, hidden_size=config.num_labels)
         self.classifier = nn.Sequential(
             nn.LayerNorm(classifier_input_size),
-            nn.Linear(classifier_input_size, config.classifier_size, bias=use_bias),
+            nn.Linear(classifier_input_size, config.classifier_size, bias=config.use_bias),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
-            nn.Linear(config.classifier_size, proj_dim, bias=use_bias),
+            nn.Linear(config.classifier_size, proj_dim, bias=config.use_bias),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
-            nn.Linear(proj_dim, config.num_labels, bias=use_bias)
+            nn.Linear(proj_dim, config.num_labels, bias=config.use_bias),
         )
         self.pooler = Pooler(config.pooling_types)
 
     def forward(
-            self,
-            embeddings,
-            attention_mask: Optional[torch.Tensor] = None,
-            token_type_ids: Optional[torch.Tensor] = None,
-            labels: Optional[torch.Tensor] = None,
-            output_attentions: Optional[bool] = False,
-    ) -> SequenceClassifierOutput:
-        # Convert embeddings to match model's dtype to avoid dtype mismatch errors
-        # This handles cases where embeddings are fp32 but model is fp16 (or vice versa)
+        self,
+        embeddings: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        token_type_ids: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        output_attentions: bool = False,
+        output_hidden_states: bool = False,
+        output_s_max: Optional[bool] = None,
+    ) -> ProbeSequenceClassifierOutput:
         embeddings = embeddings.to(next(self.input_layer.parameters()).dtype)
         x = self.input_layer(embeddings)
 
-        # Add token type embeddings to break A/B symmetry (e.g. for PPI tasks)
         if self.add_token_ids and token_type_ids is not None:
             x = x + self.token_type_embedding(token_type_ids)
 
-        x = self.transformer(x, attention_mask)
-        x = self.pooler(x, attention_mask)
-        logits = self.classifier(x)
-        if self.task_type == 'sigmoid_regression':
+        if output_s_max is None:
+            output_s_max = self.config.output_s_max
+
+        transformer_outputs = self.transformer(
+            hidden_states=x,
+            attention_mask=attention_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            output_s_max=output_s_max,
+        )
+        x = transformer_outputs.last_hidden_state
+        pooled = self.pooler(x, attention_mask)
+        logits = self.classifier(pooled)
+        if self.task_type == "sigmoid_regression":
             logits = logits.sigmoid()
+
         loss = None
         if labels is not None:
-            if self.task_type == 'regression':
+            if self.task_type == "regression":
                 loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
-            elif self.task_type == 'sigmoid_regression':
+            elif self.task_type == "sigmoid_regression":
                 loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
-            elif self.task_type == 'multilabel':
+            elif self.task_type == "multilabel":
                 loss = self.loss_fct(logits, labels.float())
             else:
                 loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1).long())
-        
-        return SequenceClassifierOutput(
+
+        return ProbeSequenceClassifierOutput(
             loss=loss,
             logits=logits,
-            hidden_states=None,
-            attentions=None
+            hidden_states=transformer_outputs.hidden_states if output_hidden_states else None,
+            attentions=transformer_outputs.attentions if output_attentions else None,
+            s_max=transformer_outputs.s_max if output_s_max else None,
         )
-    
+
 
 class TransformerForTokenClassification(PreTrainedModel):
     config_class = TransformerProbeConfig
     all_tied_weights_keys = {}
+
     def __init__(self, config: TransformerProbeConfig):
         super().__init__(config)
         self.config = config
@@ -171,64 +197,74 @@ class TransformerForTokenClassification(PreTrainedModel):
         self.loss_fct = get_loss_fct(config.task_type)
         self.num_labels = config.num_labels
         self.input_size = config.input_size
-        use_bias = config.use_bias
-        self.input_layer = nn.Linear(config.input_size, config.hidden_size, bias=use_bias)
+        self.input_layer = nn.Linear(config.input_size, config.hidden_size, bias=config.use_bias)
 
-        transformer_class = TokenFormer if config.token_attention else Transformer
-        self.transformer = transformer_class(
+        self.transformer = Transformer(
             hidden_size=config.hidden_size,
             n_heads=config.n_heads,
             n_layers=config.n_layers,
-            expansion_ratio=8/3,
+            expansion_ratio=8 / 3,
             dropout=config.transformer_dropout,
-            rotary=True,
-            use_bias=use_bias,
+            rotary=config.rotary,
+            use_bias=config.use_bias,
+            attention_backend=config.attention_backend,
         )
 
         proj_dim = intermediate_correction_fn(expansion_ratio=2, hidden_size=config.num_labels)
         self.classifier = nn.Sequential(
             nn.LayerNorm(config.hidden_size),
-            nn.Linear(config.hidden_size, config.classifier_size, bias=use_bias),
+            nn.Linear(config.hidden_size, config.classifier_size, bias=config.use_bias),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
-            nn.Linear(config.classifier_size, proj_dim, bias=use_bias),
+            nn.Linear(config.classifier_size, proj_dim, bias=config.use_bias),
             nn.ReLU(),
             nn.Dropout(config.classifier_dropout),
-            nn.Linear(proj_dim, proj_dim, bias=use_bias),
+            nn.Linear(proj_dim, proj_dim, bias=config.use_bias),
             nn.ReLU(),
-            nn.Linear(proj_dim, config.num_labels, bias=use_bias)
+            nn.Linear(proj_dim, config.num_labels, bias=config.use_bias),
         )
 
     def forward(
-            self,
-            embeddings,
-            attention_mask: Optional[torch.Tensor] = None,
-            labels: Optional[torch.Tensor] = None,
-            output_attentions: Optional[bool] = False,
-    ) -> TokenClassifierOutput:
-        # Convert embeddings to match model's dtype to avoid dtype mismatch errors
-        # This handles cases where embeddings are fp32 but model is fp16 (or vice versa)
+        self,
+        embeddings: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        output_attentions: bool = False,
+        output_hidden_states: bool = False,
+        output_s_max: Optional[bool] = None,
+    ) -> ProbeTokenClassifierOutput:
         embeddings = embeddings.to(next(self.input_layer.parameters()).dtype)
         x = self.input_layer(embeddings)
-        x = self.transformer(x, attention_mask)
-        logits = self.classifier(x)
-        if self.task_type == 'sigmoid_regression':
+
+        if output_s_max is None:
+            output_s_max = self.config.output_s_max
+
+        transformer_outputs = self.transformer(
+            hidden_states=x,
+            attention_mask=attention_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            output_s_max=output_s_max,
+        )
+        logits = self.classifier(transformer_outputs.last_hidden_state)
+        if self.task_type == "sigmoid_regression":
             logits = logits.sigmoid()
+
         loss = None
         if labels is not None:
-            if self.task_type == 'regression':
+            if self.task_type == "regression":
                 loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
-            elif self.task_type == 'sigmoid_regression':
-                
+            elif self.task_type == "sigmoid_regression":
                 loss = self.loss_fct(logits.view(-1), labels.view(-1).float())
-            elif self.task_type == 'multilabel':
+            elif self.task_type == "multilabel":
                 loss = self.loss_fct(logits, labels.float())
             else:
                 loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1).long())
 
-        return TokenClassifierOutput(
+        return ProbeTokenClassifierOutput(
             loss=loss,
             logits=logits,
-            hidden_states=None,
-            attentions=None
+            hidden_states=transformer_outputs.hidden_states if output_hidden_states else None,
+            attentions=transformer_outputs.attentions if output_attentions else None,
+            s_max=transformer_outputs.s_max if output_s_max else None,
         )

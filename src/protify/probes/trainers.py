@@ -75,6 +75,7 @@ class TrainerArguments:
             read_scaler: int = 100,
             save_model: bool = False,
             push_raw_probe: bool = False,
+            push_raw_probe_repo: str = None,
             seed: int = 42,
             train_data_size: int = 100,
             plots_dir: str = None,
@@ -97,6 +98,7 @@ class TrainerArguments:
         self.patience = patience
         self.save = save_model
         self.push_raw_probe = push_raw_probe
+        self.push_raw_probe_repo = push_raw_probe_repo
         self.read_scaler = read_scaler
         self.seed = seed
         self.train_data_size = train_data_size
@@ -313,7 +315,7 @@ Protify is an open source platform designed to simplify and democratize workflow
                 if hf_username is None or hf_username == "":
                     print_message("Warning: hf_username is not set. Cannot save model to HuggingFace Hub.")
                 else:
-                    repo_id = f"{hf_username}/{data_name}_{model_name}_{log_id}"
+                    repo_id = self.trainer_args.push_raw_probe_repo or f"{hf_username}/{data_name}_{model_name}_{log_id}"
                     hf_token = self.full_args.hf_token
                     if hf_token is None:
                         hf_token = os.environ.get("HF_TOKEN")

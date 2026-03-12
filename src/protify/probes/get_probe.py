@@ -33,7 +33,7 @@ class ProbeArguments:
             output_s_max: bool = False,
             probe_pooling_types: List[str] = field(default_factory=lambda: ['mean', 'cls']),
             ### InterpNet
-            # TODO
+            expansion_ratio: float = 8 / 3,
             ### LoRA
             lora: bool = False,
             lora_r: int = 8,
@@ -62,6 +62,7 @@ class ProbeArguments:
         self.attention_backend = attention_backend
         self.output_s_max = output_s_max
         self.pooling_types = probe_pooling_types
+        self.expansion_ratio = expansion_ratio
         self.lora = lora
         self.lora_r = lora_r
         self.lora_alpha = lora_alpha

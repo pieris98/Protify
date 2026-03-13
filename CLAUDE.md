@@ -54,9 +54,9 @@ args (CLI / YAML / GUI)
 - `benchmarks/proteingym/` — zero-shot DMS scoring pipeline against ProteinGym assays
 - `yamls/` — `base.yaml` (full config template), `sweep.yaml` (W&B Bayesian hyperopt)
 
-**FastPLMs submodule** lives at `src/protify/FastPLMs`. Base model loaders reference it via:
+**FastPLMs submodule** lives at `src/protify/fastplms`. Base model loaders reference it via:
 ```python
-_FASTPLMS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'FastPLMs')
+_FASTPLMS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'fastplms')
 ```
 
 **Outputs per run:**

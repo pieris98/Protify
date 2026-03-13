@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from typing import List, Optional, Union, Dict
 
-_FASTPLMS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'FastPLMs')
+_FASTPLMS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'fastplms')
 if _FASTPLMS not in sys.path:
     sys.path.insert(0, _FASTPLMS)
 

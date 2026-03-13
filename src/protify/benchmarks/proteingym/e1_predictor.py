@@ -1,3 +1,5 @@
+import sys
+import os
 import itertools
 import logging
 from collections import defaultdict
@@ -5,7 +7,12 @@ from collections.abc import Sequence
 from typing import Iterator, TypedDict
 import torch
 from tqdm import tqdm
-from .FastPLMs.e1.modeling_e1 import E1ForMaskedLM, E1MaskedLMOutputWithPast, E1BatchPreparer, get_context, DataPrepConfig, KVCache
+
+_FASTPLMS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'fastplms')
+if _FASTPLMS not in sys.path:
+    sys.path.insert(0, _FASTPLMS)
+
+from e1_fastplms.modeling_e1 import E1ForMaskedLM, E1MaskedLMOutputWithPast, E1BatchPreparer, get_context, DataPrepConfig, KVCache
 
 IndexedSequence = tuple[int, str]
 logger = logging.getLogger(__name__)

@@ -7,10 +7,12 @@ cancel jobs, and fetch artifacts.
 """
 
 import base64
+import glob
 import json
 import os
 import random
 import shutil
+import sqlite3
 import string
 import subprocess
 import threading
@@ -24,14 +26,14 @@ import yaml
 
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
-PROJECT_ROOT = SCRIPT_DIR.parents[1]
+PROJECT_ROOT = SCRIPT_DIR.parents[1] if len(SCRIPT_DIR.parents) > 1 else SCRIPT_DIR
 
 APP_NAME = "protify-backend"
-PROTIFY_DEFAULT_GPU = "A10"
+PROTIFY_DEFAULT_GPU = "H100"
 AVAILABLE_GPUS = ["H200", "H100", "A100-80GB", "A100", "L40S", "A10", "L4", "T4"]
 
-GPU_CPU_MIN, GPU_CPU_MAX = 8.0, 16.0
-GPU_MEMORY_MIN, GPU_MEMORY_MAX = 65536, 262144
+GPU_CPU_MIN, GPU_CPU_MAX = 16.0, 16.0
+GPU_MEMORY_MIN, GPU_MEMORY_MAX = 131072, 131072
 MAX_CONTAINERS_GPU = 8
 CPU_MEMORY_MIN, CPU_MEMORY_MAX = 4096, 8192
 CPU_COUNT_MIN, CPU_COUNT_MAX = 2.0, 4.0
@@ -67,6 +69,10 @@ def _build_image():
     src_dir_path = "src"
     if (PROJECT_ROOT / src_dir_path).exists():
         image = image.add_local_dir(src_dir_path, "/root/src", copy=True)
+
+    fastplms_dir = "src/protify/fastplms"
+    if (PROJECT_ROOT / fastplms_dir).exists():
+        image = image.add_local_dir(fastplms_dir, "/root/src/protify/fastplms", copy=True)
 
     readme_file_path = "README.md"
     if (PROJECT_ROOT / readme_file_path).exists():
@@ -205,59 +211,21 @@ def _prepare_config(config: Dict[str, Any]) -> Dict[str, Any]:
     return config_copy
 
 
-def _execute_protify_job(
-    config: Dict[str, Any],
-    hf_token: Optional[str] = None,
-    wandb_api_key: Optional[str] = None,
-    synthyra_api_key: Optional[str] = None,
-    job_id: Optional[str] = None,
-    gpu_type: Optional[str] = None,
-    timeout_seconds: int = TIMEOUT_SECONDS,
+def _run_protify_subprocess(
+    prepared_config: Dict[str, Any],
+    config_path: str,
+    active_hf_token: Optional[str],
+    wandb_api_key: Optional[str],
+    synthyra_api_key: Optional[str],
+    process_env: Dict[str, str],
+    log_file_path: str,
+    job_id: str,
+    timeout_seconds: int,
 ) -> Dict[str, Any]:
-    if job_id is None:
-        job_id = _generate_job_id()
+    """Run main.py as a subprocess with streaming output and heartbeat monitoring.
 
-    selected_gpu = gpu_type if gpu_type in AVAILABLE_GPUS else PROTIFY_DEFAULT_GPU
-    _update_job_status(
-        job_id,
-        {
-            "status": "RUNNING",
-            "phase": "startup",
-            "gpu_type": selected_gpu,
-            "last_heartbeat_utc": _now_utc_iso(),
-            "started_at_utc": _now_utc_iso(),
-            "error": None,
-        },
-    )
-
-    active_hf_token = hf_token
-    if active_hf_token is None:
-        active_hf_token = os.environ.get("HF_TOKEN")
-
-    if active_hf_token is not None:
-        try:
-            from huggingface_hub import login
-
-            os.environ["HF_TOKEN"] = active_hf_token
-            login(active_hf_token)
-        except Exception:
-            pass
-
-    prepared_config = _prepare_config(config)
-    log_file_path = os.path.join(prepared_config["log_dir"], f"{job_id}.txt")
-    _update_job_status(
-        job_id,
-        {
-            "log_file_path": log_file_path,
-            "results_dir": prepared_config["results_dir"],
-            "plots_dir": prepared_config["plots_dir"],
-        },
-    )
-
-    run_dir = Path("/tmp/protify_run") / job_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-    config_path = run_dir / "config.yaml"
-
+    Returns a dict with keys: success, return_code, stdout, stderr, timed_out.
+    """
     config_to_dump = dict(prepared_config)
     config_to_dump["hf_token"] = None
     config_to_dump["wandb_api_key"] = None
@@ -272,24 +240,6 @@ def _execute_protify_job(
         command.extend(["--wandb_api_key", wandb_api_key])
     if synthyra_api_key is not None:
         command.extend(["--synthyra_api_key", synthyra_api_key])
-
-    process_env = os.environ.copy()
-    process_env["PYTHONPATH"] = "/root/src"
-    process_env["WORKING_DIR"] = "/root"
-    process_env["PYTHONUNBUFFERED"] = "1"
-    process_env["PROTIFY_JOB_ID"] = job_id
-    process_env["CUDA_VISIBLE_DEVICES"] = "0"
-    if active_hf_token is not None:
-        process_env["HF_TOKEN"] = active_hf_token
-    if wandb_api_key is not None:
-        process_env["WANDB_API_KEY"] = wandb_api_key
-
-    os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
-    with open(log_file_path, "w", encoding="utf-8") as log_file:
-        log_file.write(f"[{_now_utc_iso()}] Starting job {job_id}\n")
-        log_file.write(f"GPU={selected_gpu}\n")
-        log_file.write(f"Command={' '.join(command)}\n")
-    volume.commit()
 
     stdout_lines = []
     stderr_lines = []
@@ -364,71 +314,113 @@ def _execute_protify_job(
         stdout_text = "\n".join(stdout_lines)
         stderr_text = "\n".join(stderr_lines)
 
-        if timed_out:
-            _update_job_status(
-                job_id,
-                {
-                    "status": "TIMEOUT",
-                    "phase": "timeout",
-                    "last_heartbeat_utc": _now_utc_iso(),
-                    "error": f"Process timed out after {max_runtime_seconds} seconds.",
-                    "exit_code": -1,
-                    "finished_at_utc": _now_utc_iso(),
-                },
-            )
-            return {
-                "success": False,
-                "job_id": job_id,
-                "status": "TIMEOUT",
-                "error": f"Process timed out after {max_runtime_seconds} seconds.",
-                "stdout": _tail_text(stdout_text, 5000),
-            }
-
-        if return_code != 0:
-            _update_job_status(
-                job_id,
-                {
-                    "status": "FAILED",
-                    "phase": "failed",
-                    "last_heartbeat_utc": _now_utc_iso(),
-                    "error": _tail_text(stderr_text, 5000) if stderr_text else "Unknown subprocess error.",
-                    "exit_code": return_code,
-                    "finished_at_utc": _now_utc_iso(),
-                },
-            )
-            return {
-                "success": False,
-                "job_id": job_id,
-                "status": "FAILED",
-                "error": _tail_text(stderr_text, 5000) if stderr_text else "Unknown subprocess error.",
-                "stdout": _tail_text(stdout_text, 5000),
-            }
-
-        _update_job_status(
-            job_id,
-            {
-                "status": "SUCCESS",
-                "phase": "completed",
-                "last_heartbeat_utc": _now_utc_iso(),
-                "error": None,
-                "exit_code": return_code,
-                "finished_at_utc": _now_utc_iso(),
-            },
-        )
         return {
-            "success": True,
-            "job_id": job_id,
-            "status": "SUCCESS",
-            "stdout": _tail_text(stdout_text, 5000),
+            "success": not timed_out and return_code == 0,
+            "return_code": return_code,
+            "stdout": stdout_text,
+            "stderr": stderr_text,
+            "timed_out": timed_out,
         }
     except Exception as error:
+        return {
+            "success": False,
+            "return_code": -1,
+            "stdout": "",
+            "stderr": str(error),
+            "timed_out": False,
+        }
+
+
+def _find_staging_db(staging_dir: str) -> Optional[str]:
+    """Find the .db file in a staging directory."""
+    matches = glob.glob(os.path.join(staging_dir, "*.db"))
+    if len(matches) == 0:
+        return None
+    return matches[0]
+
+
+def _execute_protify_job(
+    config: Dict[str, Any],
+    hf_token: Optional[str] = None,
+    wandb_api_key: Optional[str] = None,
+    synthyra_api_key: Optional[str] = None,
+    job_id: Optional[str] = None,
+    gpu_type: Optional[str] = None,
+    timeout_seconds: int = TIMEOUT_SECONDS,
+) -> Dict[str, Any]:
+    if job_id is None:
+        job_id = _generate_job_id()
+
+    selected_gpu = gpu_type if gpu_type in AVAILABLE_GPUS else PROTIFY_DEFAULT_GPU
+    _update_job_status(
+        job_id,
+        {
+            "status": "RUNNING",
+            "phase": "startup",
+            "gpu_type": selected_gpu,
+            "last_heartbeat_utc": _now_utc_iso(),
+            "started_at_utc": _now_utc_iso(),
+            "error": None,
+        },
+    )
+
+    active_hf_token = hf_token
+    if active_hf_token is None:
+        active_hf_token = os.environ.get("HF_TOKEN")
+
+    if active_hf_token is not None:
+        try:
+            from huggingface_hub import login
+
+            os.environ["HF_TOKEN"] = active_hf_token
+            login(active_hf_token)
+        except Exception:
+            pass
+
+    prepared_config = _prepare_config(config)
+    log_file_path = os.path.join(prepared_config["log_dir"], f"{job_id}.txt")
+    _update_job_status(
+        job_id,
+        {
+            "log_file_path": log_file_path,
+            "results_dir": prepared_config["results_dir"],
+            "plots_dir": prepared_config["plots_dir"],
+        },
+    )
+
+    run_dir = Path("/tmp/protify_run") / job_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    config_path = str(run_dir / "config.yaml")
+
+    process_env = os.environ.copy()
+    process_env["PYTHONPATH"] = "/root/src"
+    process_env["WORKING_DIR"] = "/root"
+    process_env["PYTHONUNBUFFERED"] = "1"
+    process_env["PROTIFY_JOB_ID"] = job_id
+    process_env["CUDA_VISIBLE_DEVICES"] = "0"
+    if active_hf_token is not None:
+        process_env["HF_TOKEN"] = active_hf_token
+    if wandb_api_key is not None:
+        process_env["WANDB_API_KEY"] = wandb_api_key
+
+    os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+    with open(log_file_path, "w", encoding="utf-8") as log_file:
+        log_file.write(f"[{_now_utc_iso()}] Starting job {job_id}\n")
+        log_file.write(f"GPU={selected_gpu}\n")
+    volume.commit()
+
+    staging_merge = config.get("staging_merge_enabled", False)
+    task_name = config.get("staging_task_name", job_id)
+    golden_embed_dir = prepared_config["embedding_save_dir"]
+
+    def _fail(error_msg: str, stdout: str = "") -> Dict[str, Any]:
         _update_job_status(
             job_id,
             {
                 "status": "FAILED",
-                "phase": "exception",
+                "phase": "failed",
                 "last_heartbeat_utc": _now_utc_iso(),
-                "error": str(error),
+                "error": _tail_text(error_msg, 5000),
                 "exit_code": -1,
                 "finished_at_utc": _now_utc_iso(),
             },
@@ -437,9 +429,207 @@ def _execute_protify_job(
             "success": False,
             "job_id": job_id,
             "status": "FAILED",
-            "error": str(error),
-            "stdout": "",
+            "error": _tail_text(error_msg, 5000),
+            "stdout": _tail_text(stdout, 5000),
         }
+
+    try:
+        if staging_merge:
+            # Phase 1: Embed to per-task staging directory
+            staging_embed_dir = os.path.join(golden_embed_dir, "staging", task_name)
+            os.makedirs(staging_embed_dir, exist_ok=True)
+
+            embed_config = dict(prepared_config)
+            embed_config["embedding_save_dir"] = staging_embed_dir
+
+            _update_job_status(job_id, {"phase": "embedding"})
+            process_env["_PROTIFY_EMBED_PHASE"] = "1"
+            embed_result = _run_protify_subprocess(
+                prepared_config=embed_config,
+                config_path=config_path,
+                active_hf_token=active_hf_token,
+                wandb_api_key=wandb_api_key,
+                synthyra_api_key=synthyra_api_key,
+                process_env=process_env,
+                log_file_path=log_file_path,
+                job_id=job_id,
+                timeout_seconds=timeout_seconds,
+            )
+            process_env.pop("_PROTIFY_EMBED_PHASE", None)
+            if not embed_result["success"]:
+                error_msg = embed_result["stderr"] if embed_result["stderr"] else "Embedding subprocess failed."
+                if embed_result["timed_out"]:
+                    error_msg = f"Embedding timed out after {timeout_seconds} seconds."
+                return _fail(error_msg, embed_result["stdout"])
+
+            # Phase 2: Merge staging DB into golden DB (serialized via max_containers=1)
+            volume.commit()  # commit any newly embedded sequences so merge container can see them
+            staging_db = _find_staging_db(staging_embed_dir)
+            if staging_db is not None:
+                golden_db = os.path.join(golden_embed_dir, os.path.basename(staging_db))
+                _update_job_status(job_id, {"phase": "merging_embeddings"})
+                merge_staging_embeddings.remote(staging_db, golden_db)
+                volume.reload()  # make merged golden DB visible to training subprocess
+
+            # Phase 3: Train (reads from golden DB, finds all seqs, no embedding needed)
+            train_config = dict(prepared_config)
+            train_config["embedding_save_dir"] = golden_embed_dir
+
+            _update_job_status(job_id, {"phase": "training"})
+            train_result = _run_protify_subprocess(
+                prepared_config=train_config,
+                config_path=config_path,
+                active_hf_token=active_hf_token,
+                wandb_api_key=wandb_api_key,
+                synthyra_api_key=synthyra_api_key,
+                process_env=process_env,
+                log_file_path=log_file_path,
+                job_id=job_id,
+                timeout_seconds=timeout_seconds,
+            )
+            if not train_result["success"]:
+                error_msg = train_result["stderr"] if train_result["stderr"] else "Training subprocess failed."
+                if train_result["timed_out"]:
+                    error_msg = f"Training timed out after {timeout_seconds} seconds."
+                return _fail(error_msg, train_result["stdout"])
+
+            _update_job_status(
+                job_id,
+                {
+                    "status": "SUCCESS",
+                    "phase": "completed",
+                    "last_heartbeat_utc": _now_utc_iso(),
+                    "error": None,
+                    "exit_code": 0,
+                    "finished_at_utc": _now_utc_iso(),
+                },
+            )
+            return {
+                "success": True,
+                "job_id": job_id,
+                "status": "SUCCESS",
+                "stdout": _tail_text(train_result["stdout"], 5000),
+            }
+
+        else:
+            # Original single-phase flow (no staging)
+            result = _run_protify_subprocess(
+                prepared_config=prepared_config,
+                config_path=config_path,
+                active_hf_token=active_hf_token,
+                wandb_api_key=wandb_api_key,
+                synthyra_api_key=synthyra_api_key,
+                process_env=process_env,
+                log_file_path=log_file_path,
+                job_id=job_id,
+                timeout_seconds=timeout_seconds,
+            )
+
+            if result["timed_out"]:
+                _update_job_status(
+                    job_id,
+                    {
+                        "status": "TIMEOUT",
+                        "phase": "timeout",
+                        "last_heartbeat_utc": _now_utc_iso(),
+                        "error": f"Process timed out.",
+                        "exit_code": -1,
+                        "finished_at_utc": _now_utc_iso(),
+                    },
+                )
+                return {
+                    "success": False,
+                    "job_id": job_id,
+                    "status": "TIMEOUT",
+                    "error": "Process timed out.",
+                    "stdout": _tail_text(result["stdout"], 5000),
+                }
+
+            if not result["success"]:
+                return _fail(
+                    result["stderr"] if result["stderr"] else "Unknown subprocess error.",
+                    result["stdout"],
+                )
+
+            _update_job_status(
+                job_id,
+                {
+                    "status": "SUCCESS",
+                    "phase": "completed",
+                    "last_heartbeat_utc": _now_utc_iso(),
+                    "error": None,
+                    "exit_code": 0,
+                    "finished_at_utc": _now_utc_iso(),
+                },
+            )
+            return {
+                "success": True,
+                "job_id": job_id,
+                "status": "SUCCESS",
+                "stdout": _tail_text(result["stdout"], 5000),
+            }
+
+    except Exception as error:
+        return _fail(str(error))
+
+
+@app.function(
+    image=image,
+    volumes={"/data": volume},
+    memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
+    cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
+    max_containers=1,
+    timeout=3600,
+)
+def merge_staging_embeddings(staging_db_path: str, golden_db_path: str) -> Dict[str, Any]:
+    """Merge a per-task staging DB into the shared golden DB.
+
+    max_containers=1 ensures Modal queues concurrent calls and runs them
+    one at a time, preventing cross-container write contention on the golden DB.
+
+    Uses Python-level deduplication to avoid O(N * B-tree depth) random page
+    reads on the Modal network volume: load existing keys into a set (one
+    sequential scan), stream staging rows, filter in Python, bulk-insert only
+    new rows. PRAGMA journal_mode=MEMORY eliminates WAL file writes during the
+    merge; WAL is restored at the end for subsequent readers.
+    """
+    volume.reload()
+    os.makedirs(os.path.dirname(golden_db_path), exist_ok=True)
+    conn = sqlite3.connect(golden_db_path, timeout=3600)
+    conn.execute("PRAGMA journal_mode=MEMORY")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=-262144")  # 256 MB
+    conn.execute("PRAGMA temp_store=MEMORY")
+    conn.execute("CREATE TABLE IF NOT EXISTS embeddings (sequence TEXT PRIMARY KEY, embedding BLOB)")
+    conn.commit()
+
+    existing_seqs = {row[0] for row in conn.execute("SELECT sequence FROM embeddings")}
+
+    staging_conn = sqlite3.connect(staging_db_path, timeout=3600)
+    staging_conn.execute("PRAGMA cache_size=-131072")  # 128 MB
+
+    _CHUNK_SIZE = 5_000
+    chunk: list = []
+    inserted = 0
+    for seq, emb in staging_conn.execute("SELECT sequence, embedding FROM embeddings"):
+        if seq not in existing_seqs:
+            chunk.append((seq, emb))
+            if len(chunk) >= _CHUNK_SIZE:
+                conn.executemany("INSERT INTO embeddings VALUES (?, ?)", chunk)
+                conn.commit()
+                inserted += len(chunk)
+                chunk.clear()
+    if chunk:
+        conn.executemany("INSERT INTO embeddings VALUES (?, ?)", chunk)
+        conn.commit()
+        inserted += len(chunk)
+
+    staging_conn.close()
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.close()
+    volume.commit()
+    return {"success": True, "staging": staging_db_path, "golden": golden_db_path, "inserted": inserted}
 
 
 @app.function(

@@ -1,3 +1,5 @@
+import sys
+import os
 from collections import defaultdict
 from collections.abc import Sequence
 from enum import Enum
@@ -8,7 +10,11 @@ import torch
 from tqdm import tqdm
 from transformers.utils import logging
 
-from .FastPLMs.e1.modeling_e1 import E1ForMaskedLM, DataPrepConfig
+_FASTPLMS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'fastplms')
+if _FASTPLMS not in sys.path:
+    sys.path.insert(0, _FASTPLMS)
+
+from e1_fastplms.modeling_e1 import E1ForMaskedLM, DataPrepConfig
 from .e1_predictor import E1Predictor
 
 logger = logging.get_logger(__name__)

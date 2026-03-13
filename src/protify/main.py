@@ -128,7 +128,7 @@ def parse_arguments():
     parser.add_argument("--embed_dtype", type=str, choices=["fp32", "fp16", "bf16", "float32", "float16", "bfloat16"], default=None, help="Data type for embeddings. If omitted, uses --model_dtype.")
     parser.add_argument("--sql", action="store_true", default=False, help="Whether to use SQL storage (default: False).")
     parser.add_argument("--read_scaler", type=int, default=100, help="Read scaler for SQL storage.")
-    
+
     # ----------------- Multi-Column Sequences ----------------- #
     parser.add_argument("--multi_column", nargs="+", default=None, help="If set, list of sequence column names to combine per sample.")
 
@@ -348,7 +348,7 @@ if __name__ == "__main__":
     has_datasets = bool(args.data_names or args.data_dirs)
     has_proteingym = bool(args.proteingym)
     has_modal_maintenance = bool(args.modal_cli_credentials_provided and (args.rebuild_modal or args.delete_modal_embeddings))
-    if not has_datasets and not has_proteingym and not has_modal_maintenance:
+    if not has_datasets and not has_proteingym and not has_modal_maintenance and args.yaml_path is None:
         raise AssertionError("No datasets specified. Provide --data_names or --data_dirs, or run a ProteinGym experiment.")
 
     if args.use_xformers:
@@ -1061,6 +1061,9 @@ def main(args: SimpleNamespace):
               main.run_scikit_scheme()
           else:
               main.save_embeddings_to_disk()
+              if os.environ.get('_PROTIFY_EMBED_PHASE') == '1':
+                  print_message("Embed phase complete, proceeding to merge and train.")
+                  return
               main.run_nn_probes()
         else:
             # Determine if current experiment passed datasets
@@ -1086,6 +1089,9 @@ def main(args: SimpleNamespace):
                 
                 else:
                     main.save_embeddings_to_disk()
+                    if os.environ.get('_PROTIFY_EMBED_PHASE') == '1':
+                        print_message("Embed phase complete, proceeding to merge and train.")
+                        return
                     main.run_nn_probes()
             else:
                 print_message("No datasets specified; proceeding with ProteinGym.")

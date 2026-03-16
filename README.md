@@ -82,7 +82,7 @@ Protify is an open source platform designed to simplify and democratize workflow
 - **Benchmark multiple models efficiently**: Need to evaluate 10 different protein language models against 15 diverse datasets with publication-ready figures? Protify makes this possible without writing a single line of code.
 - **Flexible for all skill levels**: Build custom pipelines with code or use our no-code interface depending on your needs and expertise.
 - **Accessible computing**: No GPU? No problem. Synthyra offers precomputed embeddings for many popular datasets, which Protify can download for analysis with scikit-learn on your laptop.
-- **Cost-effective solutions**: The upcoming Synthyra API integration will offer affordable GPU training options, while our Colab notebook provides an accessible entry point for GPU-reliant analysis.
+- **Cost-effective solutions**: Run GPU training jobs through the [Synthyra API](https://synthyra.com) with a simple API key. No GPU setup required. Get your key at [synthyra.com](https://synthyra.com).
 
 Protify is currently in beta. We're actively working to enhance features and documentation to meet our ambitious goals.
 
@@ -300,34 +300,53 @@ pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=
   
   It's recommended to use the user interface alongside an open terminal, as helpful messages and progressbars will show in the terminal while you press the GUI buttons.
  
-  ### Run jobs on Modal from the GUI
- 
-  Protify now includes a dedicated **Modal** tab in the Tk GUI. This replaces the previous browser-based Gradio Modal UI flow.
- 
+  ### Run jobs in the cloud via Synthyra API (recommended)
+
+  The easiest way to run Protify on GPUs is through the Synthyra API. No local GPU or cloud provider setup required.
+
+  1. Get your API key at [synthyra.com](https://synthyra.com)
+  2. In the GUI **Info** tab, enter your Synthyra API key
+  3. Configure your data, models, probe, and trainer settings
+  4. Click **Submit Remote Run** to launch your job on cloud GPUs
+  5. Use **Poll Status** (or auto polling) to monitor job progress
+  6. Click **Fetch Logs/Results/Plots** to download artifacts locally
+
+  From the CLI:
+  ```bash
+  python -m main --synthyra_api_key YOUR_KEY --model_names ESM2-8 --data_names EC
+  ```
+
+  Notes:
+  - Pass your Hugging Face and W&B tokens in the GUI Info tab so remote runs can authenticate for gated model access, experiment tracking, and Hub uploads.
+
+  ### Run jobs on Modal (advanced / self-hosted)
+
+  For users who want to manage their own Modal compute directly, Protify also supports a dedicated **Modal** tab in the Tk GUI.
+
   1. Install Modal locally (same environment as Protify):
- 
+
   ```bash
   python -m pip install modal
   ```
- 
+
   2. Provide Modal credentials in the GUI Info tab:
      - Preferred: `modal_token_id` + `modal_token_secret`
      - Backward-compatible: `modal_api_key` in `token_id:token_secret` format
- 
+
   3. In the **Modal** tab:
      - Set `Modal App Name` and backend path (`src/protify/modal_backend.py`)
      - Select GPU type and timeout
      - Click **Deploy Modal Backend**
- 
+
   4. Click **Submit Remote Run** to launch the current GUI configuration on Modal.
- 
+
   5. Use **Poll Status** (or auto polling) to monitor:
      - job status (`PENDING`, `RUNNING`, `SUCCESS`, `FAILED`, `TERMINATED`, `TIMEOUT`)
      - current phase and heartbeat age
      - live log tail
- 
+
   6. Click **Fetch Logs/Results/Plots** to download artifacts to your local `modal_artifacts` directory (configurable in the Modal tab).
- 
+
   Notes:
   - Pass your Hugging Face and W&B tokens in the GUI Info tab so remote runs can authenticate for gated model access, experiment tracking, and Hub uploads.
   - The Modal backend keeps heartbeat/status updates in persistent storage so the local GUI can detect stalled or failed jobs.
@@ -425,9 +444,9 @@ pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=
   python -m main --replay_path logs/your_log_id.txt
   ```
 
-  ### CLI auto-run on Modal
+  ### CLI auto-run on Modal (advanced)
 
-  If you pass Modal credentials as CLI arguments, Protify will automatically run remotely on Modal instead of local execution.
+  For self-hosted Modal compute, pass Modal credentials as CLI arguments to run remotely on Modal instead of local execution. Most users should use `--synthyra_api_key` instead (see above).
 
   ```bash
   python -m main \

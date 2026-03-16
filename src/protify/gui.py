@@ -1621,7 +1621,7 @@ class GUI(MainProcess):
                 except Exception as error:
                     print_message(f'W&B login failed: {error}')
             if synthyra_api_key:
-                print_message('Synthyra API not integrated yet')
+                print_message('Synthyra API key provided')
             
             self.full_args.hf_username = self.settings_vars["huggingface_username"].get()
             self.full_args.hf_token = hf_token

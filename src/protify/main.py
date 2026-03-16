@@ -235,7 +235,7 @@ def parse_arguments():
         except Exception as e:
             print(f'W&B login failed: {e}')
     if args.synthyra_api_key is not None:
-        print('Synthyra API not integrated yet')
+        print('Synthyra API key provided')
 
     if args.yaml_path is not None:
         with open(args.yaml_path, 'r') as file: 

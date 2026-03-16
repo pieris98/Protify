@@ -1,18 +1,33 @@
-# Modal
+# Cloud Compute
 
-This page documents how Protify runs on Modal: the recommended path (Tk GUI "Modal" tab with [modal_backend.py](../src/protify/modal_backend.py)) and the legacy Gradio app ([protify_modal_app.py](../modal/protify_modal_app.py)). It covers config schema, path rewriting in the container, and how to deploy and run. For the GUI Modal tab flow, see [GUI](gui.md).
+This page documents how to run Protify jobs on cloud GPUs.
 
 ---
 
-## Overview
+## Synthyra API (recommended)
 
-Protify supports running jobs on [Modal](https://modal.com) for GPU compute without a local GPU. There are two options:
+The simplest way to run Protify on cloud GPUs is through the Synthyra API. Get your API key at [synthyra.com](https://synthyra.com).
 
-1. **Recommended: Tk GUI + modal_backend.py**  
-   Use the **Modal** tab in the Tk GUI to deploy the backend, submit the current configuration as a remote job, poll status, and fetch logs/results/plots. No browser UI; the backend exposes functions the GUI calls (deploy, submit, poll, cancel, fetch).
+**CLI:**
+```bash
+python -m main --synthyra_api_key YOUR_KEY --model_names ESM2-8 --data_names EC
+```
 
-2. **Legacy: protify_modal_app.py (Gradio)**  
-   A separate Modal app that serves a Gradio web UI. Users fill a form; the form is converted to a config dict and passed to `main.py --yaml_path` inside the container. This app is deprecated in favor of the GUI + backend flow.
+**GUI:** Enter your Synthyra API key in the **Info** tab, configure your run, and click **Submit Remote Run**.
+
+No Modal account, local GPU, or cloud provider setup required. Jobs are billed through your Synthyra account.
+
+---
+
+## Modal (advanced / self-hosted)
+
+For users who want to manage their own Modal compute directly, Protify also supports running jobs on [Modal](https://modal.com). There are two options:
+
+1. **Tk GUI + modal_backend.py**
+   Use the **Modal** tab in the Tk GUI to deploy the backend, submit the current configuration as a remote job, poll status, and fetch logs/results/plots.
+
+2. **Legacy: protify_modal_app.py (Gradio)**
+   Deprecated in favor of the GUI + backend flow.
 
 Both use the same config schema as CLI/YAML; the container runs the same `main.py` with path values rewritten for `/data/...`.
 

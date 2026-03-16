@@ -34,7 +34,7 @@ The schema is defined by the union of [base.yaml](../src/protify/yamls/base.yaml
 |----------|------|---------|-------------|
 | `--hf_username` | str | Synthyra | Hugging Face username. |
 | `--hf_token` | str | None | Hugging Face token. |
-| `--synthyra_api_key` | str | None | Synthyra API key. |
+| `--synthyra_api_key` | str | None | Synthyra API key for cloud GPU compute. Get yours at [synthyra.com](https://synthyra.com). |
 | `--wandb_api_key` | str | None | Weights and Biases API key. |
 | `--modal_token_id` | str | None | Modal token ID. |
 | `--modal_token_secret` | str | None | Modal token secret. |

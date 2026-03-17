@@ -190,7 +190,5 @@ class PackagedProbeModel(PreTrainedModel):
                 forward_kwargs["token_type_ids"] = token_type_ids
             return self.probe(**forward_kwargs)
 
-        if self.config.probe_type in ["interpnet", "lyra"]:
-            return self.probe(embeddings=probe_embeddings, attention_mask=probe_attention_mask, labels=labels)
-
-        raise ValueError(f"Unsupported probe type for packaged model: {self.config.probe_type}")
+        # Default forward for lyra and external probe types (embeddings + attention_mask)
+        return self.probe(embeddings=probe_embeddings, attention_mask=probe_attention_mask, labels=labels)

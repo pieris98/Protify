@@ -1,16 +1,43 @@
+import importlib
 from dataclasses import dataclass, field
 from typing import List
+
 from .linear_probe import LinearProbe, LinearProbeConfig
 from .transformer_probe import TransformerForSequenceClassification, TransformerForTokenClassification, TransformerProbeConfig
-from .interpnet import InterpNetForSequenceClassification, InterpNetForTokenClassification, InterpNetConfig
 from .lyra_probe import LyraForSequenceClassification, LyraForTokenClassification, LyraConfig
+
+
+# External probe types can be registered here by packages on PYTHONPATH.
+# Each entry maps probe_type -> {"module": "dotted.module.path", "seq_cls": "ClassName", "tok_cls": "ClassName", "config_cls": "ConfigName"}
+_EXTERNAL_PROBE_REGISTRY: dict[str, dict[str, str]] = {}
+
+
+def register_external_probe(probe_type: str, module: str, seq_cls: str, tok_cls: str, config_cls: str):
+    _EXTERNAL_PROBE_REGISTRY[probe_type] = {
+        "module": module,
+        "seq_cls": seq_cls,
+        "tok_cls": tok_cls,
+        "config_cls": config_cls,
+    }
+
+
+def _load_external_probe(probe_type: str, tokenwise: bool, config_kwargs: dict):
+    if probe_type not in _EXTERNAL_PROBE_REGISTRY:
+        return None
+    entry = _EXTERNAL_PROBE_REGISTRY[probe_type]
+    mod = importlib.import_module(entry["module"])
+    config_cls = getattr(mod, entry["config_cls"])
+    model_cls_name = entry["tok_cls"] if tokenwise else entry["seq_cls"]
+    model_cls = getattr(mod, model_cls_name)
+    config = config_cls(**config_kwargs)
+    return model_cls(config)
 
 
 @dataclass
 class ProbeArguments:
     def __init__(
             self,
-            probe_type: str = 'linear', # valid options: linear, transformer, interpnet
+            probe_type: str = 'linear', # valid options: linear, transformer, lyra
             tokenwise: bool = False,
             ### Linear Probe
             input_size: int = 960,
@@ -32,7 +59,6 @@ class ProbeArguments:
             attention_backend: str = "flex",
             output_s_max: bool = False,
             probe_pooling_types: List[str] = field(default_factory=lambda: ['mean', 'cls']),
-            ### InterpNet
             expansion_ratio: float = 8 / 3,
             ### LoRA
             lora: bool = False,
@@ -79,12 +105,6 @@ def get_probe(args: ProbeArguments):
     elif args.probe_type == 'transformer' and args.tokenwise:
         config = TransformerProbeConfig(**args.__dict__)
         return TransformerForTokenClassification(config)
-    elif args.probe_type == 'interpnet' and not args.tokenwise:
-        config = InterpNetConfig(**args.__dict__)
-        return InterpNetForSequenceClassification(config)
-    elif args.probe_type == 'interpnet' and args.tokenwise:
-        config = InterpNetConfig(**args.__dict__)
-        return InterpNetForTokenClassification(config)
     elif args.probe_type == 'lyra' and not args.tokenwise:
         config = LyraConfig(**args.__dict__)
         return LyraForSequenceClassification(config)
@@ -92,6 +112,9 @@ def get_probe(args: ProbeArguments):
         config = LyraConfig(**args.__dict__)
         return LyraForTokenClassification(config)
     else:
+        external = _load_external_probe(args.probe_type, args.tokenwise, args.__dict__)
+        if external is not None:
+            return external
         raise ValueError(f"Invalid combination of probe type and tokenwise: {args.probe_type} {args.tokenwise}")
 
 
@@ -115,16 +138,13 @@ def rebuild_probe_from_saved_config(
     if probe_type == "transformer" and tokenwise:
         config = TransformerProbeConfig(**config_dict)
         return TransformerForTokenClassification(config)
-    if probe_type == "interpnet" and not tokenwise:
-        config = InterpNetConfig(**config_dict)
-        return InterpNetForSequenceClassification(config)
-    if probe_type == "interpnet" and tokenwise:
-        config = InterpNetConfig(**config_dict)
-        return InterpNetForTokenClassification(config)
     if probe_type == "lyra" and not tokenwise:
         config = LyraConfig(**config_dict)
         return LyraForSequenceClassification(config)
     if probe_type == "lyra" and tokenwise:
         config = LyraConfig(**config_dict)
         return LyraForTokenClassification(config)
+    external = _load_external_probe(probe_type, tokenwise, config_dict)
+    if external is not None:
+        return external
     raise ValueError(f"Unsupported saved probe configuration: {probe_type} tokenwise={tokenwise}")

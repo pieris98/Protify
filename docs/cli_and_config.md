@@ -85,7 +85,7 @@ The schema is defined by the union of [base.yaml](../src/protify/yamls/base.yaml
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
-| `--probe_type` | choice | linear | linear, transformer, interpnet, lyra. |
+| `--probe_type` | choice | linear | linear, transformer, lyra. |
 | `--tokenwise` | flag | False | Token-wise prediction. |
 | `--hidden_size` | int | 8192 | Hidden size for linear probe MLP. |
 | `--transformer_hidden_size` | int | 512 | Hidden size for transformer probe. |
@@ -108,7 +108,7 @@ The schema is defined by the union of [base.yaml](../src/protify/yamls/base.yaml
 | `--lora_r` | int | 8 | LoRA rank. |
 | `--lora_alpha` | float | 32.0 | LoRA alpha. |
 | `--lora_dropout` | float | 0.01 | LoRA dropout. |
-| `--sim_type` | choice | dot | dot, euclidean, cosine (interpnet). |
+| `--sim_type` | choice | dot | dot, euclidean, cosine. |
 | `--add_token_ids` | flag | False | Add token type embeddings for PPI. |
 
 ### Scikit

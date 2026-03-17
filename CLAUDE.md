@@ -47,7 +47,7 @@ args (CLI / YAML / GUI)
 
 **Key directories:**
 - `base_models/` — one file per PLM family (ESM2, ESMC, ProtBert, ANKH, GLM, DPLM, etc.); all share a `get_base_model()` factory in `get_base_models.py`
-- `probes/` — LinearProbe, TransformerProbe, InterpNet, Lyra; `lazy_predict.py` for scikit-learn auto-selection
+- `probes/` — LinearProbe, TransformerProbe, Lyra; `lazy_predict.py` for scikit-learn auto-selection
 - `data/` — dataset loading, collators, AA↔DNA/RNA translation; supported datasets listed in `supported_datasets.py`
 - `model_components/` — attention backends (sdpa/flex/custom kernels), transformer blocks, MLP
 - `visualization/` — PAUC curves, dimensionality reduction (t-SNE/UMAP/PCA), radar/bar comparisons, confidence intervals

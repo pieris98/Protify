@@ -257,7 +257,7 @@ git clone https://github.com/Gleghorn-Lab/Protify.git
 cd Protify
 git submodule update --init --remote --recursive
 docker build -t protify-env:latest .
-docker run --rm -it --gpus all -v "${PWD}":/workspace -w /workspace/src/protify protify-env:latest python -m main --data_names EC --model_names ESM2 --probe_type interpnet --max_length 128 --probe_batch_size 4
+docker run --rm -it --gpus all -v "${PWD}":/workspace -w /workspace/src/protify protify-env:latest python -m main --data_names EC --model_names ESM2 --probe_type transformer --max_length 128 --probe_batch_size 4
 ```
 
 **Windows (PowerShell or cmd):**
@@ -266,7 +266,7 @@ git clone https://github.com/Gleghorn-Lab/Protify.git
 cd Protify
 git submodule update --init --remote --recursive
 docker build -t protify-env:latest .
-docker run --rm -it --gpus all -v "%CD%":/workspace -w /workspace/src/protify protify-env:latest py -m main --data_names EC --model_names ESM2 --probe_type interpnet --max_length 128 --probe_batch_size 4
+docker run --rm -it --gpus all -v "%CD%":/workspace -w /workspace/src/protify protify-env:latest py -m main --data_names EC --model_names ESM2 --probe_type transformer --max_length 128 --probe_batch_size 4
 ```
 
 Omit the `--data_names` and other CLI args to see help, or add any options you need. Output paths like `--log_dir` and `--results_dir` are relative to `/workspace/src/protify`; use e.g. `--log_dir /workspace/logs` to write at project root. Note: you may need `sudo` before the docker commands on Linux.

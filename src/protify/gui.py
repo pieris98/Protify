@@ -469,10 +469,10 @@ class GUI(MainProcess):
         combo_probe = ttk.Combobox(
             self.probe_tab,
             textvariable=self.settings_vars["probe_type"],
-            values=["linear", "transformer", "interpnet", "lyra"]
+            values=["linear", "transformer", "lyra"]
         )
         combo_probe.grid(row=0, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 0, 2, "Type of probe architecture to use (linear, transformer, or interpnet).")
+        self.add_help_button(self.probe_tab, 0, 2, "Type of probe architecture to use (linear, transformer, or lyra).")
 
         # Tokenwise
         ttk.Label(self.probe_tab, text="Tokenwise:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
@@ -581,22 +581,8 @@ class GUI(MainProcess):
         check_add_token_ids.grid(row=16, column=1, padx=10, pady=5, sticky="w")
         self.add_help_button(self.probe_tab, 16, 2, "Add learned token type IDs for pair tasks.")
 
-        # InterpNet Settings Section
-        ttk.Label(self.probe_tab, text="=== InterpNet Settings ===").grid(row=17, column=0, columnspan=2, pady=10)
-        
-        # Sim Type
-        ttk.Label(self.probe_tab, text="Similarity Type:").grid(row=18, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["sim_type"] = tk.StringVar(value="dot")
-        combo_sim_type = ttk.Combobox(
-            self.probe_tab,
-            textvariable=self.settings_vars["sim_type"],
-            values=["dot", "euclidean", "cosine"]
-        )
-        combo_sim_type.grid(row=18, column=1, padx=10, pady=5)
-        self.add_help_button(self.probe_tab, 18, 2, "Cross-attention mechanism for token-parameter-attention (dot, euclidean, or cosine).")
-
         # Save Model
-        ttk.Label(self.probe_tab, text="Save Model:").grid(row=19, column=0, padx=10, pady=5, sticky="w")
+        ttk.Label(self.probe_tab, text="Save Model:").grid(row=17, column=0, padx=10, pady=5, sticky="w")
         self.settings_vars["save_model"] = tk.BooleanVar(value=False)
         check_save_model = ttk.Checkbutton(self.probe_tab, variable=self.settings_vars["save_model"])
         check_save_model.grid(row=19, column=1, padx=10, pady=5, sticky="w")

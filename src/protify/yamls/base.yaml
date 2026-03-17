@@ -44,7 +44,7 @@ model_names:
 
 
 # ProbeArguments:
-probe_type: linear  # valid options: linear, transformer, interpnet
+probe_type: linear  # valid options: linear, transformer, lyra
 tokenwise: !!bool false
 hidden_size: !!int 8192
 dropout: !!float 0.2

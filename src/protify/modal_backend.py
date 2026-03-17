@@ -48,7 +48,7 @@ LOG_DIR_DEFAULT = "/data/logs"
 RESULTS_DIR_DEFAULT = "/data/results"
 PLOTS_DIR_DEFAULT = "/data/plots"
 WEIGHTS_DIR_DEFAULT = "/data/weights"
-EMBED_DIR_DEFAULT = "/data/embeddings"
+EMBED_DIR_DEFAULT = "/embeddings"
 DOWNLOAD_DIR_DEFAULT = "/data/downloads"
 
 
@@ -92,6 +92,8 @@ def _build_image():
 app = modal.App(APP_NAME)
 image = _build_image()
 volume = modal.Volume.from_name("protify-data", create_if_missing=True)
+embed_volume = modal.Volume.from_name("protify-embeddings", create_if_missing=True)
+EMBED_VOLUME_MOUNT = "/embeddings"
 
 _status_lock = threading.Lock()
 
@@ -168,7 +170,9 @@ def _fix_paths(config_obj: Any) -> Any:
         for key in list(config_obj.keys()):
             value = config_obj[key]
             if isinstance(value, str):
-                if value.startswith("data/") or value.startswith("local_data/"):
+                if key == "embedding_save_dir" and not os.path.isabs(value):
+                    config_obj[key] = EMBED_VOLUME_MOUNT
+                elif value.startswith("data/") or value.startswith("local_data/"):
                     config_obj[key] = f"/data/{value.split('/', 1)[1]}"
                 elif key.endswith("_dir") and (not os.path.isabs(value)):
                     config_obj[key] = f"/data/{value}"
@@ -436,7 +440,7 @@ def _execute_protify_job(
     try:
         if staging_merge:
             # Phase 1: Embed to per-task staging directory
-            staging_embed_dir = os.path.join(golden_embed_dir, "staging", task_name)
+            staging_embed_dir = os.path.join(EMBED_VOLUME_MOUNT, "staging", task_name)
             os.makedirs(staging_embed_dir, exist_ok=True)
 
             embed_config = dict(prepared_config)
@@ -463,13 +467,13 @@ def _execute_protify_job(
                 return _fail(error_msg, embed_result["stdout"])
 
             # Phase 2: Merge staging DB into golden DB (serialized via max_containers=1)
-            volume.commit()  # commit any newly embedded sequences so merge container can see them
+            embed_volume.commit()  # commit staged embeddings so merge container can see them
             staging_db = _find_staging_db(staging_embed_dir)
             if staging_db is not None:
                 golden_db = os.path.join(golden_embed_dir, os.path.basename(staging_db))
                 _update_job_status(job_id, {"phase": "merging_embeddings"})
                 merge_staging_embeddings.remote(staging_db, golden_db)
-                volume.reload()  # make merged golden DB visible to training subprocess
+                embed_volume.reload()  # make merged golden DB visible to training subprocess
 
             # Phase 3: Train (reads from golden DB, finds all seqs, no embedding needed)
             train_config = dict(prepared_config)
@@ -500,7 +504,7 @@ def _execute_protify_job(
                 staging_parent = os.path.dirname(staging_embed_dir)
                 if os.path.isdir(staging_parent) and not os.listdir(staging_parent):
                     os.rmdir(staging_parent)
-                volume.commit()
+                embed_volume.commit()
 
             _update_job_status(
                 job_id,
@@ -584,7 +588,7 @@ def _execute_protify_job(
 
 @app.function(
     image=image,
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
     cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
     max_containers=1,
@@ -602,7 +606,7 @@ def merge_staging_embeddings(staging_db_path: str, golden_db_path: str) -> Dict[
     new rows. PRAGMA journal_mode=MEMORY eliminates WAL file writes during the
     merge; WAL is restored at the end for subsequent readers.
     """
-    volume.reload()
+    embed_volume.reload()
     os.makedirs(os.path.dirname(golden_db_path), exist_ok=True)
     conn = sqlite3.connect(golden_db_path, timeout=3600)
     conn.execute("PRAGMA journal_mode=MEMORY")
@@ -637,14 +641,14 @@ def merge_staging_embeddings(staging_db_path: str, golden_db_path: str) -> Dict[
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.close()
-    volume.commit()
+    embed_volume.commit()
     return {"success": True, "staging": staging_db_path, "golden": golden_db_path, "inserted": inserted}
 
 
 @app.function(
     image=image,
     gpu="H200",
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(GPU_MEMORY_MIN, GPU_MEMORY_MAX),
     cpu=(GPU_CPU_MIN, GPU_CPU_MAX),
     max_containers=MAX_CONTAINERS_GPU,
@@ -666,7 +670,7 @@ def run_protify_job_h200(
 @app.function(
     image=image,
     gpu="H100",
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(GPU_MEMORY_MIN, GPU_MEMORY_MAX),
     cpu=(GPU_CPU_MIN, GPU_CPU_MAX),
     max_containers=MAX_CONTAINERS_GPU,
@@ -688,7 +692,7 @@ def run_protify_job_h100(
 @app.function(
     image=image,
     gpu="A100-80GB",
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(GPU_MEMORY_MIN, GPU_MEMORY_MAX),
     cpu=(GPU_CPU_MIN, GPU_CPU_MAX),
     max_containers=MAX_CONTAINERS_GPU,
@@ -710,7 +714,7 @@ def run_protify_job_a100_80gb(
 @app.function(
     image=image,
     gpu="A100",
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(GPU_MEMORY_MIN, GPU_MEMORY_MAX),
     cpu=(GPU_CPU_MIN, GPU_CPU_MAX),
     max_containers=MAX_CONTAINERS_GPU,
@@ -732,7 +736,7 @@ def run_protify_job_a100(
 @app.function(
     image=image,
     gpu="L40S",
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(GPU_MEMORY_MIN, GPU_MEMORY_MAX),
     cpu=(GPU_CPU_MIN, GPU_CPU_MAX),
     max_containers=MAX_CONTAINERS_GPU,
@@ -754,7 +758,7 @@ def run_protify_job_l40s(
 @app.function(
     image=image,
     gpu="A10",
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(GPU_MEMORY_MIN, GPU_MEMORY_MAX),
     cpu=(GPU_CPU_MIN, GPU_CPU_MAX),
     max_containers=MAX_CONTAINERS_GPU,
@@ -776,7 +780,7 @@ def run_protify_job_a10(
 @app.function(
     image=image,
     gpu="L4",
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(GPU_MEMORY_MIN, GPU_MEMORY_MAX),
     cpu=(GPU_CPU_MIN, GPU_CPU_MAX),
     max_containers=MAX_CONTAINERS_GPU,
@@ -798,7 +802,7 @@ def run_protify_job_l4(
 @app.function(
     image=image,
     gpu="T4",
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(GPU_MEMORY_MIN, GPU_MEMORY_MAX),
     cpu=(GPU_CPU_MIN, GPU_CPU_MAX),
     max_containers=MAX_CONTAINERS_GPU,
@@ -831,7 +835,7 @@ gpu_functions = {
 
 @app.function(
     image=image,
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
     cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
     max_containers=MAX_CONTAINERS_CPU,
@@ -892,7 +896,7 @@ def submit_protify_job(
 
 @app.function(
     image=image,
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
     cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
     max_containers=1,
@@ -1002,7 +1006,7 @@ def run_sequential(
 
 @app.function(
     image=image,
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
     cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
     max_containers=MAX_CONTAINERS_CPU,
@@ -1029,7 +1033,7 @@ def get_job_status(job_id: str) -> Dict[str, Any]:
 
 @app.function(
     image=image,
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
     cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
     max_containers=MAX_CONTAINERS_CPU,
@@ -1056,7 +1060,7 @@ def get_job_log_tail(job_id: str, max_chars: int = 5000) -> Dict[str, Any]:
 
 @app.function(
     image=image,
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
     cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
     max_containers=MAX_CONTAINERS_CPU,
@@ -1107,14 +1111,14 @@ def get_job_log_delta(job_id: str, offset: int = 0, max_chars: int = 5000) -> Di
 
 @app.function(
     image=image,
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
     cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
     max_containers=MAX_CONTAINERS_CPU,
     scaledown_window=SCALEDOWN_WINDOW_CPU,
 )
 def delete_modal_embeddings() -> Dict[str, Any]:
-    volume.reload()
+    embed_volume.reload()
     embedding_dir = Path(EMBED_DIR_DEFAULT)
     if not embedding_dir.exists():
         return {
@@ -1134,7 +1138,7 @@ def delete_modal_embeddings() -> Dict[str, Any]:
             shutil.rmtree(path)
             deleted_dirs += 1
 
-    volume.commit()
+    embed_volume.commit()
     return {
         "success": True,
         "message": f"Deleted modal embedding cache contents ({deleted_files} files, {deleted_dirs} directories).",
@@ -1145,15 +1149,15 @@ def delete_modal_embeddings() -> Dict[str, Any]:
 
 @app.function(
     image=image,
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
     cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
     max_containers=MAX_CONTAINERS_CPU,
     scaledown_window=SCALEDOWN_WINDOW_CPU,
 )
 def purge_staging() -> Dict[str, Any]:
-    """Remove all staging directories under /data/embeddings/staging/."""
-    volume.reload()
+    """Remove all staging directories under the embeddings volume."""
+    embed_volume.reload()
     staging_dir = Path(EMBED_DIR_DEFAULT) / "staging"
     if not staging_dir.exists():
         return {"success": True, "message": "No staging directory found.", "freed_bytes": 0}
@@ -1163,14 +1167,44 @@ def purge_staging() -> Dict[str, Any]:
         if path.is_file():
             freed_bytes += path.stat().st_size
     shutil.rmtree(staging_dir)
-    volume.commit()
+    embed_volume.commit()
     freed_mb = freed_bytes / (1024 * 1024)
     return {"success": True, "message": f"Purged staging directory ({freed_mb:.1f} MB freed).", "freed_bytes": freed_bytes}
 
 
 @app.function(
     image=image,
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
+    memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
+    cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
+    max_containers=1,
+    timeout=7200,
+)
+def migrate_embeddings_to_volume() -> Dict[str, Any]:
+    """One-time migration: copy embedding DBs from /data/embeddings/ to /embeddings/."""
+    volume.reload()
+    embed_volume.reload()
+    old_dir = Path("/data/embeddings")
+    new_dir = Path(EMBED_VOLUME_MOUNT)
+    os.makedirs(new_dir, exist_ok=True)
+    if not old_dir.exists():
+        return {"success": True, "message": "No old embeddings directory found.", "migrated": []}
+    migrated = []
+    for db_file in old_dir.glob("*.db"):
+        dest = new_dir / db_file.name
+        if dest.exists():
+            continue
+        size_gb = db_file.stat().st_size / (1024 ** 3)
+        print(f"Migrating {db_file.name} ({size_gb:.1f} GB)...")
+        shutil.copy2(str(db_file), str(dest))
+        migrated.append({"name": db_file.name, "size_gb": round(size_gb, 1)})
+    embed_volume.commit()
+    return {"success": True, "migrated": migrated}
+
+
+@app.function(
+    image=image,
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
     cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
     max_containers=MAX_CONTAINERS_CPU,
@@ -1194,7 +1228,7 @@ def cancel_protify_job(function_call_id: str, job_id: Optional[str] = None) -> D
 
 @app.function(
     image=image,
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
     cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
     max_containers=MAX_CONTAINERS_CPU,
@@ -1245,7 +1279,7 @@ def get_results(job_id: str) -> Dict[str, Any]:
 
 @app.function(
     image=image,
-    volumes={"/data": volume},
+    volumes={"/data": volume, EMBED_VOLUME_MOUNT: embed_volume},
     memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
     cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
     max_containers=MAX_CONTAINERS_CPU,

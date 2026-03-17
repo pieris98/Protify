@@ -493,6 +493,15 @@ def _execute_protify_job(
                     error_msg = f"Training timed out after {timeout_seconds} seconds."
                 return _fail(error_msg, train_result["stdout"])
 
+            # Clean up staging directory after successful merge+train
+            if os.path.isdir(staging_embed_dir):
+                shutil.rmtree(staging_embed_dir, ignore_errors=True)
+                # Remove parent staging dir if empty
+                staging_parent = os.path.dirname(staging_embed_dir)
+                if os.path.isdir(staging_parent) and not os.listdir(staging_parent):
+                    os.rmdir(staging_parent)
+                volume.commit()
+
             _update_job_status(
                 job_id,
                 {
@@ -886,6 +895,116 @@ def submit_protify_job(
     volumes={"/data": volume},
     memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
     cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
+    max_containers=1,
+    scaledown_window=SCALEDOWN_WINDOW_CPU,
+    timeout=TIMEOUT_SECONDS,
+)
+def run_sequential(
+    jobs: list,
+    gpu_type: str = PROTIFY_DEFAULT_GPU,
+    hf_token: Optional[str] = None,
+    wandb_api_key: Optional[str] = None,
+    synthyra_api_key: Optional[str] = None,
+    timeout_seconds: int = TIMEOUT_SECONDS,
+    poll_interval: int = 15,
+) -> Dict[str, Any]:
+    """Run a list of jobs sequentially on Modal. Each job completes before the next starts.
+
+    Args:
+        jobs: List of dicts, each with "name" (str) and "config" (dict).
+        gpu_type: GPU type for all jobs.
+        Other args forwarded to submit_protify_job.
+
+    Returns:
+        Summary dict with per-job results.
+    """
+    terminal_states = {"SUCCESS", "FAILED", "TERMINATED", "TIMEOUT"}
+    results = {}
+
+    for i, job_spec in enumerate(jobs):
+        task_name = job_spec["name"]
+        config = job_spec["config"]
+        print(f"\n[{i+1}/{len(jobs)}] Starting {task_name}...")
+
+        submit_result = submit_protify_job.local(
+            config=config,
+            gpu_type=gpu_type,
+            hf_token=hf_token,
+            wandb_api_key=wandb_api_key,
+            synthyra_api_key=synthyra_api_key,
+            timeout_seconds=timeout_seconds,
+        )
+        job_id = submit_result["job_id"]
+        function_call_id = submit_result.get("function_call_id")
+        print(f"  Job ID: {job_id}")
+
+        # Poll until terminal
+        function_call = None
+        if function_call_id:
+            function_call = modal.FunctionCall.from_id(function_call_id)
+
+        while True:
+            time.sleep(poll_interval)
+            volume.reload()
+            status_store = _safe_read_json(STATUS_FILE_PATH)
+            job_status = status_store.get(job_id, {})
+            status_val = job_status.get("status", "UNKNOWN")
+            phase = job_status.get("phase", "N/A")
+
+            if status_val in terminal_states:
+                print(f"  {task_name}: {status_val} (phase={phase})")
+                results[task_name] = {
+                    "job_id": job_id,
+                    "status": status_val,
+                    "error": job_status.get("error"),
+                }
+                break
+
+            # Also check FunctionCall directly in case status file is stale
+            if function_call is not None:
+                try:
+                    remote_result = function_call.get(timeout=0)
+                    if isinstance(remote_result, dict):
+                        final_status = remote_result.get("status", "UNKNOWN")
+                        print(f"  {task_name}: {final_status}")
+                        results[task_name] = {
+                            "job_id": job_id,
+                            "status": final_status,
+                            "error": remote_result.get("error"),
+                        }
+                        break
+                except TimeoutError:
+                    pass
+                except Exception as e:
+                    print(f"  {task_name}: FAILED (function call error: {e})")
+                    results[task_name] = {
+                        "job_id": job_id,
+                        "status": "FAILED",
+                        "error": str(e),
+                    }
+                    break
+
+    print(f"\n{'='*60}")
+    print("Sequential run complete:")
+    for task_name, info in results.items():
+        marker = "OK" if info["status"] == "SUCCESS" else "FAIL"
+        print(f"  [{marker}] {task_name}: {info['status']} (job_id={info['job_id']})")
+
+    failed = [t for t, info in results.items() if info["status"] != "SUCCESS"]
+    return {
+        "success": len(failed) == 0,
+        "total": len(jobs),
+        "succeeded": len(jobs) - len(failed),
+        "failed": failed,
+        "results": results,
+    }
+
+
+@app.function(
+    image=image,
+    volumes={"/data": volume},
+    memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
+    cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
     max_containers=MAX_CONTAINERS_CPU,
     scaledown_window=SCALEDOWN_WINDOW_CPU,
 )
@@ -1022,6 +1141,31 @@ def delete_modal_embeddings() -> Dict[str, Any]:
         "deleted_files": deleted_files,
         "deleted_dirs": deleted_dirs,
     }
+
+
+@app.function(
+    image=image,
+    volumes={"/data": volume},
+    memory=(CPU_MEMORY_MIN, CPU_MEMORY_MAX),
+    cpu=(CPU_COUNT_MIN, CPU_COUNT_MAX),
+    max_containers=MAX_CONTAINERS_CPU,
+    scaledown_window=SCALEDOWN_WINDOW_CPU,
+)
+def purge_staging() -> Dict[str, Any]:
+    """Remove all staging directories under /data/embeddings/staging/."""
+    volume.reload()
+    staging_dir = Path(EMBED_DIR_DEFAULT) / "staging"
+    if not staging_dir.exists():
+        return {"success": True, "message": "No staging directory found.", "freed_bytes": 0}
+
+    freed_bytes = 0
+    for path in staging_dir.rglob("*"):
+        if path.is_file():
+            freed_bytes += path.stat().st_size
+    shutil.rmtree(staging_dir)
+    volume.commit()
+    freed_mb = freed_bytes / (1024 * 1024)
+    return {"success": True, "message": f"Purged staging directory ({freed_mb:.1f} MB freed).", "freed_bytes": freed_bytes}
 
 
 @app.function(

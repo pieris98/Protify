@@ -157,7 +157,7 @@ class Embedder:
         """Read sequences from SQLite database."""
         import sqlite3
         sequences = []
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(db_path, timeout=30) as conn:
             c = conn.cursor()
             c.execute("SELECT sequence FROM embeddings")
             while True:
@@ -172,9 +172,10 @@ class Embedder:
             filename = get_embedding_filename(model_name, self.matrix_embed, self.pooling_types, 'db')
             save_path = os.path.join(self.embedding_save_dir, filename)
             if os.path.exists(save_path):
-                conn = sqlite3.connect(save_path)
+                conn = sqlite3.connect(save_path, timeout=30)
                 c = conn.cursor()
                 c.execute('CREATE TABLE IF NOT EXISTS embeddings (sequence text PRIMARY KEY, embedding blob)')
+                conn.close()
                 already_embedded = self._read_sequences_from_db(save_path)
                 to_embed = [seq for seq in self.all_seqs if seq not in already_embedded]
                 print_message(f"Loaded {len(already_embedded)} already embedded sequences from {save_path}\nEmbedding {len(to_embed)} new sequences")
@@ -243,8 +244,10 @@ class Embedder:
         )
 
         if self.sql:
-            conn = sqlite3.connect(save_path)
+            conn = sqlite3.connect(save_path, timeout=30)
             c = conn.cursor()
+            c.execute('PRAGMA journal_mode=WAL')
+            c.execute('PRAGMA busy_timeout=30000')
             c.execute('CREATE TABLE IF NOT EXISTS embeddings (sequence text PRIMARY KEY, embedding blob)')
 
         for i, batch in tqdm(enumerate(dataloader), total=len(dataloader), desc='Embedding batches'):

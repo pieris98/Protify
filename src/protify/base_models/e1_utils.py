@@ -9,14 +9,33 @@ from dataclasses import dataclass
 
 PAD_TOKEN_ID = 0
 
+_E1_TOKENIZER_FILENAME = "e1_tokenizer.json"
+_E1_HF_REPO = "Synthyra/Profluent-E1-150M"
+_E1_HF_FILENAME = "tokenizer.json"
+
+_FALLBACK_PATHS = [
+    os.path.join(os.path.dirname(__file__), _E1_TOKENIZER_FILENAME),
+    os.path.join(os.environ.get("PROJECT_ROOT", ""), "data", "tokenizers", _E1_TOKENIZER_FILENAME),
+    "/synth-data/shared/tokenizers/e1_tokenizer.json",
+]
+
 
 def get_tokenizer() -> Tokenizer:
-    fname = os.path.join(os.path.dirname(__file__), "e1_tokenizer.json")
-    tokenizer: Tokenizer = Tokenizer.from_file(fname)
+    for path in _FALLBACK_PATHS:
+        if path and os.path.isfile(path):
+            tokenizer = Tokenizer.from_file(path)
+            assert tokenizer.padding["pad_id"] == PAD_TOKEN_ID, (
+                f"Padding token id must be {PAD_TOKEN_ID}, but got {tokenizer.padding['pad_id']}"
+            )
+            return tokenizer
+
+    print(f"[E1] Tokenizer not found locally, downloading from HuggingFace ({_E1_HF_REPO})")
+    from huggingface_hub import hf_hub_download
+    fname = hf_hub_download(repo_id=_E1_HF_REPO, filename=_E1_HF_FILENAME)
+    tokenizer = Tokenizer.from_file(fname)
     assert tokenizer.padding["pad_id"] == PAD_TOKEN_ID, (
         f"Padding token id must be {PAD_TOKEN_ID}, but got {tokenizer.padding['pad_id']}"
     )
-
     return tokenizer
 
 

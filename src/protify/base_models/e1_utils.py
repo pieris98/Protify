@@ -13,15 +13,25 @@ _E1_TOKENIZER_FILENAME = "e1_tokenizer.json"
 _E1_HF_REPO = "Synthyra/Profluent-E1-150M"
 _E1_HF_FILENAME = "tokenizer.json"
 
-_FALLBACK_PATHS = [
-    os.path.join(os.path.dirname(__file__), _E1_TOKENIZER_FILENAME),
-    os.path.join(os.environ.get("PROJECT_ROOT", ""), "data", "tokenizers", _E1_TOKENIZER_FILENAME),
-    "/synth-data/shared/tokenizers/e1_tokenizer.json",
-]
+_extra_tokenizer_paths: list[str] = []
+
+
+def register_tokenizer_path(path: str) -> None:
+    """Register an additional search path for the E1 tokenizer.
+
+    Allows host projects (e.g. synth) to inject environment-specific paths
+    (Modal volumes, repo data dirs) without coupling this module to them.
+    """
+    if path not in _extra_tokenizer_paths:
+        _extra_tokenizer_paths.append(path)
 
 
 def get_tokenizer() -> Tokenizer:
-    for path in _FALLBACK_PATHS:
+    candidates = [
+        os.path.join(os.path.dirname(__file__), _E1_TOKENIZER_FILENAME),
+        *_extra_tokenizer_paths,
+    ]
+    for path in candidates:
         if path and os.path.isfile(path):
             tokenizer = Tokenizer.from_file(path)
             assert tokenizer.padding["pad_id"] == PAD_TOKEN_ID, (

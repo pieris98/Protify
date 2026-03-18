@@ -52,7 +52,17 @@ def _load_kernels_flash() -> tuple[Any | None, str | None]:
     return None, None
 
 
-FLASH_KERNEL, FLASH_KERNEL_VARIANT = _load_kernels_flash()
+_FLASH_KERNELS_LOADED = False
+FLASH_KERNEL = None
+FLASH_KERNEL_VARIANT = None
+
+
+def _ensure_flash_kernels_loaded():
+    global _FLASH_KERNELS_LOADED, FLASH_KERNEL, FLASH_KERNEL_VARIANT
+    if _FLASH_KERNELS_LOADED:
+        return
+    _FLASH_KERNELS_LOADED = True
+    FLASH_KERNEL, FLASH_KERNEL_VARIANT = _load_kernels_flash()
 
 
 def resolve_attention_backend(requested_backend: str) -> AttentionBackend:
@@ -66,6 +76,7 @@ def resolve_attention_backend(requested_backend: str) -> AttentionBackend:
     )
 
     if normalized_backend == AttentionBackend.KERNELS.value:
+        _ensure_flash_kernels_loaded()
         assert FLASH_KERNEL is not None, "The kernels attention backend is unavailable in this environment."
         return AttentionBackend.KERNELS
 

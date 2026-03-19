@@ -1,5 +1,6 @@
 import torch
 from dataclasses import dataclass
+from typing import List, Optional, Tuple
 from torch import nn
 from transformers import PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import ModelOutput
@@ -37,12 +38,12 @@ class TransformerBlock(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask_2d: torch.Tensor | None = None,
-        attention_mask_4d: torch.Tensor | None = None,
-        flex_block_mask: BlockMask | None = None,
+        attention_mask_2d: Optional[torch.Tensor] = None,
+        attention_mask_4d: Optional[torch.Tensor] = None,
+        flex_block_mask: Optional[BlockMask] = None,
         output_attentions: bool = False,
         output_s_max: bool = False,
-    ) -> tuple[torch.Tensor, torch.Tensor | None, list[torch.Tensor] | None]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], list[torch.Tensor] | None]:
         residual = hidden_states
         attn_output, attention_weights, s_max = self.attn(
             hidden_states=self.attn_norm(hidden_states),
@@ -59,12 +60,12 @@ class TransformerBlock(nn.Module):
 
 @dataclass
 class TransformerOutput(ModelOutput):
-    loss: torch.Tensor | None = None
-    logits: torch.Tensor | None = None
-    last_hidden_state: torch.Tensor | None = None
-    hidden_states: tuple[torch.Tensor, ...] | None = None
-    attentions: tuple[torch.Tensor | None, ...] | None = None
-    s_max: tuple[list[torch.Tensor] | None, ...] | None = None
+    loss: Optional[torch.Tensor] = None
+    logits: Optional[torch.Tensor] = None
+    last_hidden_state: Optional[torch.Tensor] = None
+    hidden_states: Tuple[torch.Tensor, ...] | None = None
+    attentions: Tuple[Optional[torch.Tensor], ...] | None = None
+    s_max: Tuple[List[torch.Tensor] | None, ...] | None = None
 
 
 class Transformer(nn.Module):
@@ -104,10 +105,10 @@ class Transformer(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask: torch.Tensor | None = None,
-        attention_mask_2d: torch.Tensor | None = None,
-        attention_mask_4d: torch.Tensor | None = None,
-        flex_block_mask: BlockMask | None = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        attention_mask_2d: Optional[torch.Tensor] = None,
+        attention_mask_4d: Optional[torch.Tensor] = None,
+        flex_block_mask: Optional[BlockMask] = None,
         output_attentions: bool = False,
         output_hidden_states: bool = False,
         output_s_max: bool = False,
@@ -167,7 +168,7 @@ class TransformerConfig(PretrainedConfig):
         rotary: bool = True,
         attention_backend: str = "flex",
         output_s_max: bool = False,
-        attn_implementation: str | None = None,
+        attn_implementation: Optional[str] = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -210,12 +211,12 @@ class TransformerForMaskedLM(PreTrainedModel):
     def forward(
         self,
         input_ids: torch.Tensor,
-        attention_mask: torch.Tensor | None = None,
-        labels: torch.Tensor | None = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
         return_preds: bool = True,
         output_attentions: bool = False,
         output_hidden_states: bool = False,
-        output_s_max: bool | None = None,
+        output_s_max: Optional[bool] = None,
     ) -> TransformerOutput:
         x = self.embeddings(input_ids)
         if output_s_max is None:

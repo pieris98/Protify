@@ -24,8 +24,7 @@ except ImportError:
             sys.modules["protify"] = _protify_mod
             _spec.loader.exec_module(_protify_mod)
 
-from protify.modal_cli import _run_on_modal_cli, _should_auto_run_modal
-from protify.modal_utils import parse_modal_api_key
+from protify.cloud_cli import _run_on_cloud, _should_auto_run_cloud
 
 
 def parse_arguments():  
@@ -36,11 +35,12 @@ def parse_arguments():
     parser.add_argument("--hf_token", default=None, help="Hugging Face token.")
     parser.add_argument("--synthyra_api_key", default=None, help="Synthyra API key.")
     parser.add_argument("--wandb_api_key", default=None, help="Wandb API key.")
-    parser.add_argument("--modal_token_id", default=None, help="Modal token ID used for authentication.")
-    parser.add_argument("--modal_token_secret", default=None, help="Modal token secret used for authentication.")
-    parser.add_argument("--modal_api_key", default=None, help="Backward-compatible Modal key formatted as '<modal_token_id>:<modal_token_secret>'.")
-    parser.add_argument("--rebuild_modal", action="store_true", default=False, help="Force rebuild and deploy of the Modal backend before running.")
-    parser.add_argument("--delete_modal_embeddings", action="store_true", default=False, help="Delete all embedding cache files from the Modal volume before submission.")
+    parser.add_argument("--cloud_api_key", default=None, help="Cloud backend API key. When provided, jobs are dispatched to the remote cloud backend.")
+    parser.add_argument("--cloud_url", default=None, help="Cloud backend URL (default: https://api.synthyra.com).")
+    parser.add_argument("--cloud_gpu_type", default=None, help="GPU type for cloud execution (e.g. A10, A100, H100).")
+    parser.add_argument("--cloud_timeout_seconds", type=int, default=None, help="Timeout in seconds for cloud jobs (default: 86400).")
+    parser.add_argument("--cloud_poll_interval", type=int, default=None, help="Poll interval in seconds for cloud job status (default: 5).")
+    parser.add_argument("--cloud_artifacts_dir", default=None, help="Local directory to save cloud job artifacts (default: cloud_artifacts).")
 
     # ----------------- Paths ----------------- #
     parser.add_argument("--hf_home", type=str, default=None, help="Customize the HF cache directory.")
@@ -194,27 +194,6 @@ def parse_arguments():
 
     assert args.probe_type == "linear" or args.matrix_embed, "When probe_type is not linear, --matrix_embed must be True."
 
-    args.modal_cli_credentials_provided = (
-        ("--modal_api_key" in raw_argv)
-        or ("--modal_token_id" in raw_argv)
-        or ("--modal_token_secret" in raw_argv)
-        or any(item.startswith("--modal_api_key=") for item in raw_argv)
-        or any(item.startswith("--modal_token_id=") for item in raw_argv)
-        or any(item.startswith("--modal_token_secret=") for item in raw_argv)
-    )
-
-    if args.modal_api_key is not None and (args.modal_token_id is None or args.modal_token_secret is None):
-        parsed_modal_token_id, parsed_modal_token_secret = parse_modal_api_key(args.modal_api_key)
-        if args.modal_token_id is None:
-            args.modal_token_id = parsed_modal_token_id
-        if args.modal_token_secret is None:
-            args.modal_token_secret = parsed_modal_token_secret
-
-    if args.modal_token_id is not None:
-        os.environ["MODAL_TOKEN_ID"] = args.modal_token_id
-    if args.modal_token_secret is not None:
-        os.environ["MODAL_TOKEN_SECRET"] = args.modal_token_secret
-
     if args.hf_token is not None:
         from huggingface_hub import login
         # Override environment variable to ensure this token is used
@@ -222,10 +201,10 @@ def parse_arguments():
         login(args.hf_token)
         print(f"Logged in to HuggingFace Hub with token from arguments")
     else:
-        # Check if token exists in environment (from Modal secret or other source)
+        # Check if token exists in environment
         hf_token_env = os.environ.get("HF_TOKEN")
         if hf_token_env:
-            print(f"Note: HF_TOKEN found in environment (from Modal secret or other source)")
+            print(f"Note: HF_TOKEN found in environment")
             print(f"Note: This token will be used for read operations only unless overridden")
     if args.wandb_api_key is not None:
         try:
@@ -269,22 +248,35 @@ def parse_arguments():
         elif "wandb_api_key" not in yaml_args.__dict__:
             yaml_args.wandb_api_key = None
 
-        if args.modal_token_id is not None:
-            yaml_args.modal_token_id = args.modal_token_id
-        elif "modal_token_id" not in yaml_args.__dict__:
-            yaml_args.modal_token_id = None
+        if args.cloud_api_key is not None:
+            yaml_args.cloud_api_key = args.cloud_api_key
+        elif "cloud_api_key" not in yaml_args.__dict__:
+            yaml_args.cloud_api_key = None
 
-        if args.modal_token_secret is not None:
-            yaml_args.modal_token_secret = args.modal_token_secret
-        elif "modal_token_secret" not in yaml_args.__dict__:
-            yaml_args.modal_token_secret = None
+        if args.cloud_url is not None:
+            yaml_args.cloud_url = args.cloud_url
+        elif "cloud_url" not in yaml_args.__dict__:
+            yaml_args.cloud_url = None
 
-        if args.modal_api_key is not None:
-            yaml_args.modal_api_key = args.modal_api_key
-        elif "modal_api_key" not in yaml_args.__dict__:
-            yaml_args.modal_api_key = None
-        yaml_args.rebuild_modal = _merge_store_true(args.rebuild_modal, "rebuild_modal")
-        yaml_args.delete_modal_embeddings = _merge_store_true(args.delete_modal_embeddings, "delete_modal_embeddings")
+        if args.cloud_gpu_type is not None:
+            yaml_args.cloud_gpu_type = args.cloud_gpu_type
+        elif "cloud_gpu_type" not in yaml_args.__dict__:
+            yaml_args.cloud_gpu_type = None
+
+        if args.cloud_timeout_seconds is not None:
+            yaml_args.cloud_timeout_seconds = args.cloud_timeout_seconds
+        elif "cloud_timeout_seconds" not in yaml_args.__dict__:
+            yaml_args.cloud_timeout_seconds = None
+
+        if args.cloud_poll_interval is not None:
+            yaml_args.cloud_poll_interval = args.cloud_poll_interval
+        elif "cloud_poll_interval" not in yaml_args.__dict__:
+            yaml_args.cloud_poll_interval = None
+
+        if args.cloud_artifacts_dir is not None:
+            yaml_args.cloud_artifacts_dir = args.cloud_artifacts_dir
+        elif "cloud_artifacts_dir" not in yaml_args.__dict__:
+            yaml_args.cloud_artifacts_dir = None
 
         yaml_args.use_wandb_hyperopt = _merge_store_true(args.use_wandb_hyperopt, "use_wandb_hyperopt")
 
@@ -347,8 +339,7 @@ if __name__ == "__main__":
     # Require that either datasets are specified or a ProteinGym experiment is chosen
     has_datasets = bool(args.data_names or args.data_dirs)
     has_proteingym = bool(args.proteingym)
-    has_modal_maintenance = bool(args.modal_cli_credentials_provided and (args.rebuild_modal or args.delete_modal_embeddings))
-    if not has_datasets and not has_proteingym and not has_modal_maintenance and args.yaml_path is None:
+    if not has_datasets and not has_proteingym and args.yaml_path is None:
         raise AssertionError("No datasets specified. Provide --data_names or --data_dirs, or run a ProteinGym experiment.")
 
     if args.use_xformers:
@@ -982,8 +973,8 @@ def main(args: SimpleNamespace):
     chosen_seed = set_global_seed(args.seed)
     args.seed = chosen_seed
 
-    if _should_auto_run_modal(args):
-        return _run_on_modal_cli(args)
+    if _should_auto_run_cloud(args):
+        return _run_on_cloud(args)
 
     if args.replay_path is not None:
         from logger import LogReplayer

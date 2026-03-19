@@ -25,7 +25,7 @@ def get_global_seed() -> Optional[int]:
     return _GLOBAL_SEED
 
 
-def set_cublas_workspace_config():
+def set_cublas_workspace_config() -> None:
     """Set CUBLAS workspace config to an allowed deterministic value.
 
     Must be set BEFORE importing torch. Valid values (per NVIDIA docs):
@@ -37,7 +37,7 @@ def set_cublas_workspace_config():
         os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
 
-def seed_worker(worker_id: int):
+def seed_worker(worker_id: int) -> None:
     """Use with torch.utils.data.DataLoader(worker_init_fn=seed_worker) to sync NumPy/random per-worker."""
     import torch
     worker_seed = torch.initial_seed() % 2**32
@@ -94,7 +94,7 @@ def set_global_seed(seed: Optional[int] = None) -> int:
     return seed
 
 
-def set_determinism():
+def set_determinism() -> None:
     # set_cublas_workspace_config() must happen BEFORE importing torch
     #set_cublas_workspace_config()
 

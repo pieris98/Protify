@@ -21,7 +21,7 @@ from probes.get_probe import ProbeArguments
 from probes.trainers import TrainerArguments
 from main import MainProcess
 from data.data_mixin import DataArguments
-from modal_utils import parse_modal_api_key
+from cloud_backend import get_or_create_cloud_backend
 from utils import print_message, print_done, print_title, expand_dms_ids_all
 from visualization.plot_result import create_plots
 from benchmarks.proteingym.compare_scoring_methods import compare_scoring_methods
@@ -78,7 +78,7 @@ class GUI(MainProcess):
         self.probe_tab = ttk.Frame(self.notebook)
         self.trainer_tab = ttk.Frame(self.notebook)
         self.wandb_tab = ttk.Frame(self.notebook)
-        self.modal_tab = ttk.Frame(self.notebook)
+        self.cloud_tab = ttk.Frame(self.notebook)
         self.scikit_tab = ttk.Frame(self.notebook)
         self.replay_tab = ttk.Frame(self.notebook)
         self.viz_tab = ttk.Frame(self.notebook)
@@ -92,7 +92,7 @@ class GUI(MainProcess):
         self.notebook.add(self.probe_tab, text="Probe")
         self.notebook.add(self.trainer_tab, text="Trainer")
         self.notebook.add(self.wandb_tab, text="W&B Sweep")
-        self.notebook.add(self.modal_tab, text="Modal")
+        self.notebook.add(self.cloud_tab, text="Cloud")
         self.notebook.add(self.proteingym_tab, text="ProteinGym")
         self.notebook.add(self.scikit_tab, text="Scikit")
         self.notebook.add(self.replay_tab, text="Replay")
@@ -102,7 +102,7 @@ class GUI(MainProcess):
         self.task_queue = queue.Queue()
         self.thread_pool = ThreadPoolExecutor(max_workers=1)
         self.current_task = None
-        self.modal_polling_active = False
+        self.cloud_polling_active = False
         
         # Start the queue checker
         self.check_task_queue()
@@ -115,7 +115,7 @@ class GUI(MainProcess):
         self.build_probe_tab()
         self.build_trainer_tab()
         self.build_wandb_tab()
-        self.build_modal_tab()
+        self.build_cloud_tab()
         self.build_proteingym_tab()
         self.build_scikit_tab()
         self.build_replay_tab()
@@ -178,26 +178,12 @@ class GUI(MainProcess):
         entry_synthyra_api_key.grid(row=3, column=1, padx=10, pady=5)
         self.add_help_button(id_frame, 3, 2, "Your Synthyra API key for accessing premium features.")
 
-        # Backward-compatible Modal API key
-        ttk.Label(id_frame, text="Modal API Key (legacy):").grid(row=4, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_api_key"] = tk.StringVar(value="")
-        entry_modal_api_key = ttk.Entry(id_frame, textvariable=self.settings_vars["modal_api_key"], width=30, show="*")
-        entry_modal_api_key.grid(row=4, column=1, padx=10, pady=5)
-        self.add_help_button(id_frame, 4, 2, "Legacy format '<modal_token_id>:<modal_token_secret>'.")
-
-        # Modal token ID
-        ttk.Label(id_frame, text="Modal Token ID:").grid(row=5, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_token_id"] = tk.StringVar(value="")
-        entry_modal_token_id = ttk.Entry(id_frame, textvariable=self.settings_vars["modal_token_id"], width=30)
-        entry_modal_token_id.grid(row=5, column=1, padx=10, pady=5)
-        self.add_help_button(id_frame, 5, 2, "Modal token ID used for CLI/SDK authentication.")
-
-        # Modal token secret
-        ttk.Label(id_frame, text="Modal Token Secret:").grid(row=6, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_token_secret"] = tk.StringVar(value="")
-        entry_modal_token_secret = ttk.Entry(id_frame, textvariable=self.settings_vars["modal_token_secret"], width=30, show="*")
-        entry_modal_token_secret.grid(row=6, column=1, padx=10, pady=5)
-        self.add_help_button(id_frame, 6, 2, "Modal token secret used for CLI/SDK authentication.")
+        # Cloud API key
+        ttk.Label(id_frame, text="Cloud API Key:").grid(row=4, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["cloud_api_key"] = tk.StringVar(value="")
+        entry_cloud_api_key = ttk.Entry(id_frame, textvariable=self.settings_vars["cloud_api_key"], width=30, show="*")
+        entry_cloud_api_key.grid(row=4, column=1, padx=10, pady=5)
+        self.add_help_button(id_frame, 4, 2, "API key for cloud backend execution.")
 
         # Create a frame for paths
         paths_frame = ttk.LabelFrame(self.info_tab, text="Paths")
@@ -801,92 +787,64 @@ class GUI(MainProcess):
         run_button = ttk.Button(self.wandb_tab, text="Save W&B Settings", command=self._save_wandb_settings)
         run_button.grid(row=99, column=0, columnspan=2, pady=(10, 10))
 
-    def build_modal_tab(self):
-        ttk.Label(self.modal_tab, text="Modal App Name:").grid(row=0, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_app_name"] = tk.StringVar(value="protify-backend")
-        entry_modal_app_name = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_app_name"], width=30)
-        entry_modal_app_name.grid(row=0, column=1, padx=10, pady=5, sticky="w")
+    def build_cloud_tab(self):
+        ttk.Label(self.cloud_tab, text="Cloud URL:").grid(row=0, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["cloud_url"] = tk.StringVar(value="https://api.synthyra.com")
+        entry_cloud_url = ttk.Entry(self.cloud_tab, textvariable=self.settings_vars["cloud_url"], width=40)
+        entry_cloud_url.grid(row=0, column=1, padx=10, pady=5, sticky="w")
 
-        ttk.Label(self.modal_tab, text="Modal Environment (optional):").grid(row=1, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_environment"] = tk.StringVar(value="")
-        entry_modal_environment = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_environment"], width=30)
-        entry_modal_environment.grid(row=1, column=1, padx=10, pady=5, sticky="w")
-
-        ttk.Label(self.modal_tab, text="Modal Deploy Tag (optional):").grid(row=2, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_tag"] = tk.StringVar(value="")
-        entry_modal_tag = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_tag"], width=30)
-        entry_modal_tag.grid(row=2, column=1, padx=10, pady=5, sticky="w")
-
-        ttk.Label(self.modal_tab, text="Backend Module Path:").grid(row=3, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_backend_path"] = tk.StringVar(value="src/protify/modal_backend.py")
-        entry_modal_backend_path = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_backend_path"], width=30)
-        entry_modal_backend_path.grid(row=3, column=1, padx=10, pady=5, sticky="w")
-
-        ttk.Label(self.modal_tab, text="GPU Type:").grid(row=4, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_gpu_type"] = tk.StringVar(value="A10")
-        combo_modal_gpu_type = ttk.Combobox(
-            self.modal_tab,
-            textvariable=self.settings_vars["modal_gpu_type"],
+        ttk.Label(self.cloud_tab, text="GPU Type:").grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["cloud_gpu_type"] = tk.StringVar(value="A10")
+        combo_cloud_gpu_type = ttk.Combobox(
+            self.cloud_tab,
+            textvariable=self.settings_vars["cloud_gpu_type"],
             values=["H200", "H100", "A100-80GB", "A100", "L40S", "A10", "L4", "T4"],
             state="readonly",
         )
-        combo_modal_gpu_type.grid(row=4, column=1, padx=10, pady=5, sticky="w")
+        combo_cloud_gpu_type.grid(row=1, column=1, padx=10, pady=5, sticky="w")
 
-        ttk.Label(self.modal_tab, text="Runtime Timeout (seconds):").grid(row=5, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_timeout_seconds"] = tk.IntVar(value=86400)
-        spin_modal_timeout = ttk.Spinbox(self.modal_tab, from_=60, to=604800, textvariable=self.settings_vars["modal_timeout_seconds"])
-        spin_modal_timeout.grid(row=5, column=1, padx=10, pady=5, sticky="w")
+        ttk.Label(self.cloud_tab, text="Runtime Timeout (seconds):").grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["cloud_timeout_seconds"] = tk.IntVar(value=86400)
+        spin_cloud_timeout = ttk.Spinbox(self.cloud_tab, from_=60, to=604800, textvariable=self.settings_vars["cloud_timeout_seconds"])
+        spin_cloud_timeout.grid(row=2, column=1, padx=10, pady=5, sticky="w")
 
-        ttk.Label(self.modal_tab, text="Poll Interval (seconds):").grid(row=6, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_poll_interval_seconds"] = tk.IntVar(value=5)
-        spin_modal_poll_interval = ttk.Spinbox(self.modal_tab, from_=1, to=600, textvariable=self.settings_vars["modal_poll_interval_seconds"])
-        spin_modal_poll_interval.grid(row=6, column=1, padx=10, pady=5, sticky="w")
+        ttk.Label(self.cloud_tab, text="Poll Interval (seconds):").grid(row=3, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["cloud_poll_interval"] = tk.IntVar(value=5)
+        spin_cloud_poll_interval = ttk.Spinbox(self.cloud_tab, from_=1, to=600, textvariable=self.settings_vars["cloud_poll_interval"])
+        spin_cloud_poll_interval.grid(row=3, column=1, padx=10, pady=5, sticky="w")
 
-        ttk.Label(self.modal_tab, text="Log Tail Length (chars):").grid(row=7, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_log_tail_chars"] = tk.IntVar(value=5000)
-        spin_modal_log_tail_chars = ttk.Spinbox(self.modal_tab, from_=500, to=100000, textvariable=self.settings_vars["modal_log_tail_chars"])
-        spin_modal_log_tail_chars.grid(row=7, column=1, padx=10, pady=5, sticky="w")
+        ttk.Label(self.cloud_tab, text="Current Job ID:").grid(row=4, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["cloud_job_id"] = tk.StringVar(value="")
+        entry_cloud_job_id = ttk.Entry(self.cloud_tab, textvariable=self.settings_vars["cloud_job_id"], width=30)
+        entry_cloud_job_id.grid(row=4, column=1, padx=10, pady=5, sticky="w")
 
-        ttk.Label(self.modal_tab, text="Current Job ID:").grid(row=8, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_job_id"] = tk.StringVar(value="")
-        entry_modal_job_id = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_job_id"], width=30)
-        entry_modal_job_id.grid(row=8, column=1, padx=10, pady=5, sticky="w")
+        ttk.Label(self.cloud_tab, text="Artifact Output Directory:").grid(row=5, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["cloud_artifacts_dir"] = tk.StringVar(value="cloud_artifacts")
+        entry_cloud_artifacts_dir = ttk.Entry(self.cloud_tab, textvariable=self.settings_vars["cloud_artifacts_dir"], width=30)
+        entry_cloud_artifacts_dir.grid(row=5, column=1, padx=10, pady=5, sticky="w")
 
-        ttk.Label(self.modal_tab, text="Current Call ID:").grid(row=9, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_call_id"] = tk.StringVar(value="")
-        entry_modal_call_id = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_call_id"], width=30)
-        entry_modal_call_id.grid(row=9, column=1, padx=10, pady=5, sticky="w")
+        ttk.Label(self.cloud_tab, text="Auto Poll:").grid(row=6, column=0, padx=10, pady=5, sticky="w")
+        self.settings_vars["cloud_auto_poll"] = tk.BooleanVar(value=True)
+        check_cloud_auto_poll = ttk.Checkbutton(self.cloud_tab, variable=self.settings_vars["cloud_auto_poll"])
+        check_cloud_auto_poll.grid(row=6, column=1, padx=10, pady=5, sticky="w")
 
-        ttk.Label(self.modal_tab, text="Artifact Output Directory:").grid(row=10, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_artifacts_dir"] = tk.StringVar(value="modal_artifacts")
-        entry_modal_artifacts_dir = ttk.Entry(self.modal_tab, textvariable=self.settings_vars["modal_artifacts_dir"], width=30)
-        entry_modal_artifacts_dir.grid(row=10, column=1, padx=10, pady=5, sticky="w")
+        submit_button = ttk.Button(self.cloud_tab, text="Submit Remote Run", command=self._cloud_submit_run)
+        submit_button.grid(row=7, column=0, padx=10, pady=10, sticky="w")
 
-        ttk.Label(self.modal_tab, text="Auto Poll Health:").grid(row=11, column=0, padx=10, pady=5, sticky="w")
-        self.settings_vars["modal_auto_poll"] = tk.BooleanVar(value=True)
-        check_modal_auto_poll = ttk.Checkbutton(self.modal_tab, variable=self.settings_vars["modal_auto_poll"])
-        check_modal_auto_poll.grid(row=11, column=1, padx=10, pady=5, sticky="w")
+        poll_button = ttk.Button(self.cloud_tab, text="Poll Status", command=self._cloud_poll_status)
+        poll_button.grid(row=7, column=1, padx=10, pady=10, sticky="w")
 
-        deploy_button = ttk.Button(self.modal_tab, text="Deploy Modal Backend", command=self._modal_deploy_backend)
-        deploy_button.grid(row=12, column=0, padx=10, pady=10, sticky="w")
+        cancel_button = ttk.Button(self.cloud_tab, text="Cancel Run", command=self._cloud_cancel_run)
+        cancel_button.grid(row=8, column=0, padx=10, pady=5, sticky="w")
 
-        submit_button = ttk.Button(self.modal_tab, text="Submit Remote Run", command=self._modal_submit_run)
-        submit_button.grid(row=12, column=1, padx=10, pady=10, sticky="w")
+        start_auto_poll_button = ttk.Button(self.cloud_tab, text="Start Auto Poll", command=self._cloud_start_auto_poll)
+        start_auto_poll_button.grid(row=8, column=1, padx=10, pady=5, sticky="w")
 
-        poll_button = ttk.Button(self.modal_tab, text="Poll Status", command=self._modal_poll_status)
-        poll_button.grid(row=13, column=0, padx=10, pady=5, sticky="w")
+        stop_auto_poll_button = ttk.Button(self.cloud_tab, text="Stop Auto Poll", command=self._cloud_stop_auto_poll)
+        stop_auto_poll_button.grid(row=9, column=0, padx=10, pady=5, sticky="w")
 
-        cancel_button = ttk.Button(self.modal_tab, text="Cancel Run", command=self._modal_cancel_run)
-        cancel_button.grid(row=13, column=1, padx=10, pady=5, sticky="w")
-
-        start_auto_poll_button = ttk.Button(self.modal_tab, text="Start Auto Poll", command=self._modal_start_auto_poll)
-        start_auto_poll_button.grid(row=14, column=0, padx=10, pady=5, sticky="w")
-
-        stop_auto_poll_button = ttk.Button(self.modal_tab, text="Stop Auto Poll", command=self._modal_stop_auto_poll)
-        stop_auto_poll_button.grid(row=14, column=1, padx=10, pady=5, sticky="w")
-
-        fetch_button = ttk.Button(self.modal_tab, text="Fetch Logs/Results/Plots", command=self._modal_fetch_artifacts)
-        fetch_button.grid(row=15, column=0, columnspan=2, padx=10, pady=10, sticky="w")
+        fetch_button = ttk.Button(self.cloud_tab, text="Fetch Results", command=self._cloud_fetch_artifacts)
+        fetch_button.grid(row=9, column=1, padx=10, pady=5, sticky="w")
 
     def build_proteingym_tab(self):
         # ProteinGym Checkbox
@@ -1131,70 +1089,15 @@ class GUI(MainProcess):
     def _resolve_repo_root(self):
         return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-    def _resolve_modal_backend_path(self):
-        configured_path = self.settings_vars["modal_backend_path"].get().strip()
-        if not configured_path:
-            configured_path = "src/protify/modal_backend.py"
-        if os.path.isabs(configured_path):
-            backend_path = configured_path
-        else:
-            home_dir = self.settings_vars["home_dir"].get().strip()
-            candidate_home = os.path.abspath(os.path.join(home_dir, configured_path))
-            candidate_repo = os.path.abspath(os.path.join(self._resolve_repo_root(), configured_path))
-            if os.path.exists(candidate_home):
-                backend_path = candidate_home
-            else:
-                backend_path = candidate_repo
-        assert os.path.exists(backend_path), f"Modal backend path not found: {backend_path}"
-        return backend_path
+    def _get_cloud_backend(self):
+        """Get or create a CloudBackend from the GUI settings."""
+        api_key = self.settings_vars["cloud_api_key"].get().strip()
+        base_url = self.settings_vars["cloud_url"].get().strip() or None
+        backend = get_or_create_cloud_backend(api_key=api_key, base_url=base_url)
+        assert backend is not None, "No cloud API key provided. Enter your API key in the Info tab."
+        return backend
 
-    def _resolve_modal_credentials(self):
-        modal_api_key = self.settings_vars["modal_api_key"].get().strip()
-        modal_token_id = self.settings_vars["modal_token_id"].get().strip()
-        modal_token_secret = self.settings_vars["modal_token_secret"].get().strip()
-        if modal_api_key and ((not modal_token_id) or (not modal_token_secret)):
-            modal_token_id, modal_token_secret = parse_modal_api_key(modal_api_key)
-            self.settings_vars["modal_token_id"].set(modal_token_id)
-            self.settings_vars["modal_token_secret"].set(modal_token_secret)
-        if modal_token_id == "":
-            modal_token_id = None
-        if modal_token_secret == "":
-            modal_token_secret = None
-        return modal_token_id, modal_token_secret
-
-    def _build_modal_env(self):
-        env = os.environ.copy()
-        # Force UTF-8 I/O for Modal subprocesses on Windows.
-        env["PYTHONIOENCODING"] = "utf-8"
-        env["PYTHONUTF8"] = "1"
-        modal_token_id, modal_token_secret = self._resolve_modal_credentials()
-        if modal_token_id is not None:
-            env["MODAL_TOKEN_ID"] = modal_token_id
-            os.environ["MODAL_TOKEN_ID"] = modal_token_id
-        if modal_token_secret is not None:
-            env["MODAL_TOKEN_SECRET"] = modal_token_secret
-            os.environ["MODAL_TOKEN_SECRET"] = modal_token_secret
-        modal_environment = self.settings_vars["modal_environment"].get().strip()
-        if modal_environment:
-            env["MODAL_ENVIRONMENT"] = modal_environment
-            os.environ["MODAL_ENVIRONMENT"] = modal_environment
-        return env
-
-    def _get_modal_sdk(self):
-        try:
-            import modal
-        except Exception as error:
-            raise RuntimeError("Modal SDK is not installed. Install it with: py -m pip install modal") from error
-        return modal
-
-    def _get_modal_function(self, function_name):
-        modal = self._get_modal_sdk()
-        app_name = self.settings_vars["modal_app_name"].get().strip()
-        if app_name == "":
-            app_name = "protify-backend"
-        return modal.Function.from_name(app_name, function_name)
-
-    def _collect_modal_run_config(self):
+    def _collect_cloud_run_config(self):
         selected_model_indices = self.model_listbox.curselection()
         selected_models = [self.model_listbox.get(i) for i in selected_model_indices]
         if len(selected_models) == 0:
@@ -1343,196 +1246,131 @@ class GUI(MainProcess):
         }
         return config
 
-    def _modal_deploy_backend(self):
-        print_message("Deploying Modal backend...")
-
-        def background_deploy():
-            backend_path = self._resolve_modal_backend_path()
-            repo_root = self._resolve_repo_root()
-            env = self._build_modal_env()
-
-            app_name = self.settings_vars["modal_app_name"].get().strip() or "protify-backend"
-            modal_environment = self.settings_vars["modal_environment"].get().strip()
-            modal_tag = self.settings_vars["modal_tag"].get().strip()
-
-            command = [sys.executable, "-m", "modal", "deploy", backend_path, "--name", app_name]
-            if modal_environment:
-                command.extend(["--env", modal_environment])
-            if modal_tag:
-                command.extend(["--tag", modal_tag])
-
-            try:
-                process = subprocess.run(command, cwd=repo_root, env=env, capture_output=True, text=True)
-            except FileNotFoundError:
-                fallback_command = ["modal", "deploy", backend_path, "--name", app_name]
-                if modal_environment:
-                    fallback_command.extend(["--env", modal_environment])
-                if modal_tag:
-                    fallback_command.extend(["--tag", modal_tag])
-                process = subprocess.run(fallback_command, cwd=repo_root, env=env, capture_output=True, text=True)
-
-            if process.returncode != 0:
-                if "No module named modal" in process.stderr:
-                    raise RuntimeError("Modal is not installed in this Python environment. Install it with: py -m pip install modal")
-                raise RuntimeError(f"Modal deploy failed:\n{process.stderr}")
-
-            stdout_tail = process.stdout[-4000:] if process.stdout else "Deployment completed."
-            print_message(stdout_tail)
-            print_done()
-
-        self.run_in_background(background_deploy)
-
-    def _modal_submit_run(self):
-        print_message("Submitting remote Modal run...")
+    def _cloud_submit_run(self):
+        print_message("Submitting remote cloud run...")
 
         def background_submit():
-            self._build_modal_env()
-            submit_fn = self._get_modal_function("submit_protify_job")
-            config = self._collect_modal_run_config()
+            backend = self._get_cloud_backend()
+            config = self._collect_cloud_run_config()
 
-            gpu_type = self.settings_vars["modal_gpu_type"].get()
-            timeout_seconds = self.settings_vars["modal_timeout_seconds"].get()
-            hf_token = self.settings_vars["huggingface_token"].get().strip() or None
-            wandb_api_key = self.settings_vars["wandb_api_key"].get().strip() or None
-            synthyra_api_key = self.settings_vars["synthyra_api_key"].get().strip() or None
+            gpu_type = self.settings_vars["cloud_gpu_type"].get()
+            timeout_seconds = self.settings_vars["cloud_timeout_seconds"].get()
 
-            result = submit_fn.remote(
+            result = backend.submit_job(
                 config=config,
                 gpu_type=gpu_type,
-                hf_token=hf_token,
-                wandb_api_key=wandb_api_key,
-                synthyra_api_key=synthyra_api_key,
                 timeout_seconds=timeout_seconds,
             )
-            assert isinstance(result, dict), "submit_protify_job returned a non-dict response."
-            assert "job_id" in result, "submit_protify_job response missing job_id."
-            assert "function_call_id" in result, "submit_protify_job response missing function_call_id."
+            assert isinstance(result, dict), "Cloud submit returned a non-dict response."
+            assert "job_id" in result, "Cloud submit response missing job_id."
 
             job_id = result["job_id"]
-            function_call_id = result["function_call_id"]
-            self.settings_vars["modal_job_id"].set(job_id)
-            self.settings_vars["modal_call_id"].set(function_call_id)
-            self.full_args.modal_job_id = job_id
-            self.full_args.modal_call_id = function_call_id
+            self.settings_vars["cloud_job_id"].set(job_id)
 
-            print_message(f"Modal job submitted.\nJob ID: {job_id}\nCall ID: {function_call_id}")
-            if self.settings_vars["modal_auto_poll"].get():
-                self.modal_polling_active = True
-                self.master.after(0, self._modal_auto_poll_loop)
+            print_message(f"Cloud job submitted.\nJob ID: {job_id}")
+            if self.settings_vars["cloud_auto_poll"].get():
+                self.cloud_polling_active = True
+                self.master.after(0, self._cloud_auto_poll_loop)
             print_done()
 
         self.run_in_background(background_submit)
 
-    def _modal_start_auto_poll(self):
-        if self.modal_polling_active:
+    def _cloud_start_auto_poll(self):
+        if self.cloud_polling_active:
             print_message("Auto polling is already active.")
             return
-        self.modal_polling_active = True
-        print_message("Started Modal auto polling.")
-        self._modal_auto_poll_loop()
+        self.cloud_polling_active = True
+        print_message("Started cloud auto polling.")
+        self._cloud_auto_poll_loop()
 
-    def _modal_stop_auto_poll(self):
-        self.modal_polling_active = False
-        print_message("Stopped Modal auto polling.")
+    def _cloud_stop_auto_poll(self):
+        self.cloud_polling_active = False
+        print_message("Stopped cloud auto polling.")
 
-    def _modal_auto_poll_loop(self):
-        if not self.modal_polling_active:
+    def _cloud_auto_poll_loop(self):
+        if not self.cloud_polling_active:
             return
-        if not self.settings_vars["modal_auto_poll"].get():
-            self.modal_polling_active = False
+        if not self.settings_vars["cloud_auto_poll"].get():
+            self.cloud_polling_active = False
             return
 
-        job_id = self.settings_vars["modal_job_id"].get().strip()
+        job_id = self.settings_vars["cloud_job_id"].get().strip()
         if not job_id:
-            self.modal_polling_active = False
+            self.cloud_polling_active = False
             return
 
-        self._modal_poll_status()
-        poll_interval_seconds = self.settings_vars["modal_poll_interval_seconds"].get()
-        self.master.after(max(1, poll_interval_seconds) * 1000, self._modal_auto_poll_loop)
+        self._cloud_poll_status()
+        poll_interval = self.settings_vars["cloud_poll_interval"].get()
+        self.master.after(max(1, poll_interval) * 1000, self._cloud_auto_poll_loop)
 
-    def _modal_poll_status(self):
-        job_id = self.settings_vars["modal_job_id"].get().strip()
+    def _cloud_poll_status(self):
+        job_id = self.settings_vars["cloud_job_id"].get().strip()
         if not job_id:
-            print_message("No Modal job ID set. Submit a remote run first.")
+            print_message("No cloud job ID set. Submit a remote run first.")
             return
-        print_message(f"Polling Modal status for job {job_id}...")
+        print_message(f"Polling cloud status for job {job_id}...")
 
         def background_poll():
-            self._build_modal_env()
-            status_fn = self._get_modal_function("get_job_status")
-            log_tail_fn = self._get_modal_function("get_job_log_tail")
-
-            status_payload = status_fn.remote(job_id=job_id)
-            max_chars = self.settings_vars["modal_log_tail_chars"].get()
-            log_payload = log_tail_fn.remote(job_id=job_id, max_chars=max_chars)
+            backend = self._get_cloud_backend()
+            status_payload = backend.get_job_status(job_id=job_id)
 
             assert isinstance(status_payload, dict), "get_job_status returned a non-dict response."
-            if "function_call_id" in status_payload and status_payload["function_call_id"]:
-                self.settings_vars["modal_call_id"].set(status_payload["function_call_id"])
 
-            self.full_args.modal_last_status = status_payload
-            status_value = status_payload["status"] if "status" in status_payload else "UNKNOWN"
-            phase_value = status_payload["phase"] if "phase" in status_payload else "N/A"
-            heartbeat_value = status_payload["last_heartbeat_utc"] if "last_heartbeat_utc" in status_payload else "N/A"
-            heartbeat_age = status_payload["heartbeat_age_seconds"] if "heartbeat_age_seconds" in status_payload else None
-            error_value = status_payload["error"] if "error" in status_payload else None
-            heartbeat_age_text = "N/A" if heartbeat_age is None else f"{heartbeat_age:.1f}s"
+            status_value = status_payload.get("status", "UNKNOWN")
+            phase_value = status_payload.get("phase", "N/A")
+            error_value = status_payload.get("error")
             print_message(
-                f"Modal Status: {status_value}\n"
-                f"Phase: {phase_value}\n"
-                f"Last Heartbeat: {heartbeat_value}\n"
-                f"Heartbeat Age: {heartbeat_age_text}"
+                f"Cloud Status: {status_value}\n"
+                f"Phase: {phase_value}"
             )
             if error_value:
-                print_message(f"Failure Reason: {error_value}")
+                print_message(f"Error: {error_value}")
 
-            if isinstance(log_payload, dict) and "log_tail" in log_payload and log_payload["log_tail"]:
-                print_message(f"Latest Logs (tail):\n{log_payload['log_tail']}")
+            try:
+                log_payload = backend.get_job_logs(job_id=job_id, offset=0, max_chars=5000)
+                content = log_payload.get("content", "")
+                if content:
+                    tail = content[-3000:] if len(content) > 3000 else content
+                    print_message(f"Latest Logs:\n{tail}")
+            except Exception:
+                pass
 
-            if status_value in ["SUCCESS", "FAILED", "TERMINATED", "TIMEOUT"]:
-                self.modal_polling_active = False
+            terminal_states = {"Complete", "Failed", "Cancelled", "SUCCESS", "FAILED", "TERMINATED", "TIMEOUT"}
+            if status_value in terminal_states:
+                self.cloud_polling_active = False
             print_done()
 
         self.run_in_background(background_poll)
 
-    def _modal_cancel_run(self):
-        function_call_id = self.settings_vars["modal_call_id"].get().strip()
-        if not function_call_id:
-            print_message("No Modal call ID set. Poll status or submit a run first.")
+    def _cloud_cancel_run(self):
+        job_id = self.settings_vars["cloud_job_id"].get().strip()
+        if not job_id:
+            print_message("No cloud job ID set. Submit a run first.")
             return
-        job_id = self.settings_vars["modal_job_id"].get().strip()
-        print_message(f"Cancelling Modal run {function_call_id}...")
-        self.modal_polling_active = False
+        print_message(f"Cancelling cloud job {job_id}...")
+        self.cloud_polling_active = False
 
         def background_cancel():
-            self._build_modal_env()
-            cancel_fn = self._get_modal_function("cancel_protify_job")
-            if job_id:
-                result = cancel_fn.remote(function_call_id=function_call_id, job_id=job_id)
-            else:
-                result = cancel_fn.remote(function_call_id=function_call_id, job_id=None)
+            backend = self._get_cloud_backend()
+            result = backend.cancel_job(job_id=job_id)
             print_message(f"Cancel result: {result}")
             print_done()
 
         self.run_in_background(background_cancel)
 
-    def _modal_fetch_artifacts(self):
-        job_id = self.settings_vars["modal_job_id"].get().strip()
+    def _cloud_fetch_artifacts(self):
+        job_id = self.settings_vars["cloud_job_id"].get().strip()
         if not job_id:
-            print_message("No Modal job ID set. Submit a run first.")
+            print_message("No cloud job ID set. Submit a run first.")
             return
-        print_message(f"Fetching Modal artifacts for job {job_id}...")
+        print_message(f"Fetching cloud artifacts for job {job_id}...")
 
         def background_fetch():
-            self._build_modal_env()
-            results_fn = self._get_modal_function("get_results")
-            result_payload = results_fn.remote(job_id=job_id)
+            backend = self._get_cloud_backend()
+            result_payload = backend.get_results(job_id=job_id)
             assert isinstance(result_payload, dict), "get_results returned a non-dict response."
-            assert "success" in result_payload, "get_results response missing success field."
-            assert result_payload["success"], f"Modal get_results failed: {result_payload}"
 
-            output_dir_raw = self.settings_vars["modal_artifacts_dir"].get().strip() or "modal_artifacts"
+            output_dir_raw = self.settings_vars["cloud_artifacts_dir"].get().strip() or "cloud_artifacts"
             home_dir = self.settings_vars["home_dir"].get().strip() or os.getcwd()
             if os.path.isabs(output_dir_raw):
                 output_dir = output_dir_raw
@@ -1541,39 +1379,37 @@ class GUI(MainProcess):
             job_dir = os.path.join(output_dir, job_id)
             os.makedirs(job_dir, exist_ok=True)
 
-            text_file_count = 0
-            image_file_count = 0
+            file_count = 0
 
-            files_payload = result_payload["files"] if "files" in result_payload else {}
-            for rel_path in files_payload:
-                local_path = os.path.join(job_dir, rel_path.replace("/", os.sep))
-                local_parent = os.path.dirname(local_path)
-                os.makedirs(local_parent, exist_ok=True)
-                with open(local_path, "w", encoding="utf-8") as file:
-                    file.write(files_payload[rel_path])
-                text_file_count += 1
+            results_tsv = result_payload.get("results_tsv")
+            if results_tsv:
+                tsv_path = os.path.join(job_dir, "results.tsv")
+                with open(tsv_path, "w", encoding="utf-8") as f:
+                    f.write(results_tsv)
+                file_count += 1
 
-            images_payload = result_payload["images"] if "images" in result_payload else {}
-            for rel_path in images_payload:
-                image_info = images_payload[rel_path]
-                if "data" not in image_info:
-                    continue
-                local_path = os.path.join(job_dir, rel_path.replace("/", os.sep))
-                local_parent = os.path.dirname(local_path)
-                os.makedirs(local_parent, exist_ok=True)
-                image_bytes = base64.b64decode(image_info["data"])
-                with open(local_path, "wb") as file:
-                    file.write(image_bytes)
-                image_file_count += 1
+            images = result_payload.get("images", [])
+            if images:
+                plots_dir = os.path.join(job_dir, "plots")
+                os.makedirs(plots_dir, exist_ok=True)
+                for img in images:
+                    filename = img.get("filename", "plot.png")
+                    data = img.get("data", "")
+                    if data:
+                        img_path = os.path.join(plots_dir, filename)
+                        with open(img_path, "wb") as f:
+                            f.write(base64.b64decode(data))
+                        file_count += 1
 
-            metadata_path = os.path.join(job_dir, "modal_fetch_summary.json")
-            with open(metadata_path, "w", encoding="utf-8") as file:
-                json.dump(result_payload, file, indent=2)
+            metadata_path = os.path.join(job_dir, "cloud_fetch_summary.json")
+            with open(metadata_path, "w", encoding="utf-8") as f:
+                json.dump(result_payload, f, indent=2, default=str)
 
+            hub_url = result_payload.get("hub_url")
+            hub_msg = f"\nModel pushed to: {hub_url}" if hub_url else ""
             print_message(
-                f"Saved Modal artifacts to {job_dir}\n"
-                f"Text files: {text_file_count}\n"
-                f"Images: {image_file_count}"
+                f"Saved cloud artifacts to {job_dir}\n"
+                f"Files saved: {file_count}{hub_msg}"
             )
             print_done()
 
@@ -1585,15 +1421,7 @@ class GUI(MainProcess):
         hf_token = self.settings_vars["huggingface_token"].get()
         synthyra_api_key = self.settings_vars["synthyra_api_key"].get()
         wandb_api_key = self.settings_vars["wandb_api_key"].get()
-        modal_api_key = self.settings_vars["modal_api_key"].get().strip()
-        modal_token_id = self.settings_vars["modal_token_id"].get().strip()
-        modal_token_secret = self.settings_vars["modal_token_secret"].get().strip()
-
         def background_login():
-            local_modal_token_id = modal_token_id
-            local_modal_token_secret = modal_token_secret
-            if modal_api_key and ((not local_modal_token_id) or (not local_modal_token_secret)):
-                local_modal_token_id, local_modal_token_secret = parse_modal_api_key(modal_api_key)
 
             if hf_token:
                 from huggingface_hub import login
@@ -1613,9 +1441,6 @@ class GUI(MainProcess):
             self.full_args.hf_token = hf_token
             self.full_args.synthyra_api_key = synthyra_api_key
             self.full_args.wandb_api_key = wandb_api_key
-            self.full_args.modal_api_key = modal_api_key if modal_api_key else None
-            self.full_args.modal_token_id = local_modal_token_id if local_modal_token_id else None
-            self.full_args.modal_token_secret = local_modal_token_secret if local_modal_token_secret else None
             self.full_args.home_dir = self.settings_vars["home_dir"].get()
             self.full_args.model_dtype = self._selected_model_dtype()
             self.full_args.use_xformers = self.settings_vars["use_xformers"].get()
@@ -1639,11 +1464,6 @@ class GUI(MainProcess):
             self.full_args.aa_to_codon = self.settings_vars["aa_to_codon"].get()
             self.full_args.random_pair_flipping = self.settings_vars["random_pair_flipping"].get()
             self.full_args.data_dirs = []
-
-            if self.full_args.modal_token_id:
-                os.environ["MODAL_TOKEN_ID"] = self.full_args.modal_token_id
-            if self.full_args.modal_token_secret:
-                os.environ["MODAL_TOKEN_SECRET"] = self.full_args.modal_token_secret
 
             if self.full_args.use_xformers:
                 os.environ["_USE_XFORMERS"] = "1"

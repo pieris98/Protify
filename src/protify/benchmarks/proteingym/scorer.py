@@ -3,6 +3,7 @@ import os
 import sys
 import subprocess
 import time
+from typing import List
 import numpy as np
 import pandas as pd
 import torch
@@ -15,7 +16,7 @@ class SequenceProcessor:
     """Handles sequence slicing and mutation parsing for ProteinGym."""
     
     @staticmethod
-    def get_optimal_window(mutation_position_relative: int, seq_len_wo_special: int, model_window: int) -> list[int]:
+    def get_optimal_window(mutation_position_relative: int, seq_len_wo_special: int, model_window: int) -> List[int]:
         """
         Select an optimal sequence window that fits the maximum model context size.
         If the sequence length is less than the maximum context size, the full sequence is returned.

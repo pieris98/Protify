@@ -16,6 +16,7 @@ from sklearn.metrics import (
     accuracy_score,
     make_scorer,
 )
+from typing import Callable, Dict, Tuple
 from scipy.stats import pearsonr, spearmanr
 from transformers import EvalPrediction
 
@@ -24,14 +25,14 @@ def softmax(x: np.ndarray) -> np.ndarray:
     return np.exp(x) / np.sum(np.exp(x), axis=-1, keepdims=True)
 
 
-def regression_scorer():
-    def dual_score(y_true, y_pred):
+def regression_scorer() -> Callable:
+    def dual_score(y_true: np.ndarray, y_pred: np.ndarray) -> float:
         return spearmanr(y_true, y_pred).correlation * r2_score(y_true, y_pred)
     return dual_score
 
 
-def classification_scorer():
-    def mcc_scorer(y_true, y_pred):
+def classification_scorer() -> Callable:
+    def mcc_scorer(y_true: np.ndarray, y_pred: np.ndarray) -> float:
         return matthews_corrcoef(y_true, y_pred)
     return mcc_scorer
 
@@ -44,7 +45,7 @@ def get_regression_scorer():
     return make_scorer(regression_scorer(), greater_is_better=True)
 
 
-def calculate_max_metrics(ss: torch.Tensor, labels: torch.Tensor, cutoff: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def calculate_max_metrics(ss: torch.Tensor, labels: torch.Tensor, cutoff: float) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Calculate precision, recall and F1 metrics for binary classification at a specific cutoff threshold.
 
@@ -79,7 +80,7 @@ def calculate_max_metrics(ss: torch.Tensor, labels: torch.Tensor, cutoff: float)
     return f1, precision, recall
 
 
-def max_metrics(ss: torch.Tensor, labels: torch.Tensor, increment: float = 0.01) -> tuple[float, float, float, float]:
+def max_metrics(ss: torch.Tensor, labels: torch.Tensor, increment: float = 0.01) -> Tuple[float, float, float, float]:
     """
     Find optimal classification metrics by scanning different cutoff thresholds.
     Optimized version that vectorizes calculations across all cutoffs.
@@ -267,7 +268,7 @@ def calculate_robust_pr_auc_multilabel(y_true: np.ndarray, probs: np.ndarray) ->
         return -100.0
 
 
-def compute_single_label_classification_metrics(p: EvalPrediction) -> dict[str, float]:
+def compute_single_label_classification_metrics(p: EvalPrediction) -> Dict[str, float]:
     """
     Compute comprehensive metrics for single-label classification tasks.
 
@@ -326,7 +327,7 @@ def compute_single_label_classification_metrics(p: EvalPrediction) -> dict[str, 
     }
 
 
-def compute_tokenwise_classification_metrics(p: EvalPrediction) -> dict[str, float]:
+def compute_tokenwise_classification_metrics(p: EvalPrediction) -> Dict[str, float]:
     """
     Compute metrics for token-level classification tasks.
 
@@ -390,7 +391,7 @@ def compute_tokenwise_classification_metrics(p: EvalPrediction) -> dict[str, flo
     }
 
 
-def compute_multi_label_classification_metrics(p: EvalPrediction) -> dict[str, float]:
+def compute_multi_label_classification_metrics(p: EvalPrediction) -> Dict[str, float]:
     """
     Compute comprehensive metrics for multi-label classification tasks.
 
@@ -461,7 +462,7 @@ def compute_multi_label_classification_metrics(p: EvalPrediction) -> dict[str, f
     }
 
 
-def compute_regression_metrics(p: EvalPrediction) -> dict[str, float]:
+def compute_regression_metrics(p: EvalPrediction) -> Dict[str, float]:
     """
     Compute comprehensive metrics for regression tasks.
 
@@ -525,7 +526,7 @@ def compute_regression_metrics(p: EvalPrediction) -> dict[str, float]:
     }
 
 
-def compute_tokenwise_regression_metrics(p: EvalPrediction) -> dict[str, float]:
+def compute_tokenwise_regression_metrics(p: EvalPrediction) -> Dict[str, float]:
     """
     Compute regression metrics tokenwise, ignoring label positions equal to -100.
 
@@ -591,7 +592,7 @@ def compute_tokenwise_regression_metrics(p: EvalPrediction) -> dict[str, float]:
     }
 
 
-def get_compute_metrics(task_type: str, tokenwise: bool = False):
+def get_compute_metrics(task_type: str, tokenwise: bool = False) -> Callable:
     if task_type == 'singlelabel':
         compute_metrics = compute_single_label_classification_metrics
     elif task_type == 'multilabel':

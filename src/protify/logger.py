@@ -10,6 +10,7 @@ import string
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
 from types import SimpleNamespace
 
 try:
@@ -18,10 +19,10 @@ except ImportError:
     from .utils import print_message
 
 
-def log_method_calls(func):
+def log_method_calls(func: Callable) -> Callable:
     """Decorator to log each call of the decorated method."""
     @functools.wraps(func)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
         self.logger.info(f"Called method: {func.__name__}")
         return func(self, *args, **kwargs)
     return wrapper
@@ -35,11 +36,11 @@ class MetricsLogger:
       - Cells = JSON-encoded dictionaries of metrics
     """
 
-    def __init__(self, args):
+    def __init__(self, args: Any) -> None:
         self.logger_args = args
         self._section_break = '\n' + '=' * 55 + '\n'
 
-    def _start_file(self):
+    def _start_file(self) -> None:
         args = self.logger_args
         self.log_dir = args.log_dir
         self.results_dir = args.results_dir
@@ -61,7 +62,7 @@ class MetricsLogger:
         self.log_file = os.path.join(self.log_dir, f"{self.random_id}.txt")
         self.results_file = os.path.join(self.results_dir, f"{self.random_id}.tsv")
 
-    def _minimial_logger(self):
+    def _minimial_logger(self) -> None:
         # Set up a minimal logger
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.INFO)
@@ -79,7 +80,7 @@ class MetricsLogger:
         self.results_file = self.results_file
         self.logger_data_tracking = {}  # { dataset_name: { model_name: metrics_dict } }
 
-    def _write_args(self):
+    def _write_args(self) -> None:
         with open(self.log_file, 'a') as f:
             f.write(self._section_break)
             for k, v in self.logger_args.__dict__.items():
@@ -87,7 +88,7 @@ class MetricsLogger:
                     f.write(f"{k}:\t{v}\n")
             f.write(self._section_break)
 
-    def start_log_main(self):
+    def start_log_main(self) -> None:
         self._start_file()
 
         with open(self.log_file, 'w') as f:
@@ -101,7 +102,7 @@ class MetricsLogger:
 
         self._minimial_logger()
 
-    def start_log_gui(self):
+    def start_log_gui(self) -> None:
         self._start_file()
         with open(self.log_file, 'w') as f:
             now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -113,7 +114,7 @@ class MetricsLogger:
             f.write(self._section_break)
         self._minimial_logger()
 
-    def load_tsv(self):
+    def load_tsv(self) -> None:
         """Load existing TSV data into self.logger_data_tracking (row=dataset, col=model)."""
         with open(self.results_file, 'r', newline='', encoding='utf-8') as f:
             reader = csv.reader(f, delimiter='\t')
@@ -134,7 +135,7 @@ class MetricsLogger:
                             except json.JSONDecodeError:
                                 self.logger_data_tracking[ds][model] = {"_raw": cell_val}
 
-    def write_results(self):
+    def write_results(self) -> None:
         # Get all unique datasets and models
         datasets = sorted(self.logger_data_tracking.keys())
         all_models = set()
@@ -187,7 +188,7 @@ class MetricsLogger:
                     row.append(json.dumps(metrics))
                 writer.writerow(row)
 
-    def log_metrics(self, dataset, model, metrics_dict, split_name=None):
+    def log_metrics(self, dataset: str, model: str, metrics_dict: Dict[str, Any], split_name: Optional[str] = None) -> None:
         try:
             training_time = metrics_dict.get('training_time_seconds')
             preserve_keys = {'training_time_seconds', 'training_time_seconds_mean', 'training_time_seconds_std'}
@@ -221,7 +222,7 @@ class MetricsLogger:
         except Exception as e:
             self.logger.error(f"Error logging metrics for {dataset}/{model}: {str(e)}")
 
-    def end_log(self):
+    def end_log(self) -> None:
         # Try multiple commands to get pip list
         pip_commands = [
             'python -m pip list',
@@ -276,12 +277,12 @@ class MetricsLogger:
 
 
 class LogReplayer:
-    def __init__(self, log_file_path):
+    def __init__(self, log_file_path: str) -> None:
         self.log_file = Path(log_file_path)
-        self.arguments = {}
-        self.method_calls = []
+        self.arguments: Dict[str, Any] = {}
+        self.method_calls: List[str] = []
 
-    def parse_log(self):
+    def parse_log(self) -> SimpleNamespace:
         """
         Reads the log file line by line. Extracts:
           1) Global arguments into self.arguments
@@ -309,7 +310,7 @@ class LogReplayer:
 
         return SimpleNamespace(**self.arguments)
 
-    def run_replay(self, target_obj):
+    def run_replay(self, target_obj: Any) -> None:
         """
         Replays the collected method calls on `target_obj`.
         `target_obj` is an instance of the class/script that we want to replay.

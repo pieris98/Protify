@@ -4,7 +4,7 @@ import itertools
 import logging
 from collections import defaultdict
 from collections.abc import Sequence
-from typing import Iterator, TypedDict
+from typing import Dict, Iterator, List, Tuple, TypedDict, Union
 import torch
 from tqdm import tqdm
 
@@ -35,7 +35,7 @@ class E1Predictor:
         use_cache: bool = True,
         cache_size: int = 4,
         save_masked_positions_only: bool = False,
-        fields_to_save: list[str] = ["logits", "token_embeddings", "mean_token_embeddings"],
+        fields_to_save: List[str] = ["logits", "token_embeddings", "mean_token_embeddings"],
         keep_predictions_in_gpu: bool = False,
     ):
         self.model = model
@@ -48,8 +48,8 @@ class E1Predictor:
         self.save_masked_positions_only = save_masked_positions_only
         self.keep_predictions_in_gpu = keep_predictions_in_gpu
 
-    def group_by_length(self, indexed_sequences: list[IndexedSequence]) -> list[list[IndexedSequence]]:
-        batches: list[list[IndexedSequence]] = [[]]
+    def group_by_length(self, indexed_sequences: List[IndexedSequence]) -> List[List[IndexedSequence]]:
+        batches: List[List[IndexedSequence]] = [[]]
         for idx, seq in sorted(indexed_sequences, key=lambda idx_seq: (len(idx_seq[1]), idx_seq[0])):
             if len(batches[-1]) > 0 and len(seq) * (len(batches[-1]) + 1) > self.max_batch_tokens:
                 batches.append([])
@@ -57,20 +57,20 @@ class E1Predictor:
 
         return batches
 
-    def group_by_context(self, indexed_sequences: list[IndexedSequence]) -> list[list[IndexedSequence]]:
+    def group_by_context(self, indexed_sequences: List[IndexedSequence]) -> List[List[IndexedSequence]]:
         batches: dict[str | None, list[IndexedSequence]] = defaultdict(list)
         for idx, seq in indexed_sequences:
             batches[get_context(seq)].append((idx, seq))
         return list(batches.values())
 
-    def batch_sequences(self, sequences: list[str]) -> list[tuple[list[int], bool]]:  # type: ignore[override]
+    def batch_sequences(self, sequences: List[str]) -> List[Tuple[List[int], bool]]:  # type: ignore[override]
         """
         Batches the sequences and returns indices for the current rank
         We want to keep sequences of similar length together.
         Ensures that no batch exceeds max_batch_tokens
         [For E1, also ensures if context is present, preserve locality of context]
         """
-        indexed_sequences: list[IndexedSequence] = list(enumerate(sequences))
+        indexed_sequences: List[IndexedSequence] = list(enumerate(sequences))
         indexed_batches = self.group_by_context(indexed_sequences)
         # Preserve context ordering
         indexed_batches = list(
@@ -87,7 +87,7 @@ class E1Predictor:
         return batches_with_validity
 
     @torch.no_grad()
-    def predict_batch(self, sequences: list[str], sequence_metadata: list[dict[str, str | int]]) -> list[E1Prediction]:
+    def predict_batch(self, sequences: List[str], sequence_metadata: List[Dict[str, Union[str, int]]]) -> List["E1Prediction"]:
         """
         Returns the logits/embeddings for the last sequence for multi-sequence inputs.
         """
@@ -120,7 +120,7 @@ class E1Predictor:
         return predictions
 
     @torch.no_grad()
-    def predict_batch_padded(self, sequences: list[str]) -> dict[str, torch.Tensor]:
+    def predict_batch_padded(self, sequences: List[str]) -> Dict[str, torch.Tensor]:
         """
         If use_cache is True, this function will return the logits/embeddings for the last sequence for multi-sequence inputs.
         If use_cache is False, this function will return the logits/embeddings for every sequence for multi-sequence inputs.
@@ -186,7 +186,7 @@ class E1Predictor:
         else:
             sequences_with_context = [(seq, {"id": sequence_id}) for seq, sequence_id in zip(sequences, sequence_ids)]
         sequences, sequence_metadata = tuple(zip(*sequences_with_context))  # type: ignore[assignment]
-        sequence_batch_indices: list[tuple[list[int], bool]] = self.batch_sequences(sequences)  # type: ignore[arg-type]
+        sequence_batch_indices: List[Tuple[List[int], bool]] = self.batch_sequences(sequences)  # type: ignore[arg-type]
         logger.info(f"Predicting for {len(sequence_batch_indices)} batches")
 
         for indices, is_valid_batch in tqdm(

@@ -338,7 +338,7 @@ dataset_descriptions = {
 }
 
 
-def list_models(show_standard_only=False):
+def list_models(show_standard_only: bool = False) -> None:
     """List available models with descriptions if available"""
     try:
         from .base_models.get_base_models import currently_supported_models, standard_models
@@ -384,7 +384,7 @@ def list_models(show_standard_only=False):
             print("Could not load model lists. Please check your installation.")
 
 
-def list_datasets(show_standard_only=False):
+def list_datasets(show_standard_only: bool = False) -> None:
     """List available datasets with descriptions if available"""
     try:
         from .data.supported_datasets import supported_datasets, standard_data_benchmark
@@ -431,7 +431,7 @@ def list_datasets(show_standard_only=False):
             print("Could not load dataset lists. Please check your installation.")
 
 
-def main():
+def main() -> None:
     """Main function to run the script from command line"""
     parser = argparse.ArgumentParser(description='List Protify supported models and datasets')
     parser.add_argument('--models', action='store_true', help='List supported models')

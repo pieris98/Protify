@@ -1,11 +1,12 @@
 from dataclasses import dataclass
+from typing import List, Optional
 
 from .supported_models import currently_supported_models, standard_models, experimental_models
 
 
 @dataclass
 class BaseModelArguments:
-    def __init__(self, model_names: list[str] = None, model_paths: list[str] = None, model_types: list[str] = None, model_dtype=None, **kwargs):
+    def __init__(self, model_names: Optional[List[str]] = None, model_paths: Optional[List[str]] = None, model_types: Optional[List[str]] = None, model_dtype: object = None, **kwargs) -> None:
         if model_paths is not None:
             assert model_types is not None, "model_types is required when model_paths is provided."
             assert len(model_paths) == len(model_types), f"model_paths ({len(model_paths)}) and model_types ({len(model_types)}) must have the same length."

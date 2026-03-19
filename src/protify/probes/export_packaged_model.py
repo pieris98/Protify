@@ -1,7 +1,7 @@
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from huggingface_hub import HfApi
 from torch import nn
@@ -115,7 +115,7 @@ def export_packaged_model_to_hub(
         ppi: bool = False,
         private: bool = True,
         hf_token: Optional[str] = None,
-    ) -> tuple[bool, str]:
+    ) -> Tuple[bool, str]:
     if not _is_supported_base_model(source_model_name):
         return False, f"Packaged export is not supported for base model: {source_model_name}"
 

@@ -1,6 +1,6 @@
 import warnings
 from enum import Enum
-from typing import Any
+from typing import Any, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -28,7 +28,7 @@ class AttentionBackend(Enum):
 VALID_ATTENTION_BACKENDS = tuple(backend.value for backend in AttentionBackend)
 
 
-def _infer_kernels_flash_variant(kernel: Any) -> str | None:
+def _infer_kernels_flash_variant(kernel: Any) -> Optional[str]:
     if hasattr(kernel, "fwd") and hasattr(kernel, "varlen_fwd"):
         return "flash_attn2"
     if hasattr(kernel, "flash_attn_func") and hasattr(kernel, "flash_attn_varlen_func"):
@@ -36,7 +36,7 @@ def _infer_kernels_flash_variant(kernel: Any) -> str | None:
     return None
 
 
-def _load_kernels_flash() -> tuple[Any | None, str | None]:
+def _load_kernels_flash() -> Tuple[Optional[Any], Optional[str]]:
     if get_kernel is None:
         return None, None
 
@@ -111,7 +111,7 @@ def sdpa_attention_func(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
     value_states: torch.Tensor,
-    attention_mask_4d: torch.Tensor | None,
+    attention_mask_4d: Optional[torch.Tensor],
 ) -> torch.Tensor:
     return F.scaled_dot_product_attention(
         query_states,
@@ -126,7 +126,7 @@ def flex_attention_func(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
     value_states: torch.Tensor,
-    flex_block_mask: BlockMask | None,
+    flex_block_mask: Optional[BlockMask],
 ) -> torch.Tensor:
     assert flex_attention is not None, "Flex attention is unavailable in this environment."
     return flex_attention(
@@ -152,7 +152,7 @@ class IndexFirstAxis(torch.autograd.Function):
         ).reshape(-1, *other_shape)
 
     @staticmethod
-    def backward(ctx, grad_output) -> tuple[torch.Tensor, None]:  # type: ignore[no-untyped-def]
+    def backward(ctx, grad_output) -> Tuple[torch.Tensor, None]:  # type: ignore[no-untyped-def]
         (indices,) = ctx.saved_tensors
         assert grad_output.ndim >= 2
         other_shape = grad_output.shape[1:]
@@ -177,7 +177,7 @@ class IndexPutFirstAxis(torch.autograd.Function):
         return output
 
     @staticmethod
-    def backward(ctx, grad_output) -> tuple[torch.Tensor, None, None]:  # type: ignore[no-untyped-def]
+    def backward(ctx, grad_output) -> Tuple[torch.Tensor, None, None]:  # type: ignore[no-untyped-def]
         (indices,) = ctx.saved_tensors
         return grad_output[indices], None, None
 
@@ -261,7 +261,7 @@ def _unpad_input(
     key_states: torch.Tensor,
     value_states: torch.Tensor,
     attention_mask_2d: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, tuple[torch.Tensor, torch.Tensor], tuple[int, int]]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, tuple[torch.Tensor, torch.Tensor], tuple[int, int]]:
     batch_size, seq_len, num_heads, head_dim = query_states.shape
     _, _, num_key_value_heads, _ = key_states.shape
     assert key_states.shape[1] == seq_len, "Query and key sequence lengths must match for kernels attention."
@@ -282,7 +282,7 @@ def kernels_attention_func(
     query_states: torch.Tensor,
     key_states: torch.Tensor,
     value_states: torch.Tensor,
-    attention_mask_2d: torch.Tensor | None,
+    attention_mask_2d: Optional[torch.Tensor],
 ) -> torch.Tensor:
     if attention_mask_2d is None:
         return _kernels_flash_forward(query_states, key_states, value_states)
@@ -314,12 +314,12 @@ def build_attention_masks(
     batch_size: int,
     seq_len: int,
     device: torch.device,
-    attention_mask: torch.Tensor | None = None,
-    attention_mask_2d: torch.Tensor | None = None,
-    attention_mask_4d: torch.Tensor | None = None,
-    flex_block_mask: BlockMask | None = None,
+    attention_mask: Optional[torch.Tensor] = None,
+    attention_mask_2d: Optional[torch.Tensor] = None,
+    attention_mask_4d: Optional[torch.Tensor] = None,
+    flex_block_mask: Optional[BlockMask] = None,
     output_attentions: bool = False,
-) -> tuple[torch.Tensor | None, torch.Tensor | None, BlockMask | None]:
+) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[BlockMask]]:
     if attention_mask is not None:
         if attention_mask.ndim == 2:
             attention_mask_2d = attention_mask.bool()

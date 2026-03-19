@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, repeat
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from .attention_utils import (
     AttentionBackend,
@@ -59,7 +59,7 @@ class RotaryEmbedding(nn.Module):
         base: float = 10000.0,
         interleaved: bool = False,
         scaling_factor: float = 1.0,
-        device: torch.device | None = None,
+        device: Optional[torch.device] = None,
     ):
         super().__init__()
         self.dim = dim
@@ -138,7 +138,7 @@ class MultiHeadAttention(nn.Module):
     def set_attention_backend(self, attention_backend: str) -> None:
         self.attention_backend = resolve_attention_backend(attention_backend)
 
-    def prepare_qkv(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def prepare_qkv(self, hidden_states: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_size, seq_len, _ = hidden_states.shape
         query_states = self.q_proj(hidden_states).view(batch_size, seq_len, self.n_heads, self.d_head)
         key_states = self.k_proj(hidden_states).view(batch_size, seq_len, self.n_heads, self.d_head)
@@ -152,7 +152,7 @@ class MultiHeadAttention(nn.Module):
         self,
         query_states: torch.Tensor,
         key_states: torch.Tensor,
-    ) -> list[torch.Tensor]:
+    ) -> List[torch.Tensor]:
         query_bhld = query_states.transpose(1, 2).contiguous()
         key_bhld = key_states.transpose(1, 2).contiguous()
         key_bhld = _repeat_kv(key_bhld, 1)
@@ -169,9 +169,9 @@ class MultiHeadAttention(nn.Module):
         query_states: torch.Tensor,
         key_states: torch.Tensor,
         value_states: torch.Tensor,
-        attention_mask_4d: torch.Tensor | None,
+        attention_mask_4d: Optional[torch.Tensor],
         output_s_max: bool,
-    ) -> tuple[torch.Tensor, torch.Tensor, list[torch.Tensor] | None]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[List[torch.Tensor]]]:
         query_bhld = query_states.transpose(1, 2).contiguous()
         key_bhld = key_states.transpose(1, 2).contiguous()
         value_bhld = value_states.transpose(1, 2).contiguous()
@@ -188,12 +188,12 @@ class MultiHeadAttention(nn.Module):
         query_states: torch.Tensor,
         key_states: torch.Tensor,
         value_states: torch.Tensor,
-        attention_mask_2d: torch.Tensor | None,
-        attention_mask_4d: torch.Tensor | None,
-        flex_block_mask: BlockMask | None,
+        attention_mask_2d: Optional[torch.Tensor],
+        attention_mask_4d: Optional[torch.Tensor],
+        flex_block_mask: Optional[BlockMask],
         output_attentions: bool,
         output_s_max: bool,
-    ) -> tuple[torch.Tensor, torch.Tensor | None, list[torch.Tensor] | None]:
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor], list[torch.Tensor] | None]:
         if output_attentions:
             return self._manual_attention(
                 query_states=query_states,
@@ -237,12 +237,12 @@ class MultiHeadAttention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        attention_mask_2d: torch.Tensor | None = None,
-        attention_mask_4d: torch.Tensor | None = None,
-        flex_block_mask: BlockMask | None = None,
+        attention_mask_2d: Optional[torch.Tensor] = None,
+        attention_mask_4d: Optional[torch.Tensor] = None,
+        flex_block_mask: Optional[BlockMask] = None,
         output_attentions: bool = False,
         output_s_max: bool = False,
-    ) -> tuple[torch.Tensor, torch.Tensor | None, list[torch.Tensor] | None]:
+    ) -> tuple[torch.Tensor, Optional[torch.Tensor], list[torch.Tensor] | None]:
         query_states, key_states, value_states = self.prepare_qkv(hidden_states)
         attn_output, attention_weights, s_max = self._dispatch_attention(
             query_states=query_states,

@@ -28,7 +28,7 @@ def _pad_matrix_embeds(embeds: List[torch.Tensor], max_len: int) -> Tuple[torch.
 
 
 class StringCollator:
-    def __init__(self, tokenizer, **kwargs):
+    def __init__(self, tokenizer: object, **kwargs) -> None:
         self.tokenizer = tokenizer
 
     def __call__(self, batch: Tuple[List[str], List[str]]) -> Dict[str, torch.Tensor]:
@@ -40,7 +40,7 @@ class StringCollator:
 
 
 class StringLabelsCollator:
-    def __init__(self, tokenizer, task_type='regression', tokenwise=False, **kwargs):
+    def __init__(self, tokenizer: object, task_type: str = 'regression', tokenwise: bool = False, **kwargs) -> None:
         self.tokenizer = tokenizer
         self.task_type = task_type
         self.tokenwise = tokenwise
@@ -96,7 +96,7 @@ class StringLabelsCollator:
 
 
 class EmbedsLabelsCollator:
-    def __init__(self, full=False, task_type='regression', tokenwise=False, **kwargs):
+    def __init__(self, full: bool = False, task_type: str = 'regression', tokenwise: bool = False, **kwargs) -> None:
         self.full = full
         self.task_type = task_type
         self.tokenwise = tokenwise
@@ -158,7 +158,7 @@ class EmbedsLabelsCollator:
 
 
 class PairCollator_input_ids:
-    def __init__(self, tokenizer, **kwargs):
+    def __init__(self, tokenizer: object, **kwargs) -> None:
         self.tokenizer = tokenizer
 
     def __call__(self, batch: List[Tuple[str, str, Union[float, int]]]) -> Dict[str, torch.Tensor]:
@@ -177,7 +177,7 @@ class PairCollator_input_ids:
 
 
 class PairCollator_ab:
-    def __init__(self, tokenizer, **kwargs):
+    def __init__(self, tokenizer: object, **kwargs) -> None:
         self.tokenizer = tokenizer
 
     def __call__(self, batch: List[Tuple[str, str, Union[float, int]]]) -> Dict[str, torch.Tensor]:
@@ -205,7 +205,7 @@ class PairCollator_ab:
 
 
 class PairEmbedsLabelsCollator:
-    def __init__(self, full=False, add_token_ids=False, **kwargs):
+    def __init__(self, full: bool = False, add_token_ids: bool = False, **kwargs) -> None:
         self.full = full
         self.add_token_ids = add_token_ids
         
@@ -256,13 +256,13 @@ class PairEmbedsLabelsCollator:
 
 
 class OneHotCollator:
-    def __init__(self, alphabet="ACDEFGHIKLMNPQRSTVWY"):
+    def __init__(self, alphabet: str = "ACDEFGHIKLMNPQRSTVWY") -> None:
         # Add X for unknown amino acids, and special CLS and EOS tokens
         alphabet = alphabet + "X"
         alphabet = list(alphabet)
         self.mapping = {token: idx for idx, token in enumerate(alphabet)}
         
-    def __call__(self, batch):
+    def __call__(self, batch: List[Tuple]) -> Dict[str, torch.Tensor]:
         seqs = [ex[0] for ex in batch]
         labels = torch.stack([torch.tensor(ex[1]) for ex in batch])
         

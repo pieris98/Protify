@@ -1,6 +1,6 @@
 import importlib
 from dataclasses import dataclass, field
-from typing import List
+from typing import Dict, List
 
 from .linear_probe import LinearProbe, LinearProbeConfig
 from .transformer_probe import TransformerForSequenceClassification, TransformerForTokenClassification, TransformerProbeConfig
@@ -9,7 +9,7 @@ from .lyra_probe import LyraForSequenceClassification, LyraForTokenClassificatio
 
 # External probe types can be registered here by packages on PYTHONPATH.
 # Each entry maps probe_type -> {"module": "dotted.module.path", "seq_cls": "ClassName", "tok_cls": "ClassName", "config_cls": "ConfigName"}
-_EXTERNAL_PROBE_REGISTRY: dict[str, dict[str, str]] = {}
+_EXTERNAL_PROBE_REGISTRY: Dict[str, Dict[str, str]] = {}
 
 
 def register_external_probe(probe_type: str, module: str, seq_cls: str, tok_cls: str, config_cls: str):

@@ -3,7 +3,7 @@ import os
 from collections import defaultdict
 from collections.abc import Sequence
 from enum import Enum
-from typing import Any
+from typing import Any, Dict, List, Union
 
 import numpy as np
 import torch
@@ -25,7 +25,7 @@ class EncoderScoreMethod(str, Enum):
     MASKED_MARGINAL = "masked_marginal"
 
 
-def find_mismatches(s1: str | np.ndarray, s2: str) -> list[int]:
+def find_mismatches(s1: Union[str, np.ndarray], s2: str) -> List[int]:
     assert isinstance(s1, (str, np.ndarray)), f"s1 must be a string or numpy array, got {type(s1)}"
     assert isinstance(s2, str), f"s2 must be a string, got {type(s2)}"
     assert len(s1) == len(s2), f"s1 and s2 must have the same length, got {len(s1)} and {len(s2)}"
@@ -85,7 +85,7 @@ class E1Scorer:
         """
         return sequence[:mask_position] + self.predictor.batch_preparer.mask_token + sequence[mask_position + 1 :]
 
-    def find_all_mutated_positions(self, parent_sequence: str, sequences: Sequence[str]) -> list[int]:
+    def find_all_mutated_positions(self, parent_sequence: str, sequences: Sequence[str]) -> List[int]:
         """
         Find all positions in the parent that are mutated in at least one of the sequences.
 
@@ -107,7 +107,7 @@ class E1Scorer:
         sequence_ids: Sequence[int | str] | None = None,
         context_seqs: dict[str, str] | None = None,
         context_reduction: str = "mean",
-    ) -> list[dict[str, Any]]:
+    ) -> List[Dict[str, Any]]:
         """
         Score a given parent sequence against a list of sequences.
 
@@ -194,7 +194,7 @@ class E1Scorer:
         sequence_ids: Sequence[int | str] | None = None,
         context_seqs: dict[str, str] | None = None,
         context_reduction: str = "mean",
-    ) -> list[dict[str, Any]]:
+    ) -> List[Dict[str, Any]]:
         """
         Masked marginal scoring that masks all mutation sites simultaneously
         and groups variants by mutation positions, so that they can share a single forward pass.
@@ -214,7 +214,7 @@ class E1Scorer:
             position_groups[mismatches].append((variant, parent, variant_aa_ids, parent_aa_ids))
 
         # Create one masked sequence per unique position set
-        masked_seqs_to_score: list[str] = []
+        masked_seqs_to_score: List[str] = []
         pos_tuple_to_group_idx: dict[tuple[int, ...], int] = {}
 
         for pos_tuple in position_groups.keys():

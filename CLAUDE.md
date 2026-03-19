@@ -31,7 +31,8 @@ pytest src/protify/testing_suite/ -v
 **Entry points:**
 - `main.py` — CLI/YAML orchestrator (~1100 lines); all args parsed here
 - `gui.py` — Tkinter GUI with 11 tabs; runs the same pipeline as CLI in background threads
-- `modal_backend.py` — Modal cloud app; invoked automatically when `--modal_token_id/secret` are passed
+- `cloud_backend.py` — CloudBackend ABC + HTTPCloudBackend; auto-dispatches when `--cloud_api_key` is passed
+- `cloud_cli.py` — CLI dispatch for cloud execution (submit, poll, fetch results)
 
 **Main pipeline flow:**
 

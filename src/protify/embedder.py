@@ -8,7 +8,7 @@ import gzip
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from dataclasses import dataclass
-from typing import Optional, Callable, List
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from huggingface_hub import hf_hub_download
 
 try:
@@ -25,8 +25,8 @@ except ImportError:
     from .utils import torch_load, print_message, maybe_compile, tensor_to_embedding_blob
 
 
-def build_collator(tokenizer) -> Callable[[List[str]], tuple[torch.Tensor, torch.Tensor]]:
-    def _collate_fn(sequences: List[str]) -> tuple[torch.Tensor, torch.Tensor]:
+def build_collator(tokenizer: object) -> Callable[[List[str]], Dict[str, torch.Tensor]]:
+    def _collate_fn(sequences: List[str]) -> Dict[str, torch.Tensor]:
         """Collate function for batching sequences."""
         return tokenizer(sequences, return_tensors="pt", padding='longest', pad_to_multiple_of=8)
     return _collate_fn
@@ -153,7 +153,7 @@ class Embedder:
             torch.save(downloaded_embeddings, final_path)
         return final_path
 
-    def _read_sequences_from_db(self, db_path: str) -> set[str]:
+    def _read_sequences_from_db(self, db_path: str) -> Set[str]:
         """Read sequences from SQLite database."""
         import sqlite3
         sequences = []
@@ -206,9 +206,9 @@ class Embedder:
             self,
             to_embed: List[str],
             save_path: str,
-            embedding_model: any,
-            tokenizer: any,
-            embeddings_dict: dict[str, torch.Tensor]) -> Optional[dict[str, torch.Tensor]]:
+            embedding_model: Any,
+            tokenizer: Any,
+            embeddings_dict: Dict[str, torch.Tensor]) -> Optional[Dict[str, torch.Tensor]]:
         os.makedirs(self.embedding_save_dir, exist_ok=True)
         model = embedding_model.to(self.device).eval()
         model = maybe_compile(model)

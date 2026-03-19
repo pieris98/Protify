@@ -3,7 +3,7 @@ import torch
 import torch.distributed as dist
 from tokenizers import Tokenizer
 from torch.nn.utils.rnn import pad_sequence
-from typing import Any
+from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass
 
 
@@ -13,7 +13,7 @@ _E1_TOKENIZER_FILENAME = "e1_tokenizer.json"
 _E1_HF_REPO = "Synthyra/Profluent-E1-150M"
 _E1_HF_FILENAME = "tokenizer.json"
 
-_extra_tokenizer_paths: list[str] = []
+_extra_tokenizer_paths: List[str] = []
 
 
 def register_tokenizer_path(path: str) -> None:
@@ -99,7 +99,7 @@ class DataPrepConfig:
     remove_X_tokens: bool = False
 
 
-def get_context(sequence: str) -> str | None:
+def get_context(sequence: str) -> Optional[str]:
     if "," in sequence:
         return sequence.rsplit(",", 1)[0]
     return None
@@ -108,11 +108,11 @@ def get_context(sequence: str) -> str | None:
 class E1BatchPreparer:
     def __init__(
         self,
-        data_prep_config: DataPrepConfig | None = None,
-        tokenizer: Tokenizer | None = None,
+        data_prep_config: Optional[DataPrepConfig] = None,
+        tokenizer: Optional[Tokenizer] = None,
         preserve_context_labels: bool = False,
-        device: torch.device | None = None,
-    ):
+        device: Optional[torch.device] = None,
+    ) -> None:
         self.tokenizer = tokenizer or get_tokenizer()
         self.data_prep_config = data_prep_config or DataPrepConfig()
         self.pad_token_id = self.tokenizer.token_to_id("<pad>")
@@ -127,17 +127,17 @@ class E1BatchPreparer:
         self.vocab = self.tokenizer.get_vocab()
 
     def get_batch_kwargs(  # type: ignore[override]
-        self, sequences: list[str], device: torch.device = torch.device("cpu"), non_blocking: bool = False
-    ) -> dict[str, torch.Tensor | list[str] | list[int]]:
+        self, sequences: List[str], device: torch.device = torch.device("cpu"), non_blocking: bool = False
+    ) -> Dict[str, Union[torch.Tensor, List[str], List[int]]]:
         sequence_encodings = [self.prepare_multiseq(sequence) for sequence in sequences]
         return self.pad_encodings(sequence_encodings, device, non_blocking)
 
     def pad_encodings(
         self,
-        sequence_encodings: list[dict[str, torch.Tensor]],
+        sequence_encodings: List[Dict[str, torch.Tensor]],
         device: torch.device = torch.device("cpu"),
         non_blocking: bool = False,
-    ) -> dict[str, torch.Tensor | list[str] | list[int]]:
+    ) -> Dict[str, Union[torch.Tensor, List[str], List[int]]]:
         non_blocking = non_blocking and device.type == "cuda"
         padded_encodings = {}
         # Note: We use -1 as the padding value for sequence and position ids because the 0 value
@@ -159,7 +159,7 @@ class E1BatchPreparer:
 
         return padded_encodings
 
-    def prepare_multiseq(self, sequence: str) -> dict[str, torch.Tensor | str | int]:
+    def prepare_multiseq(self, sequence: str) -> Dict[str, Union[torch.Tensor, str, int]]:
         single_sequences = sequence.split(",")
         if len(single_sequences) > self.data_prep_config.max_num_sequences:
             raise ValueError(
@@ -208,7 +208,7 @@ class E1BatchPreparer:
             "context_len": context_len,
         }
 
-    def prepare_singleseq(self, sequence: str) -> dict[str, torch.Tensor]:
+    def prepare_singleseq(self, sequence: str) -> Dict[str, torch.Tensor]:
         if not self.validate_sequence(sequence):
             raise ValueError(f"Invalid sequence: {sequence}; Input sequence should contain [A-Z] or ? characters only")
 

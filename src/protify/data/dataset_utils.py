@@ -7,7 +7,7 @@ from .supported_datasets import (
 )
 
 
-def list_supported_datasets(with_descriptions=True):
+def list_supported_datasets(with_descriptions: bool = True) -> None:
     """
     Lists all supported datasets with optional descriptions.
     
@@ -50,7 +50,7 @@ def list_supported_datasets(with_descriptions=True):
         print(f"- {dataset_name}")
 
 
-def get_dataset_info(dataset_name):
+def get_dataset_info(dataset_name: str):
     """
     Get detailed information about a specific dataset.
     

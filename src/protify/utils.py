@@ -4,6 +4,7 @@ import torch
 import shutil
 import pyfiglet
 from functools import partial
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -19,7 +20,7 @@ def tensor_to_embedding_blob(tensor: torch.Tensor) -> bytes:
 
 def embedding_blob_to_tensor(
     blob: bytes,
-    fallback_shape: tuple[int, ...] | None = None,
+    fallback_shape: Optional[Tuple[int, ...]] = None,
 ) -> torch.Tensor:
     """
     Deserialize an embedding blob from SQLite. Tries PyTorch format first; on failure
@@ -40,11 +41,11 @@ def embedding_blob_to_tensor(
     )
 
 
-def clear_screen():
+def clear_screen() -> None:
     os.system('cls' if os.name == 'nt' else 'clear')
 
 
-def print_message(message: str):
+def print_message(message: str) -> None:
     try:
         terminal_width = shutil.get_terminal_size().columns
     except:
@@ -54,15 +55,15 @@ def print_message(message: str):
     print('-' * terminal_width + '\n')
 
 
-def print_title(title: str):
+def print_title(title: str) -> None:
     print(pyfiglet.figlet_format(title, font='3d-ascii'))
 
 
-def print_done():
+def print_done() -> None:
     print(pyfiglet.figlet_format('== Done ==', font='js_stick_letters'))
 
 
-def expand_dms_ids_all(dms_ids, mode: str = None):
+def expand_dms_ids_all(dms_ids: List[str], mode: Optional[str] = None) -> List[str]:
     """
     Expand 'all' to actual DMS IDs from benchmarks.proteingym.dms_ids.
     """
@@ -76,7 +77,7 @@ def expand_dms_ids_all(dms_ids, mode: str = None):
     return dms_ids
 
 
-def maybe_compile(model: torch.nn.Module):
+def maybe_compile(model: torch.nn.Module) -> torch.nn.Module:
     if os.name == 'posix':
         try:
             torch.compile(model, dynamic=True)

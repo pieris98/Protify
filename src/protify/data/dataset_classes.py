@@ -11,7 +11,7 @@ try:
     from utils import print_message, embedding_blob_to_tensor
 except ImportError:
     from ..utils import print_message, embedding_blob_to_tensor
-from typing import List
+from typing import Dict, List, Optional, Tuple, Union
 
 
 class PairEmbedsLabelsDatasetFromDisk(TorchDataset):
@@ -470,7 +470,7 @@ class MultiEmbedsLabelsDataset(TorchDataset):
             seq_cols: List[str],
             label_col: str = 'labels',
             full: bool = False,
-            emb_dict: dict = None,
+            emb_dict: Optional[Dict[str, torch.Tensor]] = None,
             input_size: int = 768,
             task_type: str = 'singlelabel',
             train: bool = True,

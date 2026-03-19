@@ -106,7 +106,7 @@ class DataArguments:
 
 
 class DataMixin:
-    def __init__(self, data_args: Optional[DataArguments] = None):
+    def __init__(self, data_args: Optional[DataArguments] = None) -> None:
         # intialize defaults
         self._sql = False
         self._full = False
@@ -130,7 +130,7 @@ class DataMixin:
             self._codon_to_aa = data_args.codon_to_aa
             self._aa_to_codon = data_args.aa_to_codon
 
-    def _not_regression(self, labels): # not a great assumption but works most of the time
+    def _not_regression(self, labels: list) -> bool: # not a great assumption but works most of the time
         if isinstance(labels, list):
             # Check if first element is itself a list (multilabel case)
             if isinstance(labels[0], list):
@@ -145,10 +145,10 @@ class DataMixin:
             # Fallback for non-list input
             return all(isinstance(label, (int, float)) and label == int(label) for label in labels)
 
-    def _encode_labels(self, labels, tag2id):
+    def _encode_labels(self, labels: list, tag2id: Dict[str, int]) -> List[torch.Tensor]:
         return [torch.tensor([tag2id[tag] for tag in doc], dtype=torch.long) for doc in labels]
 
-    def _label_type_checker(self, labels):
+    def _label_type_checker(self, labels: list) -> str:
         ex = labels[0]
         assert len(labels) > 0, f'Labels is empty: {labels}'
         if self._not_regression(labels):
@@ -162,7 +162,7 @@ class DataMixin:
             label_type = 'regression'
         return label_type
 
-    def _is_sigmoid_regression(self, labels) -> bool:
+    def _is_sigmoid_regression(self, labels: list) -> bool:
         """Heuristic: labels within [0, 1] and cover the range approximately.
         Uses 10-bin histogram coverage and span threshold.
         """
@@ -187,7 +187,7 @@ class DataMixin:
         sigmoid_regression_status = cond1 and cond2 and cond3
         return sigmoid_regression_status
 
-    def _select_from_sql(self, c, seq, cast_to_torch=True):
+    def _select_from_sql(self, c: sqlite3.Cursor, seq: str, cast_to_torch: bool = True) -> torch.Tensor:
         c.execute("SELECT embedding FROM embeddings WHERE sequence = ?", (seq,))
         raw = c.fetchone()[0]
         fallback_shape = (1, -1) if not self._full else (len(seq), -1)
@@ -196,7 +196,7 @@ class DataMixin:
             embedding = embedding.numpy()
         return embedding
 
-    def _select_from_pth(self, emb_dict, seq, cast_to_np=False):
+    def _select_from_pth(self, emb_dict: Dict[str, torch.Tensor], seq: str, cast_to_np: bool = False) -> torch.Tensor:
         embedding = emb_dict[seq].reshape(1, -1)
         if self._full:
             embedding = embedding.reshape(len(seq), -1)
@@ -204,19 +204,19 @@ class DataMixin:
             embedding = embedding.numpy()
         return embedding
 
-    def _labels_to_numpy(self, labels):
+    def _labels_to_numpy(self, labels: list) -> np.ndarray:
         if isinstance(labels[0], list):
             return np.array(labels).flatten()
         else:
             return np.array([labels]).flatten()
 
-    def _random_order(self, seq_a, seq_b):
+    def _random_order(self, seq_a: str, seq_b: str) -> Tuple[str, str]:
         if random.random() < 0.5:
             return seq_a, seq_b
         else:
             return seq_b, seq_a
 
-    def _truncate_pairs(self, ex):
+    def _truncate_pairs(self, ex: Dict[str, str]) -> Dict[str, str]:
         # Truncate longest first, but if that makes it shorter than the other, truncate that one
         seq_a, seq_b = ex['SeqA'], ex['SeqB']
         trunc_a, trunc_b = seq_a, seq_b
@@ -229,7 +229,7 @@ class DataMixin:
         ex['SeqB'] = trunc_b
         return ex
 
-    def _active_translation_mode(self):
+    def _active_translation_mode(self) -> Optional[str]:
         mode_to_flag = {
             'aa_to_dna': self._aa_to_dna,
             'aa_to_rna': self._aa_to_rna,
@@ -242,15 +242,15 @@ class DataMixin:
         assert len(active_modes) <= 1, f'Only one translation mode can be enabled at a time, found: {active_modes}'
         return active_modes[0] if len(active_modes) == 1 else None
 
-    def _assert_characters_in_set(self, seq, allowed_chars, mode):
+    def _assert_characters_in_set(self, seq: str, allowed_chars: set, mode: str) -> None:
         bad_chars = sorted({char for char in seq if char.upper() not in allowed_chars})
         assert len(bad_chars) == 0, f'Invalid characters for {mode}: {bad_chars}.'
 
-    def _validate_translated_output(self, translated_seq, allowed_chars, mode):
+    def _validate_translated_output(self, translated_seq: str, allowed_chars: set, mode: str) -> None:
         bad_chars = sorted({char for char in translated_seq if char not in allowed_chars})
         assert len(bad_chars) == 0, f'Translation output for {mode} contains unexpected characters: {bad_chars}.'
 
-    def _normalize_aa_for_nucleotide_translation(self, seq):
+    def _normalize_aa_for_nucleotide_translation(self, seq: str) -> str:
         canonical_aas = set(AMINO_ACID_TO_HUMAN_CODON.keys())
         normalized = []
         for residue in seq:
@@ -261,9 +261,9 @@ class DataMixin:
                 normalized.append('X')
         return ''.join(normalized)
 
-    def _translate_aa_to_dna(self, seq):
+    def _translate_aa_to_dna(self, seq: str) -> str:
         seq = self._normalize_aa_for_nucleotide_translation(seq)
-        dna_codons = []
+        dna_codons: List[str] = []
         for residue in seq:
             residue = residue.upper()
             if residue in AMINO_ACID_TO_HUMAN_CODON:
@@ -276,13 +276,13 @@ class DataMixin:
         self._validate_translated_output(translated, DNA_SET, 'aa_to_dna')
         return translated
 
-    def _translate_aa_to_rna(self, seq):
+    def _translate_aa_to_rna(self, seq: str) -> str:
         dna_translated = self._translate_aa_to_dna(seq)
         translated = dna_translated.replace('T', 'U')
         self._validate_translated_output(translated, RNA_SET, 'aa_to_rna')
         return translated
 
-    def _translate_dna_to_aa(self, seq):
+    def _translate_dna_to_aa(self, seq: str) -> str:
         dna_seq = seq.upper()
         self._assert_characters_in_set(dna_seq, DNA_SET, 'dna_to_aa')
         assert len(dna_seq) % 3 == 0, f'dna_to_aa requires sequence length multiple of 3, got {len(dna_seq)}.'
@@ -297,7 +297,7 @@ class DataMixin:
         self._validate_translated_output(translated, AA_SET - {'*'}, 'dna_to_aa')
         return translated
 
-    def _translate_rna_to_aa(self, seq):
+    def _translate_rna_to_aa(self, seq: str) -> str:
         rna_seq = seq.upper()
         self._assert_characters_in_set(rna_seq, RNA_SET, 'rna_to_aa')
         assert len(rna_seq) % 3 == 0, f'rna_to_aa requires sequence length multiple of 3, got {len(rna_seq)}.'
@@ -312,7 +312,7 @@ class DataMixin:
         self._validate_translated_output(translated, AA_SET - {'*'}, 'rna_to_aa')
         return translated
 
-    def _translate_codon_to_aa(self, seq):
+    def _translate_codon_to_aa(self, seq: str) -> str:
         aa_seq = []
         for token in seq:
             assert token in CODON_TO_AA, f'Unknown codon token for codon_to_aa: {token}'
@@ -323,7 +323,7 @@ class DataMixin:
         self._validate_translated_output(translated, AA_SET - {'*'}, 'codon_to_aa')
         return translated
 
-    def _translate_aa_to_codon(self, seq):
+    def _translate_aa_to_codon(self, seq: str) -> str:
         codon_tokens = []
         for residue in seq:
             residue = residue.upper()
@@ -337,7 +337,7 @@ class DataMixin:
         self._validate_translated_output(translated, CODON_SET, 'aa_to_codon')
         return translated
 
-    def _translate_sequence_for_mode(self, seq, mode):
+    def _translate_sequence_for_mode(self, seq: str, mode: str) -> str:
         if mode == 'aa_to_dna':
             return self._translate_aa_to_dna(seq)
         if mode == 'aa_to_rna':
@@ -352,7 +352,7 @@ class DataMixin:
             return self._translate_aa_to_codon(seq)
         raise AssertionError(f'Unsupported translation mode: {mode}')
 
-    def _find_first_present_column(self, available_columns, candidates_ordered):
+    def _find_first_present_column(self, available_columns: List[str], candidates_ordered: List[str]) -> str:
         """Return the first column from candidates_ordered that exists in available_columns (case-insensitive)."""
         lowercase_to_actual = {col.lower(): col for col in available_columns}
         for candidate in candidates_ordered:
@@ -361,7 +361,7 @@ class DataMixin:
                 return actual
         raise KeyError(f"None of the candidate columns were found. Candidates: {candidates_ordered}. Available: {available_columns}")
 
-    def _is_ppi_from_columns(self, available_columns):
+    def _is_ppi_from_columns(self, available_columns: List[str]) -> bool:
         """Detect if dataset contains paired sequence inputs (SeqA/SeqB variants)."""
         lowercase_columns = set(col.lower() for col in available_columns)
         base_candidates = ['seqs', 'seq', 'sequence', 'sequences']
@@ -370,7 +370,7 @@ class DataMixin:
                 return True
         return False
 
-    def _find_ppi_sequence_columns(self, available_columns):
+    def _find_ppi_sequence_columns(self, available_columns: List[str]) -> Tuple[str, str]:
         """Return the actual column names for A and B sequences in PPI datasets based on priority."""
         lowercase_to_actual = {col.lower(): col for col in available_columns}
         # Try specific common pairs first (in order)
@@ -397,7 +397,7 @@ class DataMixin:
 
         raise KeyError(f"Could not find paired sequence columns for PPI. Available: {available_columns}")
 
-    def _is_missing_value(self, v):
+    def _is_missing_value(self, v: object) -> bool:
         if v is None:
             return True
         # float/np.nan handling
@@ -859,7 +859,7 @@ class DataMixin:
 
         return self.process_datasets(hf_datasets=datasets, data_names=data_names)
 
-    def get_embedding_dim_sql(self, save_path, test_seq, tokenizer):
+    def get_embedding_dim_sql(self, save_path: str, test_seq: str, tokenizer: object) -> int:
         import sqlite3
         test_seq_len = len(tokenizer(test_seq, return_tensors='pt')['input_ids'][0])
 
@@ -873,7 +873,7 @@ class DataMixin:
         embedding_dim = test_embedding.shape[-1]
         return embedding_dim
 
-    def get_embedding_dim_pth(self, emb_dict, test_seq, tokenizer):
+    def get_embedding_dim_pth(self, emb_dict: Dict[str, torch.Tensor], test_seq: str, tokenizer: object) -> int:
         test_seq_len = len(tokenizer(test_seq, return_tensors='pt')['input_ids'][0])
         test_embedding = emb_dict[test_seq]
         if self._full:

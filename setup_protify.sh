@@ -8,8 +8,8 @@ set -e  # Exit immediately if a command exits with a non-zero status
 
 echo "Setting up Python virtual environment for Protify..."
 
-# Create virtual environment
-python3 -m venv ~/protify_venv
+# Create virtual environment with python3.12 (Python 3.13 has conflicting numpy requirements)
+python3.12 -m venv ~/protify_venv
 
 # Activate virtual environment
 source ~/protify_venv/bin/activate

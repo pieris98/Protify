@@ -250,6 +250,8 @@ class Embedder:
             c.execute('PRAGMA busy_timeout=30000')
             c.execute('CREATE TABLE IF NOT EXISTS embeddings (sequence text PRIMARY KEY, embedding blob)')
 
+        sql_commit_interval = max(1, 10000 // self.batch_size)
+
         for i, batch in tqdm(enumerate(dataloader), total=len(dataloader), desc='Embedding batches'):
             seqs = to_embed[i * self.batch_size:(i + 1) * self.batch_size]
             batch = {k: v.to(device) for k, v in batch.items() if isinstance(v, torch.Tensor)}
@@ -274,17 +276,20 @@ class Embedder:
                 residue_embeddings = model(**batch)
                 embeddings = _get_embeddings(residue_embeddings, attention_mask=attention_mask).cpu()
 
-            for seq, emb, mask in zip(seqs, embeddings, attention_mask.cpu()):
-                if self.matrix_embed:
-                    emb = emb[mask.bool()]
-                
-                if self.sql:
-                    c.execute("INSERT OR REPLACE INTO embeddings VALUES (?, ?)",
-                            (seq, tensor_to_embedding_blob(emb)))
-                else:
+            if self.sql:
+                batch_rows = []
+                for seq, emb, mask in zip(seqs, embeddings, attention_mask.cpu()):
+                    if self.matrix_embed:
+                        emb = emb[mask.bool()]
+                    batch_rows.append((seq, tensor_to_embedding_blob(emb)))
+                c.executemany("INSERT OR REPLACE INTO embeddings VALUES (?, ?)", batch_rows)
+            else:
+                for seq, emb, mask in zip(seqs, embeddings, attention_mask.cpu()):
+                    if self.matrix_embed:
+                        emb = emb[mask.bool()]
                     embeddings_dict[seq] = emb.to(self.embed_dtype)
-            
-            if (i + 1) % 100 == 0 and self.sql:
+
+            if (i + 1) % sql_commit_interval == 0 and self.sql:
                 conn.commit()
 
         if self.sql:

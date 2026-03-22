@@ -1,0 +1,74 @@
+site_name: Protify
+site_description: Low-code protein language model platform
+site_author: Synthyra
+repo_url: https://github.com/gleghorn-lab/Protify
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting_started.md
+  - Features:
+      - GUI: gui.md
+      - CLI & Config: cli_and_config.md
+      - Data: data.md
+      - Models & Embeddings: models_and_embeddings.md
+      - Probes & Training: probes_and_training.md
+  - Advanced:
+      - Hyperparameter Optimization: hyperparameter_optimization.md
+      - Logging & Replay: logging_and_replay.md
+      - Visualisation: visualization.md
+      - Modal Support: modal.md
+      - ProteinGym: proteingym.md
+  - Development:
+      - Testing: testing.md
+      - Resources: resource_listing.md
+      - Model Components: model_components.md

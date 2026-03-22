@@ -8,8 +8,8 @@ This page documents how Protify produces plots: the main `create_plots()` entry 
 
 Two kinds of visualization are used:
 
-1. **Publication-style comparison plots:** A metrics TSV (datasets x models, cells = JSON metrics) is turned into six PNGs: radar (raw and normalized), bar (raw and normalized), heatmap (raw and normalized). This is done by `create_plots()` in [plot_result.py](../src/protify/visualization/plot_result.py), typically after a run via `MainProcess.generate_plots()`.
-2. **Per-run CI plots:** During training, when `make_plots` and `plots_dir` are set, the trainer calls `regression_ci_plot` or `classification_ci_plot` from [ci_plots.py](../src/protify/visualization/ci_plots.py) to save scatter/ROC plots for the best run.
+1. **Publication-style comparison plots:** A metrics TSV (datasets x models, cells = JSON metrics) is turned into six PNGs: radar (raw and normalized), bar (raw and normalized), heatmap (raw and normalized). This is done by `create_plots()` in [plot_result.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/visualization/plot_result.py), typically after a run via `MainProcess.generate_plots()`.
+2. **Per-run CI plots:** During training, when `make_plots` and `plots_dir` are set, the trainer calls `regression_ci_plot` or `classification_ci_plot` from [ci_plots.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/visualization/ci_plots.py) to save scatter/ROC plots for the best run.
 
 ---
 
@@ -21,7 +21,7 @@ Two kinds of visualization are used:
 2. For each row (dataset), regression vs classification is decided via `is_regression(metrics)` (reg: spearman, pearson, r_squared, rmse, mse; cls: accuracy, f1, mcc, auc, etc.).
 3. **pick_metric(metrics, REG_PREFS or CLS_PREFS):** Chooses one metric per task type (e.g. regression: spearman then r_squared then pearson; classification: f1 then mcc then accuracy).
 4. **get_metric_value_with_std** per model: parses value (float or "mean±std") and builds mean, std, and display string.
-5. Datasets are ordered by `DATASET_NAMES` (from [utils.py](../src/protify/visualization/utils.py)), then any others appended. Models are sorted by average score (ascending). Normalized plots use per-dataset min-max normalization and optional reordering.
+5. Datasets are ordered by `DATASET_NAMES` (from [utils.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/visualization/utils.py)), then any others appended. Models are sorted by average score (ascending). Normalized plots use per-dataset min-max normalization and optional reordering.
 6. Output directory is `outdir / tsv.stem`. Six PNGs are written (e.g. 450 dpi in the implementation).
 
 ---
@@ -67,7 +67,7 @@ All under `outdir / tsv.stem`:
 ## CI plots (training)
 
 - **regression_ci_plot(y_true, y_pred, save_path, title):** Scatter true vs pred, regression line with 95% CI, annotations for R², Spearman ρ, Pearson ρ and p-values; saves PNG (e.g. 300 dpi).
-- **classification_ci_plot(y_true, y_pred, save_path, title):** Reshapes/flattens as needed, caps at 10k points, calls **plot_roc_with_ci** from [pauc_plot.py](../src/protify/visualization/pauc_plot.py) for pAUC/ROC. Used for per-run and "best run" plots when `make_plots` and `plots_dir` are set in TrainerArguments.
+- **classification_ci_plot(y_true, y_pred, save_path, title):** Reshapes/flattens as needed, caps at 10k points, calls **plot_roc_with_ci** from [pauc_plot.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/visualization/pauc_plot.py) for pAUC/ROC. Used for per-run and "best run" plots when `make_plots` and `plots_dir` are set in TrainerArguments.
 
 ---
 

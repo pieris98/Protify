@@ -6,7 +6,7 @@ This page describes the Protify testing suite: where tests live, what they cover
 
 ## Overview
 
-Tests are under [src/protify/testing_suite/](../src/protify/testing_suite/). They cover modal utilities, lazy-predict integration, packaged probe export, probe attention behavior, and embedding pipeline behavior. Run them with pytest from the repository root (or from `src/protify` with the appropriate Python path).
+Tests are under [src/protify/testing_suite/](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/testing_suite/). They cover modal utilities, lazy-predict integration, packaged probe export, probe attention behavior, and embedding pipeline behavior. Run them with pytest from the repository root (or from `src/protify` with the appropriate Python path).
 
 ---
 
@@ -51,7 +51,7 @@ On Windows use `py`; on Linux/mac you can use `python` if preferred. Ensure the 
 
 ## Docker
 
-If the project has a [Dockerfile](../Dockerfile) and you want tests to run in a container (e.g. with a specific CUDA or OS environment), build the image first, then run pytest with the workspace mounted and working directory at repo root (`-w /workspace`):
+If the project has a [Dockerfile](https://github.com/gleghorn-lab/Protify/blob/main/Dockerfile) and you want tests to run in a container (e.g. with a specific CUDA or OS environment), build the image first, then run pytest with the workspace mounted and working directory at repo root (`-w /workspace`):
 
 **Linux / macOS:**
 ```bash

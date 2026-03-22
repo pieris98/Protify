@@ -24,7 +24,7 @@ When `--use_wandb_hyperopt` is set, the pipeline runs a W&B sweep over the param
 
 ## HyperoptModule
 
-Defined in [hyperopt_utils.py](../src/protify/hyperopt_utils.py).
+Defined in [hyperopt_utils.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/hyperopt_utils.py).
 
 - **Constructor:** `HyperoptModule(main_process, model_name, data_name, dataset, emb_dict, sweep_config, results_list, swept_param_keys=None)`. Keeps deep copies of base `probe_args` and `trainer_args` and defines which keys are probe/trainer/embedding and which are int-cast.
 - **apply_config(cfg):** Restores base probe and trainer args, then applies `cfg`: ints for int_keys; `n_heads` derived from `hidden_size` or `transformer_hidden_size`; `transformer_dropout` from `dropout`; `pooling_types` from `probe_pooling_types`; sets attributes on `mp.probe_args`, `mp.trainer_args`, and `mp.embedding_args.pooling_types` where applicable.
@@ -36,7 +36,7 @@ Defined in [hyperopt_utils.py](../src/protify/hyperopt_utils.py).
 
 ## Sweep config (sweep.yaml)
 
-File: [src/protify/yamls/sweep.yaml](../src/protify/yamls/sweep.yaml).
+File: [src/protify/yamls/sweep.yaml](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/yamls/sweep.yaml).
 
 - **Top-level:** `parameters` (required); optional `early_terminate` (e.g. `{type: hyperband, min_iter: 10}`).
 - **parameters:** W&B sweep format. Examples:

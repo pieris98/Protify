@@ -21,7 +21,7 @@ ProteinGym provides zero-shot variant effect prediction: score substitution or i
 
 ## ProteinGymRunner
 
-Defined in [scorer.py](../src/protify/benchmarks/proteingym/scorer.py).
+Defined in [scorer.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/benchmarks/proteingym/scorer.py).
 
 - **Constructor:** `ProteinGymRunner(results_dir, repo_id="GleghornLab/ProteinGym_DMS", device=None)`. Creates `results_dir`; uses CUDA if available.
 - **run(dms_ids, model_names, mode="benchmark", scoring_method="masked_marginal", scoring_window="optimal", batch_size=32):** For each model, loads via `get_base_model(..., masked_lm=True)`, builds `ProteinGymScorer`, then for each DMS ID loads data with `load_proteingym_dms(dms_id, mode, repo_id)`. For substitutions: `scorer.score_substitutions(..., scoring_method, scoring_window)`; for indels: `scorer.score_indels(..., scoring_window="sliding")`. Saves/merges CSVs via `_save_results()`. Returns a dict `model_name -> elapsed_time`.
@@ -50,9 +50,9 @@ For **indels**, only PLL over sliding windows is supported; `scoring_window` is 
 
 ## Data loading
 
-- **load_proteingym_dms(dms_id, mode, repo_id="GleghornLab/ProteinGym_DMS")** ([data_loader.py](../src/protify/benchmarks/proteingym/data_loader.py)) downloads `by_dms_id/{dms_id}.parquet` from HuggingFace.
+- **load_proteingym_dms(dms_id, mode, repo_id="GleghornLab/ProteinGym_DMS")** ([data_loader.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/benchmarks/proteingym/data_loader.py)) downloads `by_dms_id/{dms_id}.parquet` from HuggingFace.
 - **Modes:** `"benchmark"` (substitutions, no indels), `"indels"`, `"singles"`, `"multiples"`.
-- **expand_dms_ids_all(dms_ids, mode)** ([utils.py](../src/protify/utils.py)): If any element is `"all"`, replaces with `ALL_INDEL_DMS_IDS` or `ALL_SUBSTITUTION_DMS_IDS` from [dms_ids.py](../src/protify/benchmarks/proteingym/dms_ids.py).
+- **expand_dms_ids_all(dms_ids, mode)** ([utils.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/utils.py)): If any element is `"all"`, replaces with `ALL_INDEL_DMS_IDS` or `ALL_SUBSTITUTION_DMS_IDS` from [dms_ids.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/benchmarks/proteingym/dms_ids.py).
 
 ---
 

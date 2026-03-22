@@ -1,6 +1,6 @@
 # Model Components
 
-This page is for developers who need to understand or extend the shared neural building blocks used by transformer-style probes. It summarizes [attention.py](../src/protify/model_components/attention.py), [attention_utils.py](../src/protify/model_components/attention_utils.py), [transformer.py](../src/protify/model_components/transformer.py), and [mlp.py](../src/protify/model_components/mlp.py), and which probes use them.
+This page is for developers who need to understand or extend the shared neural building blocks used by transformer-style probes. It summarizes [attention.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/model_components/attention.py), [attention_utils.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/model_components/attention_utils.py), [transformer.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/model_components/transformer.py), and [mlp.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/model_components/mlp.py), and which probes use them.
 
 ---
 

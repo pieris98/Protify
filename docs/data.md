@@ -22,7 +22,7 @@ Data is specified either by **dataset names** (HuggingFace IDs or special preset
 
 ## DataArguments
 
-Defined in [data_mixin.py](../src/protify/data/data_mixin.py). All arguments that affect data loading and preprocessing:
+Defined in [data_mixin.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/data/data_mixin.py). All arguments that affect data loading and preprocessing:
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
@@ -40,7 +40,7 @@ Defined in [data_mixin.py](../src/protify/data/data_mixin.py). All arguments tha
 | `codon_to_aa` | bool | False | Map codon tokens to amino acid. |
 | `aa_to_codon` | bool | False | Map amino acid to codon tokens. |
 
-Only one of the translation flags may be True. Setting `data_names[0]` to `standard_benchmark` or `vector_benchmark` expands to the corresponding list in [supported_datasets.py](../src/protify/data/supported_datasets.py).
+Only one of the translation flags may be True. Setting `data_names[0]` to `standard_benchmark` or `vector_benchmark` expands to the corresponding list in [supported_datasets.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/data/supported_datasets.py).
 
 ---
 
@@ -85,7 +85,7 @@ Files are read with pandas (`read_csv` or `read_excel` by extension) and convert
 
 ## Dataset classes
 
-Used when building PyTorch datasets from embeddings or raw sequences ([dataset_classes.py](../src/protify/data/dataset_classes.py)):
+Used when building PyTorch datasets from embeddings or raw sequences ([dataset_classes.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/data/dataset_classes.py)):
 
 | Class | Use case |
 |-------|----------|
@@ -98,7 +98,7 @@ Used when building PyTorch datasets from embeddings or raw sequences ([dataset_c
 | **PairStringLabelDataset** | PPI, raw pairs and labels; optional pair flipping. |
 | **SimpleProteinDataset** | Wrapper over a list of sequence strings (e.g. for embedding). |
 
-Collators in [data_collators.py](../src/protify/data/data_collators.py) pair with these for batching (e.g. `EmbedsLabelsCollator`, `PairEmbedsLabelsCollator`, `StringLabelsCollator`).
+Collators in [data_collators.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/data/data_collators.py) pair with these for batching (e.g. `EmbedsLabelsCollator`, `PairEmbedsLabelsCollator`, `StringLabelsCollator`).
 
 ---
 

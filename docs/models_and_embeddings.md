@@ -21,7 +21,7 @@ Protify supports two ways to specify models: **preset names** (`model_names`, e.
 
 ## BaseModelArguments
 
-Defined in [get_base_models.py](../src/protify/base_models/get_base_models.py).
+Defined in [get_base_models.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/base_models/get_base_models.py).
 
 | Argument | Type | Description |
 |----------|------|-------------|
@@ -45,13 +45,13 @@ Defined in [get_base_models.py](../src/protify/base_models/get_base_models.py).
 - **get_tokenizer(model_name, model_path=None)**  
   Returns the tokenizer for the given model name (and path for custom/path-based loading).
 
-Supported model type keywords (for `model_types` or in preset names) include: random, esm2, dsm, esmc, protbert, prott5, ankh, glm, dplm, dplm2, protclm, onehot, amplify, e1, vec2vec, calm, custom. See [supported_models.py](../src/protify/base_models/supported_models.py) for `all_presets_with_paths`, `currently_supported_models`, `standard_models`, `experimental_models`.
+Supported model type keywords (for `model_types` or in preset names) include: random, esm2, dsm, esmc, protbert, prott5, ankh, glm, dplm, dplm2, protclm, onehot, amplify, e1, vec2vec, calm, custom. See [supported_models.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/base_models/supported_models.py) for `all_presets_with_paths`, `currently_supported_models`, `standard_models`, `experimental_models`.
 
 ---
 
 ## EmbeddingArguments
 
-Defined in [embedder.py](../src/protify/embedder.py). Constructor maps long names to internal attributes (e.g. `embedding_pooling_types` -> `pooling_types`).
+Defined in [embedder.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/embedder.py). Constructor maps long names to internal attributes (e.g. `embedding_pooling_types` -> `pooling_types`).
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
@@ -112,7 +112,7 @@ Common values for `embedding_pooling_types` (and probe-side `probe_pooling_types
 - **parti:** Requires attention outputs; see pooler implementation.
 - **cls:** Use first token (CLS) representation when available.
 
-Pooling is applied in [pooler.py](../src/protify/pooler.py) via the `Pooler` class when not using `matrix_embed`.
+Pooling is applied in [pooler.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/pooler.py) via the `Pooler` class when not using `matrix_embed`.
 
 ---
 

@@ -44,7 +44,7 @@ flowchart LR
 
 ## ProbeArguments
 
-Defined in [get_probe.py](../src/protify/probes/get_probe.py). Key attributes (CLI names in parentheses where different):
+Defined in [get_probe.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/probes/get_probe.py). Key attributes (CLI names in parentheses where different):
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
@@ -86,7 +86,7 @@ Defined in [get_probe.py](../src/protify/probes/get_probe.py). Key attributes (C
 
 ## TrainerArguments
 
-Defined in [trainers.py](../src/protify/probes/trainers.py).
+Defined in [trainers.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/probes/trainers.py).
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|

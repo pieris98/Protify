@@ -8,7 +8,7 @@ This page documents how configuration works: CLI argument groups, YAML config (b
 
 Configuration is a single namespace built by:
 
-1. **Parsing CLI** with `parse_arguments()` in [main.py](../src/protify/main.py).
+1. **Parsing CLI** with `parse_arguments()` in [main.py](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/main.py).
 2. **Optionally loading a YAML file** when `--yaml_path` is set; the YAML is converted to a namespace and merged with the CLI result. **CLI overrides YAML** for any option that was explicitly set on the command line.
 3. **Defaults** for ProteinGym, W&B sweep, and a few other options are filled when missing.
 
@@ -22,7 +22,7 @@ The same namespace (`full_args`) is used to build `DataArguments`, `BaseModelArg
 - **YAML + CLI:** Pass `--yaml_path path/to/config.yaml`. The file is `yaml.safe_load`'ed; keys are merged into a namespace. Then CLI parsing runs; any CLI option overrides the YAML value. So you can override a few keys without editing the file (e.g. `--num_epochs 10`).
 - **Store-true flags:** Merge logic treats store_true/store_false specially so that omitting a flag in YAML does not overwrite a CLI `--flag` or `--no-flag`.
 
-The schema is defined by the union of [base.yaml](../src/protify/yamls/base.yaml) and all options in `parse_arguments()`. YAML can use type tags (e.g. `!!int`, `!!bool`) for clarity.
+The schema is defined by the union of [base.yaml](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/yamls/base.yaml) and all options in `parse_arguments()`. YAML can use type tags (e.g. `!!int`, `!!bool`) for clarity.
 
 ---
 
@@ -187,7 +187,7 @@ The schema is defined by the union of [base.yaml](../src/protify/yamls/base.yaml
 
 ## YAML config (base.yaml)
 
-The file [src/protify/yamls/base.yaml](../src/protify/yamls/base.yaml) is organized by section. Key names match CLI long options (without the leading dashes). Types can be explicit with YAML tags (e.g. `!!int`, `!!bool`). Example structure:
+The file [src/protify/yamls/base.yaml](https://github.com/gleghorn-lab/Protify/blob/main/src/protify/yamls/base.yaml) is organized by section. Key names match CLI long options (without the leading dashes). Types can be explicit with YAML tags (e.g. `!!int`, `!!bool`). Example structure:
 
 ```yaml
 # ID
